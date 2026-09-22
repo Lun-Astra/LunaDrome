@@ -14,6 +14,12 @@ public sealed partial class MainPage : Page
     private readonly DispatcherTimer _progressTimer;
     private Song? _currentSong;
 
+    private bool _homeLoaded;
+    private bool _allAlbumsLoaded;
+
+    // Which top-level panel Album Detail should return to on "Back".
+    private string _albumDetailReturnPanel = "Albums";
+
     public MainPage()
     {
         this.InitializeComponent();
@@ -27,9 +33,24 @@ public sealed partial class MainPage : Page
         {
             PlayPauseButton.Content = "Play";
         });
+
+        var saved = SettingsService.Load();
+        if (!string.IsNullOrWhiteSpace(saved.ServerUrl))
+            ServerUrlBox.Text = saved.ServerUrl;
+        if (!string.IsNullOrWhiteSpace(saved.Username))
+            UsernameBox.Text = saved.Username;
+
+        var savedPassword = CredentialProtector.Unprotect(saved.ProtectedPassword);
+        if (!string.IsNullOrEmpty(savedPassword))
+        {
+            PasswordBox.Password = savedPassword;
+            _ = TryLoginAsync();
+        }
     }
 
-    private async void LoginButton_Click(object sender, RoutedEventArgs e)
+    private async void LoginButton_Click(object sender, RoutedEventArgs e) => await TryLoginAsync();
+
+    private async Task TryLoginAsync()
     {
         StatusText.Text = "";
 
@@ -56,19 +77,131 @@ public sealed partial class MainPage : Page
             return;
         }
 
+        if (RememberMeBox.IsChecked == true)
+        {
+            SettingsService.Save(new AppSettings
+            {
+                ServerUrl = serverUrl,
+                Username = username,
+                ProtectedPassword = CredentialProtector.Protect(password)
+            });
+        }
+        else
+        {
+            SettingsService.Save(new AppSettings());
+        }
+
         var artists = await _client.GetArtistsAsync();
         ArtistsList.ItemsSource = artists;
 
-        var tracks = await _client.GetAllSongsAsync(limit: 100);
+        var tracks = await _client.GetAllSongsAsync(limit: 200);
         TracksList.ItemsSource = tracks;
 
         LoginPanel.Visibility = Visibility.Collapsed;
         LibraryPanel.Visibility = Visibility.Visible;
+
+        await LoadHomeAsync();
     }
 
-    private void TracksList_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
+    // Subsonic's album list endpoints don't include cover art URLs directly - Navidrome
+    // resolves cover art from an id via a separate endpoint, so this is filled in after
+    // the fact for whichever albums are about to be displayed.
+    private void PopulateCoverArt(IEnumerable<Album> albums, int size = 240)
     {
-        if (TracksList.SelectedItem is Song song)
+        foreach (var album in albums)
+            album.CoverArtUrl = _client.GetCoverArtUrl(album.Id, size);
+    }
+
+    private void ShowPanel(string name)
+    {
+        HomePanel.Visibility = name == "Home" ? Visibility.Visible : Visibility.Collapsed;
+        ArtistsPanel.Visibility = name == "Artists" ? Visibility.Visible : Visibility.Collapsed;
+        ArtistDetailPanel.Visibility = name == "ArtistDetail" ? Visibility.Visible : Visibility.Collapsed;
+        AlbumsPanel.Visibility = name == "Albums" ? Visibility.Visible : Visibility.Collapsed;
+        AlbumDetailPanel.Visibility = name == "AlbumDetail" ? Visibility.Visible : Visibility.Collapsed;
+        TracksPanel.Visibility = name == "Tracks" ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private async void Nav_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: string panel })
+            return;
+
+        if (panel == "Home")
+            await LoadHomeAsync();
+        else if (panel == "Albums")
+            await LoadAllAlbumsAsync();
+
+        ShowPanel(panel);
+    }
+
+    private async Task LoadHomeAsync()
+    {
+        if (_homeLoaded)
+            return;
+
+        var albums = await _client.GetAlbumListAsync("newest", size: 20);
+        PopulateCoverArt(albums);
+        HomeAlbumsList.ItemsSource = albums;
+        _homeLoaded = true;
+    }
+
+    private async Task LoadAllAlbumsAsync()
+    {
+        if (_allAlbumsLoaded)
+            return;
+
+        var albums = await _client.GetAlbumListAsync("alphabeticalByName", size: 200);
+        PopulateCoverArt(albums);
+        AllAlbumsList.ItemsSource = albums;
+        _allAlbumsLoaded = true;
+    }
+
+    private async void ArtistRow_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        if (e.OriginalSource is not FrameworkElement { } fe)
+            return;
+
+        // Walk up to the row container that carries the bound Artist in its Tag.
+        var current = fe;
+        while (current != null && current.Tag is not Artist)
+            current = current.Parent as FrameworkElement;
+
+        if (current?.Tag is not Artist artist)
+            return;
+
+        ArtistDetailHeader.Text = artist.Name;
+        var albums = await _client.GetAlbumsForArtistAsync(artist.Id);
+        PopulateCoverArt(albums);
+        ArtistAlbumsList.ItemsSource = albums;
+
+        ShowPanel("ArtistDetail");
+    }
+
+    private async void AlbumCard_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: Album album })
+            return;
+
+        // Remember which page to return to on Back - whichever album grid this card came from.
+        _albumDetailReturnPanel = HomePanel.Visibility == Visibility.Visible ? "Home"
+            : ArtistDetailPanel.Visibility == Visibility.Visible ? "ArtistDetail"
+            : "Albums";
+
+        AlbumDetailHeader.Text = album.Name;
+        var songs = await _client.GetSongsForAlbumAsync(album.Id);
+        AlbumTracksList.ItemsSource = songs;
+
+        ShowPanel("AlbumDetail");
+    }
+
+    private void ArtistBack_Click(object sender, RoutedEventArgs e) => ShowPanel("Artists");
+
+    private void AlbumBack_Click(object sender, RoutedEventArgs e) => ShowPanel(_albumDetailReturnPanel);
+
+    private void TrackRow_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: Song song })
             PlaySong(song);
     }
 

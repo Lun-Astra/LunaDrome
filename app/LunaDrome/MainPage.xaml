@@ -4,77 +4,150 @@
       xmlns:local="using:LunaDrome"
       xmlns:us="using:Uno.Simple"
       Background="{ThemeResource BackgroundBrush}">
+
+  <Page.Resources>
+    <DataTemplate x:Key="AlbumCardTemplate">
+      <StackPanel Width="140" Margin="0,0,16,16" Tapped="AlbumCard_Tapped" Tag="{Binding}">
+        <Grid Width="140" Height="140" CornerRadius="6" Background="#2A2A2A">
+          <Image Source="{Binding CoverArtUrl}" Stretch="UniformToFill"/>
+        </Grid>
+        <TextBlock Text="{Binding Name}" FontSize="13" Margin="0,6,0,0" TextTrimming="CharacterEllipsis"/>
+        <TextBlock Text="{Binding ArtistName}" FontSize="11" Opacity="0.6" TextTrimming="CharacterEllipsis"/>
+      </StackPanel>
+    </DataTemplate>
+
+    <DataTemplate x:Key="TrackRowTemplate">
+      <Grid Margin="0,4" Tapped="TrackRow_Tapped" Tag="{Binding}">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*"/>
+          <ColumnDefinition Width="180"/>
+          <ColumnDefinition Width="50"/>
+        </Grid.ColumnDefinitions>
+        <TextBlock Grid.Column="0" Text="{Binding Title}" FontSize="14" TextTrimming="CharacterEllipsis"/>
+        <TextBlock Grid.Column="1" Text="{Binding ArtistName}" FontSize="12" Opacity="0.6" TextTrimming="CharacterEllipsis"/>
+        <TextBlock Grid.Column="2" Text="{Binding DurationDisplay}" FontSize="12" Opacity="0.6"/>
+      </Grid>
+    </DataTemplate>
+  </Page.Resources>
+
   <Grid>
-    <!-- Login: server URL / username / password, calls NavidromeClient from LunaDrome.Core -->
+    <!-- Login -->
     <StackPanel x:Name="LoginPanel"
                 HorizontalAlignment="Center" VerticalAlignment="Center"
                 Width="320" Spacing="10">
       <TextBlock Text="LunaDrome" FontSize="22" FontWeight="Bold" Margin="0,0,0,10"/>
-
       <TextBlock Text="Server URL"/>
       <TextBox x:Name="ServerUrlBox" Text="http://"/>
-
       <TextBlock Text="Username"/>
       <TextBox x:Name="UsernameBox"/>
-
       <TextBlock Text="Password"/>
       <PasswordBox x:Name="PasswordBox"/>
-
+      <CheckBox x:Name="RememberMeBox" Content="Remember me" IsChecked="True"/>
       <Button x:Name="LoginButton" Content="Sign in" Click="LoginButton_Click"
               HorizontalAlignment="Stretch" Margin="0,10,0,0"/>
-
       <TextBlock x:Name="StatusText" Foreground="OrangeRed" TextWrapping="Wrap"/>
     </StackPanel>
 
-    <!-- Shown after a successful login: Artists + Tracks (library-wide), and a playback bar -->
+    <!-- Main shell: sidebar + content + playback bar -->
     <Grid x:Name="LibraryPanel" Visibility="Collapsed">
       <Grid.RowDefinitions>
         <RowDefinition Height="*"/>
         <RowDefinition Height="Auto"/>
       </Grid.RowDefinitions>
 
-      <Grid Grid.Row="0" Margin="24">
+      <Grid Grid.Row="0">
         <Grid.ColumnDefinitions>
-          <ColumnDefinition Width="1*"/>
-          <ColumnDefinition Width="16"/>
-          <ColumnDefinition Width="2*"/>
+          <ColumnDefinition Width="170"/>
+          <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
 
-        <Grid Grid.Column="0">
-          <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
-          </Grid.RowDefinitions>
-          <TextBlock Grid.Row="0" Text="Artists" FontSize="20" FontWeight="Bold" Margin="0,0,0,12"/>
-          <ListView Grid.Row="1" x:Name="ArtistsList">
-            <ListView.ItemTemplate>
-              <DataTemplate>
-                <StackPanel Orientation="Horizontal" Margin="0,4">
-                  <TextBlock Text="{Binding Name}" FontSize="14"/>
-                  <TextBlock Text="{Binding AlbumCount}" FontSize="12" Opacity="0.6" Margin="8,0,0,0"/>
-                </StackPanel>
-              </DataTemplate>
-            </ListView.ItemTemplate>
-          </ListView>
-        </Grid>
+        <!-- Sidebar -->
+        <StackPanel Grid.Column="0" Background="#141414" Padding="16" Spacing="4">
+          <TextBlock Text="LUNADROME" FontSize="12" FontWeight="Bold" Margin="0,0,0,16" Opacity="0.7"/>
+          <Button x:Name="NavHomeButton" Content="Home" Tag="Home" Click="Nav_Click" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"/>
+          <Button x:Name="NavArtistsButton" Content="Artists" Tag="Artists" Click="Nav_Click" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"/>
+          <Button x:Name="NavAlbumsButton" Content="Albums" Tag="Albums" Click="Nav_Click" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"/>
+          <Button x:Name="NavTracksButton" Content="Tracks" Tag="Tracks" Click="Nav_Click" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"/>
+        </StackPanel>
 
-        <Grid Grid.Column="2">
-          <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
-          </Grid.RowDefinitions>
-          <TextBlock Grid.Row="0" Text="Tracks (double-click to play)" FontSize="20" FontWeight="Bold" Margin="0,0,0,12"/>
-          <ListView Grid.Row="1" x:Name="TracksList" DoubleTapped="TracksList_DoubleTapped">
-            <ListView.ItemTemplate>
-              <DataTemplate>
-                <StackPanel Orientation="Horizontal" Margin="0,4">
-                  <TextBlock Text="{Binding Title}" FontSize="14" Width="260"/>
-                  <TextBlock Text="{Binding ArtistName}" FontSize="12" Opacity="0.6" Width="180"/>
-                  <TextBlock Text="{Binding DurationDisplay}" FontSize="12" Opacity="0.6"/>
-                </StackPanel>
-              </DataTemplate>
-            </ListView.ItemTemplate>
-          </ListView>
+        <!-- Content -->
+        <Grid Grid.Column="1" Margin="24">
+
+          <!-- Home: recently added albums -->
+          <Grid x:Name="HomePanel" Visibility="Visible">
+            <Grid.RowDefinitions>
+              <RowDefinition Height="Auto"/>
+              <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+            <TextBlock Grid.Row="0" Text="Recently Added" FontSize="20" FontWeight="Bold" Margin="0,0,0,12"/>
+            <GridView Grid.Row="1" x:Name="HomeAlbumsList" ItemTemplate="{StaticResource AlbumCardTemplate}"/>
+          </Grid>
+
+          <!-- Artists list -->
+          <Grid x:Name="ArtistsPanel" Visibility="Collapsed">
+            <Grid.RowDefinitions>
+              <RowDefinition Height="Auto"/>
+              <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+            <TextBlock Grid.Row="0" Text="Artists" FontSize="20" FontWeight="Bold" Margin="0,0,0,12"/>
+            <ListView Grid.Row="1" x:Name="ArtistsList" Tapped="ArtistRow_Tapped">
+              <ListView.ItemTemplate>
+                <DataTemplate>
+                  <StackPanel Orientation="Horizontal" Margin="0,4" Tag="{Binding}">
+                    <TextBlock Text="{Binding Name}" FontSize="14"/>
+                    <TextBlock Text="{Binding AlbumCount}" FontSize="12" Opacity="0.6" Margin="8,0,0,0"/>
+                  </StackPanel>
+                </DataTemplate>
+              </ListView.ItemTemplate>
+            </ListView>
+          </Grid>
+
+          <!-- Artist detail: header + their albums -->
+          <Grid x:Name="ArtistDetailPanel" Visibility="Collapsed">
+            <Grid.RowDefinitions>
+              <RowDefinition Height="Auto"/>
+              <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+            <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,12" Spacing="12">
+              <Button x:Name="ArtistBackButton" Content="&lt; Back" Click="ArtistBack_Click"/>
+              <TextBlock x:Name="ArtistDetailHeader" FontSize="20" FontWeight="Bold" VerticalAlignment="Center"/>
+            </StackPanel>
+            <GridView Grid.Row="1" x:Name="ArtistAlbumsList" ItemTemplate="{StaticResource AlbumCardTemplate}"/>
+          </Grid>
+
+          <!-- Albums: whole library -->
+          <Grid x:Name="AlbumsPanel" Visibility="Collapsed">
+            <Grid.RowDefinitions>
+              <RowDefinition Height="Auto"/>
+              <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+            <TextBlock Grid.Row="0" Text="Albums" FontSize="20" FontWeight="Bold" Margin="0,0,0,12"/>
+            <GridView Grid.Row="1" x:Name="AllAlbumsList" ItemTemplate="{StaticResource AlbumCardTemplate}"/>
+          </Grid>
+
+          <!-- Album detail: header + tracks -->
+          <Grid x:Name="AlbumDetailPanel" Visibility="Collapsed">
+            <Grid.RowDefinitions>
+              <RowDefinition Height="Auto"/>
+              <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+            <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,12" Spacing="12">
+              <Button x:Name="AlbumBackButton" Content="&lt; Back" Click="AlbumBack_Click"/>
+              <TextBlock x:Name="AlbumDetailHeader" FontSize="20" FontWeight="Bold" VerticalAlignment="Center"/>
+            </StackPanel>
+            <ListView Grid.Row="1" x:Name="AlbumTracksList" ItemTemplate="{StaticResource TrackRowTemplate}"/>
+          </Grid>
+
+          <!-- Tracks: whole library -->
+          <Grid x:Name="TracksPanel" Visibility="Collapsed">
+            <Grid.RowDefinitions>
+              <RowDefinition Height="Auto"/>
+              <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+            <TextBlock Grid.Row="0" Text="Tracks" FontSize="20" FontWeight="Bold" Margin="0,0,0,12"/>
+            <ListView Grid.Row="1" x:Name="TracksList" ItemTemplate="{StaticResource TrackRowTemplate}"/>
+          </Grid>
+
         </Grid>
       </Grid>
 
