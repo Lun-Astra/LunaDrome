@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using LunaDrome.Core.Models;
 using LunaDrome.Core.Services;
 using Microsoft.UI.Xaml.Controls.Primitives;
@@ -16,7 +17,7 @@ public sealed partial class MainPage : Page
     private readonly DispatcherTimer _progressTimer;
     private Song? _currentSong;
 
-    private List<Song> _queue = new();
+    private ObservableCollection<Song> _queue = new();
     private int _queueIndex = -1;
     private bool _isShuffled;
     private RepeatMode _repeatMode = RepeatMode.Off;
@@ -43,6 +44,8 @@ public sealed partial class MainPage : Page
 
         _player.Volume = VolumeSlider.Value / 100.0;
         _player.MediaEnded += (_, _) => DispatcherQueue.TryEnqueue(OnMediaEnded);
+
+        QueueList.ItemsSource = _queue;
 
         var saved = SettingsService.Load();
         if (!string.IsNullOrWhiteSpace(saved.ServerUrl))
@@ -435,11 +438,57 @@ public sealed partial class MainPage : Page
             return;
         }
 
+        QueuePanel.Visibility = Visibility.Collapsed;
         LyricsPanel.Visibility = Visibility.Visible;
         await LoadLyricsForCurrentSongAsync();
     }
 
     private void CloseLyrics_Click(object sender, RoutedEventArgs e) => LyricsPanel.Visibility = Visibility.Collapsed;
+
+    private void QueueButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (QueuePanel.Visibility == Visibility.Visible)
+        {
+            QueuePanel.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        LyricsPanel.Visibility = Visibility.Collapsed;
+        QueuePanel.Visibility = Visibility.Visible;
+    }
+
+    private void CloseQueue_Click(object sender, RoutedEventArgs e) => QueuePanel.Visibility = Visibility.Collapsed;
+
+    private void QueueList_ItemClick(object sender, ItemClickEventArgs e)
+    {
+        if (e.ClickedItem is not Song song)
+            return;
+
+        var index = _queue.IndexOf(song);
+        if (index < 0)
+            return;
+
+        _queueIndex = index;
+        PlaySong(song);
+    }
+
+    private void RemoveFromQueue_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: Song song })
+            return;
+
+        var index = _queue.IndexOf(song);
+        if (index < 0)
+            return;
+
+        _queue.RemoveAt(index);
+
+        // Keep _queueIndex pointing at the same still-playing track after the shift.
+        if (index < _queueIndex)
+            _queueIndex--;
+        else if (index == _queueIndex)
+            _queueIndex = Math.Min(_queueIndex, _queue.Count - 1);
+    }
 
     private async Task LoadLyricsForCurrentSongAsync()
     {
@@ -473,7 +522,10 @@ public sealed partial class MainPage : Page
 
     private void PlayQueueFrom(List<Song> source, int startIndex)
     {
-        _queue = new List<Song>(source);
+        _queue.Clear();
+        foreach (var song in source)
+            _queue.Add(song);
+
         _queueIndex = startIndex;
         PlaySong(_queue[_queueIndex]);
     }

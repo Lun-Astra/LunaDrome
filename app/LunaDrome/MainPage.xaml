@@ -249,6 +249,37 @@
             </ListView.ItemTemplate>
           </ListView>
         </Grid>
+
+        <!-- Queue overlay -->
+        <Grid x:Name="QueuePanel" Grid.Column="1" Visibility="Collapsed"
+              Background="#1E1E1E" Width="320" HorizontalAlignment="Right" Margin="0">
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+          </Grid.RowDefinitions>
+          <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="16" Spacing="12">
+            <TextBlock Text="Queue" FontSize="16" FontWeight="Bold" VerticalAlignment="Center"/>
+            <Button Content="✕" Click="CloseQueue_Click"/>
+          </StackPanel>
+          <ListView Grid.Row="1" x:Name="QueueList" Margin="16,0,16,16"
+                    IsItemClickEnabled="True" ItemClick="QueueList_ItemClick">
+            <ListView.ItemTemplate>
+              <DataTemplate>
+                <Grid Margin="0,4">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                  </Grid.ColumnDefinitions>
+                  <StackPanel Grid.Column="0">
+                    <TextBlock Text="{Binding Title}" FontSize="13" TextTrimming="CharacterEllipsis"/>
+                    <TextBlock Text="{Binding ArtistName}" FontSize="11" Opacity="0.6" TextTrimming="CharacterEllipsis"/>
+                  </StackPanel>
+                  <Button Grid.Column="1" Content="✕" Tag="{Binding}" Click="RemoveFromQueue_Click"/>
+                </Grid>
+              </DataTemplate>
+            </ListView.ItemTemplate>
+          </ListView>
+        </Grid>
       </Grid>
 
       <!-- Playback bar -->
@@ -273,6 +304,7 @@
           <Button x:Name="FavoriteButton" Content="☆ Fav" Click="FavoriteButton_Click" Width="70"/>
           <Button x:Name="AddToPlaylistButton" Content="+ Playlist" Click="AddToPlaylistButton_Click" Width="90"/>
           <Button x:Name="LyricsButton" Content="Lyrics" Click="LyricsButton_Click" Width="70"/>
+          <Button x:Name="QueueButton" Content="Queue" Click="QueueButton_Click" Width="70"/>
         </StackPanel>
 
         <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" Margin="16,0">
