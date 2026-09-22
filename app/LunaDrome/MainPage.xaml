@@ -28,6 +28,13 @@
         <TextBlock Grid.Column="2" Text="{Binding DurationDisplay}" FontSize="12" Opacity="0.6"/>
       </Grid>
     </DataTemplate>
+
+    <DataTemplate x:Key="GenreRowTemplate">
+      <StackPanel Orientation="Horizontal" Margin="0,4">
+        <TextBlock Text="{Binding Name}" FontSize="14"/>
+        <TextBlock Text="{Binding AlbumCount}" FontSize="12" Opacity="0.6" Margin="8,0,0,0"/>
+      </StackPanel>
+    </DataTemplate>
   </Page.Resources>
 
   <Grid>
@@ -68,6 +75,23 @@
           <Button x:Name="NavArtistsButton" Content="Artists" Tag="Artists" Click="Nav_Click" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"/>
           <Button x:Name="NavAlbumsButton" Content="Albums" Tag="Albums" Click="Nav_Click" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"/>
           <Button x:Name="NavTracksButton" Content="Tracks" Tag="Tracks" Click="Nav_Click" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"/>
+          <Button x:Name="NavGenresButton" Content="Genres" Tag="Genres" Click="Nav_Click" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"/>
+
+          <Grid Margin="0,20,0,4">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*"/>
+              <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" Text="PLAYLISTS" FontSize="12" FontWeight="Bold" Opacity="0.7" VerticalAlignment="Center"/>
+            <Button Grid.Column="1" Content="+" Width="28" Height="28" Padding="0" Click="NewPlaylist_Click"/>
+          </Grid>
+          <ListView x:Name="PlaylistsList" IsItemClickEnabled="True" ItemClick="PlaylistRow_ItemClick" SelectionMode="None">
+            <ListView.ItemTemplate>
+              <DataTemplate>
+                <TextBlock Text="{Binding Name}" FontSize="13" TextTrimming="CharacterEllipsis" Margin="0,4"/>
+              </DataTemplate>
+            </ListView.ItemTemplate>
+          </ListView>
         </StackPanel>
 
         <!-- Content -->
@@ -89,7 +113,10 @@
               <RowDefinition Height="Auto"/>
               <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
-            <TextBlock Grid.Row="0" Text="Artists" FontSize="20" FontWeight="Bold" Margin="0,0,0,12"/>
+            <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,12" Spacing="12">
+              <TextBlock Text="Artists" FontSize="20" FontWeight="Bold" VerticalAlignment="Center"/>
+              <TextBox x:Name="ArtistSearchBox" PlaceholderText="Search artists" Width="220" TextChanged="ArtistSearchBox_TextChanged"/>
+            </StackPanel>
             <ListView Grid.Row="1" x:Name="ArtistsList" Tapped="ArtistRow_Tapped">
               <ListView.ItemTemplate>
                 <DataTemplate>
@@ -111,6 +138,7 @@
             <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,12" Spacing="12">
               <Button x:Name="ArtistBackButton" Content="&lt; Back" Click="ArtistBack_Click"/>
               <TextBlock x:Name="ArtistDetailHeader" FontSize="20" FontWeight="Bold" VerticalAlignment="Center"/>
+              <Button x:Name="ArtistFavoriteButton" Content="☆" Click="ArtistFavoriteButton_Click"/>
             </StackPanel>
             <GridView Grid.Row="1" x:Name="ArtistAlbumsList" ItemTemplate="{StaticResource AlbumCardTemplate}"/>
           </Grid>
@@ -121,7 +149,10 @@
               <RowDefinition Height="Auto"/>
               <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
-            <TextBlock Grid.Row="0" Text="Albums" FontSize="20" FontWeight="Bold" Margin="0,0,0,12"/>
+            <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,12" Spacing="12">
+              <TextBlock Text="Albums" FontSize="20" FontWeight="Bold" VerticalAlignment="Center"/>
+              <TextBox x:Name="AllAlbumsSearchBox" PlaceholderText="Search albums" Width="220" TextChanged="AllAlbumsSearchBox_TextChanged"/>
+            </StackPanel>
             <GridView Grid.Row="1" x:Name="AllAlbumsList" ItemTemplate="{StaticResource AlbumCardTemplate}"/>
           </Grid>
 
@@ -145,11 +176,72 @@
               <RowDefinition Height="Auto"/>
               <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
-            <TextBlock Grid.Row="0" Text="Tracks" FontSize="20" FontWeight="Bold" Margin="0,0,0,12"/>
+            <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,12" Spacing="12">
+              <TextBlock Text="Tracks" FontSize="20" FontWeight="Bold" VerticalAlignment="Center"/>
+              <TextBox x:Name="AllTracksSearchBox" PlaceholderText="Search tracks" Width="220" TextChanged="AllTracksSearchBox_TextChanged"/>
+            </StackPanel>
             <ListView Grid.Row="1" x:Name="TracksList" ItemTemplate="{StaticResource TrackRowTemplate}"
                       IsItemClickEnabled="True" ItemClick="TrackList_ItemClick"/>
           </Grid>
 
+          <!-- Playlist detail -->
+          <Grid x:Name="PlaylistDetailPanel" Visibility="Collapsed">
+            <Grid.RowDefinitions>
+              <RowDefinition Height="Auto"/>
+              <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+            <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,12" Spacing="12">
+              <TextBlock x:Name="PlaylistDetailHeader" FontSize="20" FontWeight="Bold" VerticalAlignment="Center"/>
+              <Button Content="Delete playlist" Click="DeletePlaylist_Click"/>
+            </StackPanel>
+            <ListView Grid.Row="1" x:Name="PlaylistTracksList" ItemTemplate="{StaticResource TrackRowTemplate}"
+                      IsItemClickEnabled="True" ItemClick="TrackList_ItemClick"/>
+          </Grid>
+
+          <!-- Genres list -->
+          <Grid x:Name="GenresPanel" Visibility="Collapsed">
+            <Grid.RowDefinitions>
+              <RowDefinition Height="Auto"/>
+              <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+            <TextBlock Grid.Row="0" Text="Genres" FontSize="20" FontWeight="Bold" Margin="0,0,0,12"/>
+            <ListView Grid.Row="1" x:Name="GenresList" ItemTemplate="{StaticResource GenreRowTemplate}"
+                      IsItemClickEnabled="True" ItemClick="GenreRow_ItemClick"/>
+          </Grid>
+
+          <!-- Genre detail: albums in that genre -->
+          <Grid x:Name="GenreDetailPanel" Visibility="Collapsed">
+            <Grid.RowDefinitions>
+              <RowDefinition Height="Auto"/>
+              <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+            <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,12" Spacing="12">
+              <Button Content="&lt; Back" Click="GenreBack_Click"/>
+              <TextBlock x:Name="GenreDetailHeader" FontSize="20" FontWeight="Bold" VerticalAlignment="Center"/>
+            </StackPanel>
+            <GridView Grid.Row="1" x:Name="GenreAlbumsList" ItemTemplate="{StaticResource AlbumCardTemplate}"/>
+          </Grid>
+
+        </Grid>
+
+        <!-- Lyrics overlay -->
+        <Grid x:Name="LyricsPanel" Grid.Column="1" Visibility="Collapsed"
+              Background="#1E1E1E" Width="320" HorizontalAlignment="Right" Margin="0">
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+          </Grid.RowDefinitions>
+          <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="16" Spacing="12">
+            <TextBlock Text="Lyrics" FontSize="16" FontWeight="Bold" VerticalAlignment="Center"/>
+            <Button Content="✕" Click="CloseLyrics_Click"/>
+          </StackPanel>
+          <ListView Grid.Row="1" x:Name="LyricsList" Margin="16,0,16,16">
+            <ListView.ItemTemplate>
+              <DataTemplate>
+                <TextBlock Text="{Binding Text}" TextWrapping="Wrap" Margin="0,4"/>
+              </DataTemplate>
+            </ListView.ItemTemplate>
+          </ListView>
         </Grid>
       </Grid>
 
@@ -165,17 +257,21 @@
         <TextBlock x:Name="NowPlayingText" Grid.Column="0" Text="Nothing playing"
                    VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
 
-        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-          <Button x:Name="PreviousButton" Content="Prev" Click="PreviousButton_Click" Width="60"/>
-          <Button x:Name="PlayPauseButton" Content="Play" Click="PlayPauseButton_Click" Width="70"/>
-          <Button x:Name="StopButton" Content="Stop" Click="StopButton_Click" Width="70"/>
-          <Button x:Name="NextButton" Content="Next" Click="NextButton_Click" Width="60"/>
-          <Button x:Name="FavoriteButton" Content="☆ Favorite" Click="FavoriteButton_Click" Width="100"/>
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+          <Button x:Name="ShuffleButton" Content="Shuffle" Click="ShuffleButton_Click" Width="70"/>
+          <Button x:Name="PreviousButton" Content="Prev" Click="PreviousButton_Click" Width="55"/>
+          <Button x:Name="PlayPauseButton" Content="Play" Click="PlayPauseButton_Click" Width="60"/>
+          <Button x:Name="StopButton" Content="Stop" Click="StopButton_Click" Width="55"/>
+          <Button x:Name="NextButton" Content="Next" Click="NextButton_Click" Width="55"/>
+          <Button x:Name="RepeatButton" Content="Repeat: Off" Click="RepeatButton_Click" Width="90"/>
+          <Button x:Name="FavoriteButton" Content="☆ Fav" Click="FavoriteButton_Click" Width="70"/>
+          <Button x:Name="AddToPlaylistButton" Content="+ Playlist" Click="AddToPlaylistButton_Click" Width="90"/>
+          <Button x:Name="LyricsButton" Content="Lyrics" Click="LyricsButton_Click" Width="70"/>
         </StackPanel>
 
         <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" Margin="16,0">
           <TextBlock x:Name="ElapsedText" Text="0:00" VerticalAlignment="Center" Width="40"/>
-          <Slider x:Name="ProgressSlider" Width="260" Minimum="0" Maximum="1"
+          <Slider x:Name="ProgressSlider" Width="200" Minimum="0" Maximum="1"
                   PointerCaptureLost="ProgressSlider_PointerCaptureLost"/>
           <TextBlock x:Name="DurationText" Text="0:00" VerticalAlignment="Center" Width="40"/>
         </StackPanel>
