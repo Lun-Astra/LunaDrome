@@ -9,11 +9,16 @@
     <AssemblyName>LunaDrome</AssemblyName>
     <AssemblyTitle>LunaDrome</AssemblyTitle>
     <Product>LunaDrome</Product>
+    <ApplicationIcon>icon.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="NAudio" Version="2.2.1" />
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="6.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="icon.ico" />
   </ItemGroup>
 
 </Project>
