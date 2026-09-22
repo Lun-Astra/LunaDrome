@@ -1655,7 +1655,12 @@ namespace Musicplayer.App
             // edges, where half the line's stroke width (plus its round caps at the very first/
             // last point) would render past the visible area and look clipped/off-center.
             const double padding = 6;
-            var drawableHeight = Math.Max(1, height - padding * 2);
+
+            // Baseline sits at the vertical middle of the panel (not the bottom) per Luna's ask -
+            // the idle/silent line rests in the center and bands still rise upward from there, so
+            // drawableHeight is the space between the baseline and the top edge, not the full height.
+            var baselineY = height / 2;
+            var drawableHeight = Math.Max(1, baselineY - padding);
 
             // Fixed "anchor" zone (~1cm at 96 DPI) at each end that never moves, rather than audio
             // data running edge-to-edge - Luna's explicit ask, and it also fixes the "big white
@@ -1664,7 +1669,6 @@ namespace Musicplayer.App
             // the edge, that overshoot rendered as a dense tangle of white stroke passes.
             const double anchorWidth = 38;
             var moveZoneWidth = Math.Max(1, width - padding * 2 - anchorWidth * 2);
-            var baselineY = height - padding;
             var leftMoveX = padding + anchorWidth;
             var rightMoveX = width - padding - anchorWidth;
 
