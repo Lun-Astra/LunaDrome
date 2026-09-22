@@ -14,6 +14,9 @@ public sealed partial class MainPage : Page
     private readonly DispatcherTimer _progressTimer;
     private Song? _currentSong;
 
+    private List<Song> _queue = new();
+    private int _queueIndex = -1;
+
     private bool _homeLoaded;
     private bool _allAlbumsLoaded;
 
@@ -29,10 +32,7 @@ public sealed partial class MainPage : Page
         _progressTimer.Start();
 
         _player.Volume = VolumeSlider.Value / 100.0;
-        _player.MediaEnded += (_, _) => DispatcherQueue.TryEnqueue(() =>
-        {
-            PlayPauseButton.Content = "Play";
-        });
+        _player.MediaEnded += (_, _) => DispatcherQueue.TryEnqueue(OnMediaEnded);
 
         var saved = SettingsService.Load();
         if (!string.IsNullOrWhiteSpace(saved.ServerUrl))
@@ -199,10 +199,25 @@ public sealed partial class MainPage : Page
 
     private void AlbumBack_Click(object sender, RoutedEventArgs e) => ShowPanel(_albumDetailReturnPanel);
 
-    private void TrackRow_Tapped(object sender, TappedRoutedEventArgs e)
+    private void TrackList_ItemClick(object sender, ItemClickEventArgs e)
     {
-        if (sender is FrameworkElement { Tag: Song song })
-            PlaySong(song);
+        if (sender is not ListView { ItemsSource: List<Song> source } || e.ClickedItem is not Song clicked)
+            return;
+
+        var index = source.IndexOf(clicked);
+        if (index < 0)
+            return;
+
+        // Matches the WPF app's behavior: clicking a track queues the whole list it came
+        // from (album or library-wide), starting from that track, not just a single song.
+        PlayQueueFrom(source, index);
+    }
+
+    private void PlayQueueFrom(List<Song> source, int startIndex)
+    {
+        _queue = new List<Song>(source);
+        _queueIndex = startIndex;
+        PlaySong(_queue[_queueIndex]);
     }
 
     private void PlaySong(Song song)
@@ -212,6 +227,64 @@ public sealed partial class MainPage : Page
         _player.Play();
         PlayPauseButton.Content = "Pause";
         NowPlayingText.Text = $"{song.Title} — {song.ArtistName}";
+        FavoriteButton.Content = song.IsFavorited ? "★ Favorited" : "☆ Favorite";
+    }
+
+    private void PreviousButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_queueIndex <= 0 || _queueIndex >= _queue.Count)
+            return;
+
+        _queueIndex--;
+        PlaySong(_queue[_queueIndex]);
+    }
+
+    private void NextButton_Click(object sender, RoutedEventArgs e) => PlayNext();
+
+    private void PlayNext()
+    {
+        if (_queueIndex < 0 || _queueIndex + 1 >= _queue.Count)
+            return;
+
+        _queueIndex++;
+        PlaySong(_queue[_queueIndex]);
+    }
+
+    // Natural completion only (not on Stop/skip), matching the WPF app's scrobble policy -
+    // skipping through tracks shouldn't inflate their play count.
+    private async void OnMediaEnded()
+    {
+        if (_currentSong != null)
+        {
+            try { await _client.ScrobbleAsync(_currentSong.Id); }
+            catch { /* best-effort */ }
+        }
+
+        if (_queueIndex >= 0 && _queueIndex + 1 < _queue.Count)
+            PlayNext();
+        else
+            PlayPauseButton.Content = "Play";
+    }
+
+    private async void FavoriteButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_currentSong == null)
+            return;
+
+        try
+        {
+            if (_currentSong.IsFavorited)
+                await _client.UnstarSongAsync(_currentSong.Id);
+            else
+                await _client.StarSongAsync(_currentSong.Id);
+
+            _currentSong.IsFavorited = !_currentSong.IsFavorited;
+            FavoriteButton.Content = _currentSong.IsFavorited ? "★ Favorited" : "☆ Favorite";
+        }
+        catch
+        {
+            // best-effort - leave the button state unchanged if the request failed
+        }
     }
 
     private void PlayPauseButton_Click(object sender, RoutedEventArgs e)
