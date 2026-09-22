@@ -11,7 +11,66 @@
         <us:SimpleTheme />
       </ResourceDictionary.MergedDictionaries>
 
-      <!-- Add resources here -->
+      <!-- Palette ported 1:1 from the WPF app's App.xaml: Feishin-inspired dark surfaces,
+           monochrome black/white accent instead of a hue. -->
+      <SolidColorBrush x:Key="BackgroundBrush" Color="#FF1A1B1E"/>
+      <SolidColorBrush x:Key="PanelBrush" Color="#FF141517"/>
+      <SolidColorBrush x:Key="RaisedBrush" Color="#FF25262B"/>
+      <SolidColorBrush x:Key="HoverBrush" Color="#FF2C2E33"/>
+      <SolidColorBrush x:Key="BorderBrush2" Color="#FF373A40"/>
+      <SolidColorBrush x:Key="AccentBrush" Color="#FFFFFFFF"/>
+      <SolidColorBrush x:Key="OnAccentBrush" Color="#FF141517"/>
+      <SolidColorBrush x:Key="TextPrimaryBrush" Color="#FFECEDEE"/>
+      <SolidColorBrush x:Key="TextSecondaryBrush" Color="#FF909296"/>
+
+      <Style TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+      </Style>
+
+      <!-- WinUI's default Button template reads its colors from these specifically-named
+           theme resources (ButtonBackground/PointerOver/Pressed, etc.) rather than from a
+           Style setter - this is the WinUI-idiomatic way to reskin built-in control states
+           without rewriting the whole ControlTemplate. -->
+      <SolidColorBrush x:Key="ButtonBackground" Color="#FF25262B"/>
+      <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#FF2C2E33"/>
+      <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#FF373A40"/>
+      <SolidColorBrush x:Key="ButtonForeground" Color="#FFECEDEE"/>
+      <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="#FFECEDEE"/>
+      <SolidColorBrush x:Key="ButtonForegroundPressed" Color="#FFECEDEE"/>
+      <SolidColorBrush x:Key="ButtonBorderBrush" Color="Transparent"/>
+      <x:Double x:Key="ButtonBorderThemeThickness">0</x:Double>
+      <CornerRadius x:Key="ControlCornerRadius">6</CornerRadius>
+
+      <Style TargetType="Button">
+        <Setter Property="Padding" Value="12,6"/>
+      </Style>
+
+      <Style TargetType="TextBox">
+        <Setter Property="Background" Value="{StaticResource RaisedBrush}"/>
+        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="CornerRadius" Value="6"/>
+        <Setter Property="Padding" Value="8,6"/>
+      </Style>
+
+      <Style TargetType="PasswordBox">
+        <Setter Property="Background" Value="{StaticResource RaisedBrush}"/>
+        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="CornerRadius" Value="6"/>
+        <Setter Property="Padding" Value="8,6"/>
+      </Style>
+
+      <Style TargetType="ComboBox">
+        <Setter Property="Background" Value="{StaticResource RaisedBrush}"/>
+        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="CornerRadius" Value="6"/>
+      </Style>
+
+      <Style TargetType="ListViewItem">
+        <Setter Property="Padding" Value="8,4"/>
+      </Style>
 
     </ResourceDictionary>
   </Application.Resources>

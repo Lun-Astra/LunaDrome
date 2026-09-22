@@ -8,7 +8,7 @@
   <Page.Resources>
     <DataTemplate x:Key="AlbumCardTemplate">
       <StackPanel Width="140" Margin="0,0,16,16" Tapped="AlbumCard_Tapped" Tag="{Binding}">
-        <Grid Width="140" Height="140" CornerRadius="6" Background="#2A2A2A">
+        <Grid Width="140" Height="140" CornerRadius="6" Background="{StaticResource RaisedBrush}">
           <Image Source="{Binding CoverArtUrl}" Stretch="UniformToFill"/>
         </Grid>
         <TextBlock Text="{Binding Name}" FontSize="13" Margin="0,6,0,0" TextTrimming="CharacterEllipsis"/>
@@ -69,7 +69,7 @@
         </Grid.ColumnDefinitions>
 
         <!-- Sidebar -->
-        <StackPanel Grid.Column="0" Background="#141414" Padding="16" Spacing="4">
+        <StackPanel Grid.Column="0" Background="{StaticResource PanelBrush}" Padding="16" Spacing="4">
           <TextBlock Text="LUNADROME" FontSize="12" FontWeight="Bold" Margin="0,0,0,16" Opacity="0.7"/>
           <Button x:Name="NavHomeButton" Content="Home" Tag="Home" Click="Nav_Click" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"/>
           <Button x:Name="NavArtistsButton" Content="Artists" Tag="Artists" Click="Nav_Click" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"/>
@@ -232,7 +232,7 @@
 
         <!-- Lyrics overlay -->
         <Grid x:Name="LyricsPanel" Grid.Column="1" Visibility="Collapsed"
-              Background="#1E1E1E" Width="320" HorizontalAlignment="Right" Margin="0">
+              Background="{StaticResource PanelBrush}" Width="320" HorizontalAlignment="Right" Margin="0">
           <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
@@ -252,7 +252,7 @@
 
         <!-- Queue overlay -->
         <Grid x:Name="QueuePanel" Grid.Column="1" Visibility="Collapsed"
-              Background="#1E1E1E" Width="320" HorizontalAlignment="Right" Margin="0">
+              Background="{StaticResource PanelBrush}" Width="320" HorizontalAlignment="Right" Margin="0">
           <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
@@ -283,7 +283,7 @@
       </Grid>
 
       <!-- Playback bar -->
-      <Grid Grid.Row="1" Padding="16,10" Background="#1A1A1A">
+      <Grid Grid.Row="1" Padding="16,10" Background="{StaticResource PanelBrush}">
         <Grid.ColumnDefinitions>
           <ColumnDefinition Width="*"/>
           <ColumnDefinition Width="Auto"/>
@@ -297,7 +297,8 @@
         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
           <Button x:Name="ShuffleButton" Content="Shuffle" Click="ShuffleButton_Click" Width="70"/>
           <Button x:Name="PreviousButton" Content="Prev" Click="PreviousButton_Click" Width="55"/>
-          <Button x:Name="PlayPauseButton" Content="Play" Click="PlayPauseButton_Click" Width="60"/>
+          <Button x:Name="PlayPauseButton" Content="Play" Click="PlayPauseButton_Click" Width="60"
+                  Background="{StaticResource AccentBrush}" Foreground="{StaticResource OnAccentBrush}"/>
           <Button x:Name="StopButton" Content="Stop" Click="StopButton_Click" Width="55"/>
           <Button x:Name="NextButton" Content="Next" Click="NextButton_Click" Width="55"/>
           <Button x:Name="RepeatButton" Content="Repeat: Off" Click="RepeatButton_Click" Width="90"/>
