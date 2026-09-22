@@ -105,7 +105,7 @@ public sealed partial class MainPage : Page
         ArtistsList.ItemsSource = _artistsRaw;
 
         _allSongsRaw = await _client.GetAllSongsAsync(limit: 200);
-        TracksList.ItemsSource = _allSongsRaw;
+        RefreshAllTracks();
 
         LoginPanel.Visibility = Visibility.Collapsed;
         LibraryPanel.Visibility = Visibility.Visible;
@@ -224,14 +224,33 @@ public sealed partial class MainPage : Page
                 a.ArtistName.Contains(q, StringComparison.OrdinalIgnoreCase)).ToList();
     }
 
-    private void AllTracksSearchBox_TextChanged(object sender, TextChangedEventArgs e)
+    private void AllTracksSearchBox_TextChanged(object sender, TextChangedEventArgs e) => RefreshAllTracks();
+
+    private void TracksSortCombo_SelectionChanged(object sender, SelectionChangedEventArgs e) => RefreshAllTracks();
+
+    private void RefreshAllTracks()
     {
-        var q = AllTracksSearchBox.Text.Trim();
-        TracksList.ItemsSource = string.IsNullOrEmpty(q)
+        // Guard: TextChanged/SelectionChanged can fire during InitializeComponent, before
+        // the raw list or other named controls exist yet.
+        if (AllTracksSearchBox == null || TracksSortCombo == null)
+            return;
+
+        var q = AllTracksSearchBox.Text?.Trim() ?? "";
+        IEnumerable<Song> filtered = string.IsNullOrEmpty(q)
             ? _allSongsRaw
             : _allSongsRaw.Where(s =>
                 s.Title.Contains(q, StringComparison.OrdinalIgnoreCase) ||
-                s.ArtistName.Contains(q, StringComparison.OrdinalIgnoreCase)).ToList();
+                s.ArtistName.Contains(q, StringComparison.OrdinalIgnoreCase));
+
+        filtered = ((TracksSortCombo.SelectedItem as ComboBoxItem)?.Content as string) switch
+        {
+            "Artist" => filtered.OrderBy(s => s.ArtistName).ThenBy(s => s.Title),
+            "Longest first" => filtered.OrderByDescending(s => s.DurationSeconds),
+            "Shortest first" => filtered.OrderBy(s => s.DurationSeconds),
+            _ => filtered.OrderBy(s => s.Title)
+        };
+
+        TracksList.ItemsSource = filtered.ToList();
     }
 
     // --- Artist / album drill-down ---
@@ -457,6 +476,48 @@ public sealed partial class MainPage : Page
         _queue = new List<Song>(source);
         _queueIndex = startIndex;
         PlaySong(_queue[_queueIndex]);
+    }
+
+    private void TrackRow_RightTapped(object sender, RightTappedRoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: Song song } fe)
+            return;
+
+        var flyout = new MenuFlyout();
+
+        var playNext = new MenuFlyoutItem { Text = "Play next" };
+        playNext.Click += (_, _) => QueuePlayNext(song);
+        flyout.Items.Add(playNext);
+
+        var addToQueue = new MenuFlyoutItem { Text = "Add to queue" };
+        addToQueue.Click += (_, _) => QueueAppend(song);
+        flyout.Items.Add(addToQueue);
+
+        flyout.ShowAt(fe, e.GetPosition(fe));
+    }
+
+    // Inserts right after the currently playing track without interrupting playback - if
+    // nothing is playing yet, this just starts the queue with this one song.
+    private void QueuePlayNext(Song song)
+    {
+        if (_queueIndex < 0)
+        {
+            PlayQueueFrom(new List<Song> { song }, 0);
+            return;
+        }
+
+        _queue.Insert(_queueIndex + 1, song);
+    }
+
+    private void QueueAppend(Song song)
+    {
+        if (_queueIndex < 0)
+        {
+            PlayQueueFrom(new List<Song> { song }, 0);
+            return;
+        }
+
+        _queue.Add(song);
     }
 
     private async void PlaySong(Song song)

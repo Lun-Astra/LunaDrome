@@ -17,7 +17,7 @@
     </DataTemplate>
 
     <DataTemplate x:Key="TrackRowTemplate">
-      <Grid Margin="0,4">
+      <Grid Margin="0,4" Tag="{Binding}" RightTapped="TrackRow_RightTapped">
         <Grid.ColumnDefinitions>
           <ColumnDefinition Width="*"/>
           <ColumnDefinition Width="180"/>
@@ -179,6 +179,12 @@
             <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,12" Spacing="12">
               <TextBlock Text="Tracks" FontSize="20" FontWeight="Bold" VerticalAlignment="Center"/>
               <TextBox x:Name="AllTracksSearchBox" PlaceholderText="Search tracks" Width="220" TextChanged="AllTracksSearchBox_TextChanged"/>
+              <ComboBox x:Name="TracksSortCombo" Width="140" SelectionChanged="TracksSortCombo_SelectionChanged">
+                <ComboBoxItem Content="Title A-Z" IsSelected="True"/>
+                <ComboBoxItem Content="Artist"/>
+                <ComboBoxItem Content="Longest first"/>
+                <ComboBoxItem Content="Shortest first"/>
+              </ComboBox>
             </StackPanel>
             <ListView Grid.Row="1" x:Name="TracksList" ItemTemplate="{StaticResource TrackRowTemplate}"
                       IsItemClickEnabled="True" ItemClick="TrackList_ItemClick"/>
