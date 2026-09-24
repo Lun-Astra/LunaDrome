@@ -1184,6 +1184,7 @@ public sealed partial class MainPage : Page
 
         _visualizerRenderHooked = true;
         _visualizerLastTicks = 0;
+        _visualizerForceDraw = true;
         Array.Clear(_visualizerSmoothed);
         _loopback.Start();
         _visualizerTimer.Start();
@@ -1213,11 +1214,26 @@ public sealed partial class MainPage : Page
         var keep = (float)Math.Pow(0.88, Math.Clamp(dt, 0, 0.25) * 60);
 
         _spectrum.CopyLatestBandsTo(_visualizerLatestBands);
+        float maxChange = 0;
         for (var i = 0; i < _visualizerSmoothed.Length; i++)
+        {
             _visualizerSmoothed[i] = _visualizerSmoothed[i] * keep + _visualizerLatestBands[i] * (1 - keep);
+            maxChange = Math.Max(maxChange, Math.Abs(_visualizerSmoothed[i] - _visualizerDrawn[i]));
+        }
 
+        // Only redraw when the curve would visibly move: paused/silent (a flat line) otherwise
+        // still cost a full window re-render 60 times a second. 0.001 of the half-height is well
+        // under a pixel, so skipped frames are indistinguishable.
+        if (maxChange < 0.001f && !_visualizerForceDraw)
+            return;
+
+        _visualizerForceDraw = false;
+        Array.Copy(_visualizerSmoothed, _visualizerDrawn, _visualizerDrawn.Length);
         VisualizerCanvas.SetLevels(_visualizerSmoothed);
     }
+
+    private readonly float[] _visualizerDrawn = new float[SpectrumAnalyzer.BandCount];
+    private bool _visualizerForceDraw = true;
 
     // ================= Queue / playback =================
 
