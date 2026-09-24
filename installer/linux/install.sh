@@ -28,6 +28,18 @@ ln -sf "$prefix/LunaDrome" "$bindir/lunadrome"
 cp "$here/lunadrome.png" "$icondir/lunadrome.png"
 sed "s|^Exec=.*|Exec=$prefix/LunaDrome|" "$here/lunadrome.desktop" > "$appdir/lunadrome.desktop"
 
+# The app asks for plain "libvlc" (libvlc.so), but most distros' runtime packages only ship the
+# versioned file (libvlc.so.5). Link it next to the app so playback works without libvlc-dev.
+# (The app also handles this itself at runtime; this is a fallback.)
+link_lib() {
+  local target
+  target=$(ldconfig -p 2>/dev/null | awk -v n="$1" '$1 == n { print $NF; exit }')
+  [[ -n "$target" ]] && ln -sf "$target" "$prefix/$2"
+  return 0
+}
+link_lib libvlc.so.5 libvlc.so
+link_lib libvlccore.so.9 libvlccore.so
+
 command -v update-desktop-database >/dev/null && update-desktop-database "$appdir" >/dev/null 2>&1 || true
 command -v gtk-update-icon-cache >/dev/null && gtk-update-icon-cache -q "$(dirname "$(dirname "$icondir")")" >/dev/null 2>&1 || true
 
