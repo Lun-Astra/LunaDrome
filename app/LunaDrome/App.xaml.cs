@@ -49,7 +49,20 @@ public partial class App : Application
             rootFrame.Navigate(typeof(MainPage), args.Arguments);
         }
 
-        MainWindow.SetWindowIcon();
+        // LunaDrome's moon icon for the window/taskbar (instead of the template's Uno logo).
+        var icon = System.IO.Path.Combine(AppContext.BaseDirectory, "Assets", "lunadrome.ico");
+        try
+        {
+            if (System.IO.File.Exists(icon))
+                MainWindow.AppWindow.SetIcon(icon);
+            else
+                MainWindow.SetWindowIcon();
+        }
+        catch
+        {
+            MainWindow.SetWindowIcon();
+        }
+
         // Ensure the current window is active
         MainWindow.Activate();
     }
