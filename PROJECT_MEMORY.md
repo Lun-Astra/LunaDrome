@@ -348,3 +348,9 @@ Luna is hopping off for the night. Current state of the app, for picking this ba
 - Removed `MainWindow.UseStudio()` (Uno Hot Design toolbar overlaid the top-left logo in Debug). Window opens at 1200x720 like WPF.
 - Kept "LUNADROME" as the sidebar brand text (the live WPF app still shows the pre-rename "MUSICPLAYER" leftover). Not ported: the white hover glow on an already-selected nav item/row (WPF DropShadowEffect).
 - Testing note: synthetic `SetCursorPos` jumps can leave a stale PointerOver state on the element the cursor jumped away from; a gradual cursor sweep clears it - not an app bug.
+
+### Uno visualizer "very slow and low fps" — fixed 2026-09-24
+- Two separate causes, found by measuring (temporary fps counter + process CPU time), not guessing:
+  1. Rebuilding a XAML `PathGeometry` (~130 Beziers) and setting `Path.Width/Height` every frame made Uno re-layout and re-convert geometry each frame. Now drawn by `Controls/VisualizerCanvas.cs`, a subclass of Uno's `SKCanvasElement` (Uno.WinUI.Graphics2DSK, already pulled in by the SkiaRenderer feature): one `SKPath` per frame, fill (gradient shader) + 2px stroke, open contour (Skia fills it as closed, stroke doesn't draw the closing edge = WPF's IsFilled without IsClosed). Curve math unchanged from WPF.
+  2. **Uno Skia desktop gotcha:** merely subscribing to `CompositionTarget.Rendering` keeps the whole window re-rendering at the monitor refresh rate (Luna's is 180Hz) - ~90-113% of a CPU core even when the handler skips frames. Switched to a 16ms `DispatcherTimer` + `SKCanvasElement.Invalidate()`: steady 60fps at ~25% of one core. Don't use `CompositionTarget.Rendering` for animation loops in this app.
+- Temporal smoothing made time-based (`keep = 0.88^(dt*60)`) so the glide speed matches the WPF tuning at any frame rate.
