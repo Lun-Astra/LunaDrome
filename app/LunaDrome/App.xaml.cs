@@ -95,6 +95,10 @@ public partial class App : Application
             builder.AddFilter("Windows", LogLevel.Warning);
             builder.AddFilter("Microsoft", LogLevel.Warning);
 
+            // Harmless on every machine where Windows' "Make text bigger" was never changed: the
+            // TextScaleFactor registry value doesn't exist, Uno warns and falls back to 1.0.
+            builder.AddFilter("Uno.UI.Runtime.Skia.Win32.Win32TextScaleFactorExtension", LogLevel.Error);
+
             // Generic Xaml events
             // builder.AddFilter("Microsoft.UI.Xaml", LogLevel.Debug );
             // builder.AddFilter("Microsoft.UI.Xaml.VisualStateGroup", LogLevel.Debug );
