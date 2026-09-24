@@ -659,18 +659,8 @@
                 </Grid>
 
                 <Grid x:Name="VisualizerPanelView" Visibility="Collapsed">
-                  <Grid x:Name="VisualizerContainer">
-                    <Path x:Name="VisualizerPath" Stroke="{StaticResource AccentBrush}" StrokeThickness="2"
-                          StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
-                          HorizontalAlignment="Left" VerticalAlignment="Top">
-                      <Path.Fill>
-                        <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                          <GradientStop Color="#66FFFFFF" Offset="0"/>
-                          <GradientStop Color="#00FFFFFF" Offset="1"/>
-                        </LinearGradientBrush>
-                      </Path.Fill>
-                    </Path>
-                  </Grid>
+                  <!-- Drawn directly with SkiaSharp (see VisualizerCanvas) - a XAML Path rebuilt every frame was too slow on Uno. -->
+                  <controls:VisualizerCanvas x:Name="VisualizerCanvas"/>
                 </Grid>
               </Grid>
             </Grid>

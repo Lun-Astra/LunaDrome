@@ -79,11 +79,18 @@ public sealed partial class MainPage : Page
     private readonly float[] _visualizerSmoothed = new float[SpectrumAnalyzer.BandCount];
     private bool _visualizerRenderHooked;
 
+    // Drives the visualizer at ~60fps. Deliberately not CompositionTarget.Rendering: on Uno's Skia
+    // desktop host, subscribing to Rendering keeps the whole window re-rendering at the monitor's
+    // refresh rate (180Hz here) - ~1 CPU core - even on frames the handler skips. A timer only
+    // causes a redraw when the canvas actually invalidates.
+    private readonly DispatcherTimer _visualizerTimer = new() { Interval = TimeSpan.FromMilliseconds(16) };
+
     public MainPage()
     {
         _loopback = new LoopbackCapture(_spectrum);
         this.InitializeComponent();
         Unloaded += (_, _) => { StopVisualizer(); _loopback.Dispose(); };
+        _visualizerTimer.Tick += OnVisualizerRenderFrame;
 
         _trackViews = new()
         {
@@ -1176,9 +1183,10 @@ public sealed partial class MainPage : Page
             return;
 
         _visualizerRenderHooked = true;
+        _visualizerLastTicks = 0;
         Array.Clear(_visualizerSmoothed);
         _loopback.Start();
-        CompositionTarget.Rendering += OnVisualizerRenderFrame;
+        _visualizerTimer.Start();
     }
 
     private void StopVisualizer()
@@ -1187,127 +1195,28 @@ public sealed partial class MainPage : Page
             return;
 
         _visualizerRenderHooked = false;
-        CompositionTarget.Rendering -= OnVisualizerRenderFrame;
+        _visualizerTimer.Stop();
         _loopback.Stop();
     }
 
-    // Ported from the WPF app's OnVisualizerRenderFrame/UpdateSmoothCurve, where every constant
-    // below was tuned with Luna (see PROJECT_MEMORY.md's visualizer entries): temporal smoothing
-    // 0.88/0.12, a 5-tap spatial average, smoothstep fade over 22 bands at each end, fixed flat
-    // "anchor" zones at both edges, baseline at mid-height, and Catmull-Rom-to-Bezier curves with
-    // horizontal-tangent connectors into the flat zones. Rebuilds the geometry each frame rather
-    // than mutating segments in place, since in-place segment edits aren't guaranteed to
-    // invalidate rendering on every Uno backend.
+    // Every ~16ms: pull the latest bands, smooth them over time, hand them to the Skia
+    // canvas (which does the WPF app's spatial smoothing + curve drawing). Smoothing is
+    // time-based - the WPF constant was 0.88 old / 0.12 new *per 60fps frame* - so the glide
+    // speed stays the same even if the frame rate isn't a steady 60.
+    private long _visualizerLastTicks;
+
     private void OnVisualizerRenderFrame(object? sender, object e)
     {
+        var now = System.Diagnostics.Stopwatch.GetTimestamp();
+        var dt = _visualizerLastTicks == 0 ? 1.0 / 60 : (now - _visualizerLastTicks) / (double)System.Diagnostics.Stopwatch.Frequency;
+        _visualizerLastTicks = now;
+        var keep = (float)Math.Pow(0.88, Math.Clamp(dt, 0, 0.25) * 60);
+
         _spectrum.CopyLatestBandsTo(_visualizerLatestBands);
+        for (var i = 0; i < _visualizerSmoothed.Length; i++)
+            _visualizerSmoothed[i] = _visualizerSmoothed[i] * keep + _visualizerLatestBands[i] * (1 - keep);
 
-        var width = VisualizerContainer.ActualWidth > 0 ? VisualizerContainer.ActualWidth : 280;
-        var height = VisualizerContainer.ActualHeight > 0 ? VisualizerContainer.ActualHeight : 160;
-        VisualizerPath.Width = width;
-        VisualizerPath.Height = height;
-
-        const double padding = 6;
-        var baselineY = height / 2;
-        var drawableHeight = Math.Max(1, baselineY - padding);
-
-        const double anchorWidth = 38;
-        var moveZoneWidth = Math.Max(1, width - padding * 2 - anchorWidth * 2);
-        var leftMoveX = padding + anchorWidth;
-        var rightMoveX = width - padding - anchorWidth;
-
-        const int fadeBands = 22;
-        var bandCount = _visualizerLatestBands.Length;
-
-        for (var i = 0; i < bandCount; i++)
-            _visualizerSmoothed[i] = _visualizerSmoothed[i] * 0.88f + _visualizerLatestBands[i] * 0.12f;
-
-        var points = new Windows.Foundation.Point[bandCount + 4];
-        points[0] = new(padding, baselineY);
-        points[1] = new(leftMoveX, baselineY);
-
-        for (var i = 0; i < bandCount; i++)
-        {
-            float sum = 0;
-            var count = 0;
-            for (var k = -2; k <= 2; k++)
-            {
-                var idx = i + k;
-                if (idx < 0 || idx >= bandCount)
-                    continue;
-                sum += _visualizerSmoothed[idx];
-                count++;
-            }
-            var level = sum / count;
-
-            float fade = 1f;
-            if (i < fadeBands)
-            {
-                var t = (i + 1f) / (fadeBands + 1f);
-                fade = t * t * (3f - 2f * t);
-            }
-            else if (i >= bandCount - fadeBands)
-            {
-                var t = (bandCount - i) / (float)(fadeBands + 1);
-                fade = t * t * (3f - 2f * t);
-            }
-
-            var x = leftMoveX + i * moveZoneWidth / (bandCount - 1);
-            points[i + 2] = new(x, baselineY - level * fade * drawableHeight);
-        }
-
-        points[^2] = new(rightMoveX, baselineY);
-        points[^1] = new(width - padding, baselineY);
-
-        VisualizerPath.Data = BuildSmoothCurve(points, bandCount, padding, baselineY);
-    }
-
-    // Segments by index: [0]=flat line, [1]=entry connector, [2..bandCount]=interior Catmull-Rom,
-    // [bandCount+1]=exit connector, [last]=flat line. Control points clamped to [minY, maxY] so a
-    // loud band can't overshoot past the baseline or the top edge.
-    private static PathGeometry BuildSmoothCurve(Windows.Foundation.Point[] points, int bandCount, double minY, double maxY)
-    {
-        var figure = new PathFigure { StartPoint = points[0], IsFilled = true, IsClosed = false };
-        var segmentCount = points.Length - 1;
-
-        for (var i = 0; i < segmentCount; i++)
-        {
-            var p1 = points[i];
-            var p2 = points[i + 1];
-
-            if (i == 0 || i == segmentCount - 1)
-            {
-                figure.Segments.Add(new LineSegment { Point = p2 });
-                continue;
-            }
-
-            Windows.Foundation.Point c1, c2;
-            if (i == 1)
-            {
-                var next = points[i + 2];
-                c1 = new(p1.X + (p2.X - p1.X) / 3.0, p1.Y);
-                c2 = new(p2.X - (next.X - p1.X) / 6.0, Math.Clamp(p2.Y - (next.Y - p1.Y) / 6.0, minY, maxY));
-            }
-            else if (i == bandCount + 1)
-            {
-                var prev = points[i - 1];
-                c1 = new(p1.X + (p2.X - prev.X) / 6.0, Math.Clamp(p1.Y + (p2.Y - prev.Y) / 6.0, minY, maxY));
-                c2 = new(p2.X - (p2.X - p1.X) / 3.0, p2.Y);
-            }
-            else
-            {
-                var p0 = points[i - 1];
-                var p3 = points[i + 2];
-                c1 = new(p1.X + (p2.X - p0.X) / 6.0, Math.Clamp(p1.Y + (p2.Y - p0.Y) / 6.0, minY, maxY));
-                c2 = new(p2.X - (p3.X - p1.X) / 6.0, Math.Clamp(p2.Y - (p3.Y - p1.Y) / 6.0, minY, maxY));
-            }
-
-            figure.Segments.Add(new BezierSegment { Point1 = c1, Point2 = c2, Point3 = p2 });
-        }
-
-        var geometry = new PathGeometry();
-        geometry.Figures.Add(figure);
-        return geometry;
+        VisualizerCanvas.SetLevels(_visualizerSmoothed);
     }
 
     // ================= Queue / playback =================
