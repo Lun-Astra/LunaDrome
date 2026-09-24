@@ -112,6 +112,16 @@ public sealed partial class MainPage : Page
         ProgressSlider.AddHandler(PointerCaptureLostEvent, new PointerEventHandler((_, _) => CommitSeek()), true);
 
         QueueList.ItemsSource = _queue;
+
+        // Home cards resize so a whole number of them fills the row width exactly (HomeLayout).
+        var homeLayout = (HomeLayout)Resources["HomeLayout"];
+        HomeContent.SizeChanged += (_, e) => homeLayout.Update(e.NewSize.Width);
+        // Genres: always exactly three full rows of tiles, whatever the row width (like Feishin).
+        homeLayout.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(HomeLayout.GenreTilesPerRow))
+                BindHomeGenres();
+        };
         QueueTabButton.IsChecked = true;
 
         _initialized = true;
@@ -309,15 +319,24 @@ public sealed partial class MainPage : Page
             BindHomeRow(HomeRecentlyAddedSection, HomeAlbumsList, recentlyAddedTask.Result);
             BindHomeRow(HomeExploreSection, HomeExploreList, exploreTask.Result);
 
-            var genres = genresTask.Result.Take(10).ToList();
-            HomeGenresList.ItemsSource = genres;
-            HomeGenresSection.Visibility = genres.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+            _homeGenres = genresTask.Result;
+            BindHomeGenres();
         }
         catch (Exception ex)
         {
             _homeLoaded = false;
             await ShowErrorAsync($"Failed to load home page: {ex.Message}");
         }
+    }
+
+    private List<Genre> _homeGenres = new();
+
+    private void BindHomeGenres()
+    {
+        var perRow = ((HomeLayout)Resources["HomeLayout"]).GenreTilesPerRow;
+        var genres = _homeGenres.Take(perRow * 3).ToList();
+        HomeGenresList.ItemsSource = genres;
+        HomeGenresSection.Visibility = genres.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
     // Most/recently-played rows can legitimately be empty (no play history yet) - collapse the

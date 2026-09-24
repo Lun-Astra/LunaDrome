@@ -17,6 +17,44 @@
 
     <controls:FavoriteFillConverter x:Key="FavoriteFill"/>
 
+    <controls:HomeLayout x:Key="HomeLayout"/>
+    <controls:GenreColorConverter x:Key="GenreColor"/>
+
+    <!-- Home album card, Feishin's look: square art that fills its share of the row (size from
+         HomeLayout), 14px semibold album link, 13px gray artist link and year. -->
+    <DataTemplate x:Key="HomeAlbumCardTemplate">
+      <StackPanel Width="{Binding CardWidth, Source={StaticResource HomeLayout}}" Background="Transparent"
+                  Tag="{Binding}" Tapped="AlbumCard_Tapped">
+        <Grid Width="{Binding CardWidth, Source={StaticResource HomeLayout}}"
+              Height="{Binding CardWidth, Source={StaticResource HomeLayout}}">
+          <Border CornerRadius="6" Background="{StaticResource RaisedBrush}">
+            <Image Source="{Binding CoverArtUrl}" Stretch="UniformToFill" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+          </Border>
+          <Border CornerRadius="6" Background="#80000000" controls:Motion.HoverFade="True">
+            <Border Width="48" Height="48" CornerRadius="24" Background="{StaticResource AccentBrush}"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    Tag="{Binding}" Tapped="AlbumPlayOverlay_Tapped" controls:Motion.HoverScale="1.08"
+                    ToolTipService.ToolTip="Play">
+              <Polygon Points="0,0 14,9 0,18" Fill="{StaticResource OnAccentBrush}"
+                       HorizontalAlignment="Center" VerticalAlignment="Center" Margin="3,0,0,0"/>
+            </Border>
+          </Border>
+        </Grid>
+        <Border Background="Transparent" Margin="0,10,0,0" HorizontalAlignment="Left"
+                controls:Motion.ClickableText="True" Tag="{Binding}" Tapped="CardAlbumText_Tapped">
+          <TextBlock Text="{Binding Name}" FontSize="14" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
+                     MaxWidth="{Binding CardWidth, Source={StaticResource HomeLayout}}"/>
+        </Border>
+        <Border Background="Transparent" Margin="0,3,0,0" HorizontalAlignment="Left"
+                controls:Motion.ClickableText="True" Tag="{Binding}" Tapped="CardArtistText_Tapped">
+          <TextBlock Text="{Binding ArtistName}" FontSize="13" Foreground="{StaticResource TextSecondaryBrush}"
+                     TextTrimming="CharacterEllipsis" MaxWidth="{Binding CardWidth, Source={StaticResource HomeLayout}}"/>
+        </Border>
+        <TextBlock Text="{Binding Year}" FontSize="13" Margin="0,3,0,0" Foreground="{StaticResource TextSecondaryBrush}"/>
+      </StackPanel>
+    </DataTemplate>
+
+
     <!-- Album cards, Feishin-style interaction: the album name is a link to the album page and
          the artist name a link to the artist page (both turn white + underlined on hover, with a
          hand cursor); clicking the cover also opens the album; the round button in the hover
@@ -172,8 +210,6 @@
     </DataTemplate>
   </Page.Resources>
 
-  <!-- Zooms the whole UI down proportionally in windows smaller than full screen (see ScaleHost). -->
-  <controls:ScaleHost x:Name="RootScaleHost">
 
   <Grid>
     <!-- ================= Login ================= -->
@@ -255,8 +291,8 @@
           <Grid Grid.Column="2">
 
             <!-- Home -->
-            <ScrollViewer x:Name="HomePage" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-              <StackPanel Margin="0,0,16,8">
+            <ScrollViewer x:Name="HomePage" controls:WheelScroll.Enabled="True" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+              <StackPanel x:Name="HomeContent" Margin="0,0,16,8">
 
                 <!-- Hero banner -->
                 <Grid x:Name="HomeHeroCard" Height="232" Margin="0,0,16,28" Visibility="Collapsed">
@@ -301,100 +337,98 @@
                           Click="HeroNextButton_Click"/>
                 </Grid>
 
-                <!-- Recently played -->
-                <StackPanel x:Name="HomeRecentlyPlayedSection" Margin="0,0,0,28">
-                  <controls:CarouselHeader Title="RECENTLY PLAYED"/>
+                <!-- Feishin Home rows: bold title-case headers with ‹ › arrows, big cards sized by
+                     HomeLayout so a whole number of them fills the row width. Genres first, as in
+                     Feishin. -->
+
+                <!-- Genres: tile grid with a colored bar per genre -->
+                <StackPanel x:Name="HomeGenresSection" Margin="0,0,0,32">
+                  <TextBlock Text="Genres" FontSize="24" FontWeight="Bold" Margin="0,0,0,14"/>
+                  <muxc:ItemsRepeater x:Name="HomeGenresList">
+                    <muxc:ItemsRepeater.Layout>
+                      <muxc:UniformGridLayout MinColumnSpacing="16" MinRowSpacing="12" ItemsStretch="Fill"
+                                              MinItemWidth="200" MinItemHeight="48"/>
+                    </muxc:ItemsRepeater.Layout>
+                    <muxc:ItemsRepeater.ItemTemplate>
+                      <DataTemplate>
+                        <Border Height="48" CornerRadius="4" Background="{StaticResource PanelBrush}"
+                                Tag="{Binding}" Tapped="GenreCard_Tapped"
+                                controls:Motion.HoverBackground="{StaticResource RaisedBrush}">
+                          <Grid>
+                            <Border Width="5" HorizontalAlignment="Left" CornerRadius="4,0,0,4"
+                                    Background="{Binding Name, Converter={StaticResource GenreColor}}"/>
+                            <TextBlock Text="{Binding Name}" FontSize="14" FontWeight="SemiBold" Margin="22,0,12,0"
+                                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                          </Grid>
+                        </Border>
+                      </DataTemplate>
+                    </muxc:ItemsRepeater.ItemTemplate>
+                  </muxc:ItemsRepeater>
+                </StackPanel>
+
+                <StackPanel x:Name="HomeMostPlayedSection" Margin="0,0,0,32">
+                  <controls:CarouselHeader Title="Most Played"/>
                   <ScrollViewer Style="{StaticResource CarouselScrollViewerStyle}">
-                    <ItemsControl x:Name="HomeRecentlyPlayedList" ItemTemplate="{StaticResource AlbumCardTemplate}">
+                    <ItemsControl x:Name="HomeMostPlayedList" ItemTemplate="{StaticResource HomeAlbumCardTemplate}">
                       <ItemsControl.ItemsPanel>
-                        <ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate>
+                        <ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="16"/></ItemsPanelTemplate>
                       </ItemsControl.ItemsPanel>
                     </ItemsControl>
                   </ScrollViewer>
                 </StackPanel>
 
-                <!-- Most played -->
-                <StackPanel x:Name="HomeMostPlayedSection" Margin="0,0,0,28">
-                  <controls:CarouselHeader Title="MOST PLAYED"/>
+                <StackPanel x:Name="HomeRecentlyPlayedSection" Margin="0,0,0,32">
+                  <controls:CarouselHeader Title="Recently Played"/>
                   <ScrollViewer Style="{StaticResource CarouselScrollViewerStyle}">
-                    <ItemsControl x:Name="HomeMostPlayedList" ItemTemplate="{StaticResource AlbumCardTemplate}">
+                    <ItemsControl x:Name="HomeRecentlyPlayedList" ItemTemplate="{StaticResource HomeAlbumCardTemplate}">
                       <ItemsControl.ItemsPanel>
-                        <ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate>
+                        <ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="16"/></ItemsPanelTemplate>
                       </ItemsControl.ItemsPanel>
                     </ItemsControl>
                   </ScrollViewer>
                 </StackPanel>
 
-                <!-- Recently added -->
-                <StackPanel x:Name="HomeRecentlyAddedSection" Margin="0,0,0,28">
-                  <controls:CarouselHeader Title="RECENTLY ADDED" ShowMore="True" MoreClick="HomeMoreAlbumsButton_Click"/>
+                <StackPanel x:Name="HomeRecentlyAddedSection" Margin="0,0,0,32">
+                  <controls:CarouselHeader Title="Recently Added" ShowMore="True" MoreClick="HomeMoreAlbumsButton_Click"/>
                   <ScrollViewer Style="{StaticResource CarouselScrollViewerStyle}">
-                    <ItemsControl x:Name="HomeAlbumsList" ItemTemplate="{StaticResource AlbumCardTemplate}">
+                    <ItemsControl x:Name="HomeAlbumsList" ItemTemplate="{StaticResource HomeAlbumCardTemplate}">
                       <ItemsControl.ItemsPanel>
-                        <ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate>
+                        <ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="16"/></ItemsPanelTemplate>
                       </ItemsControl.ItemsPanel>
                     </ItemsControl>
                   </ScrollViewer>
                 </StackPanel>
 
-                <!-- Explore -->
-                <StackPanel x:Name="HomeExploreSection" Margin="0,0,0,28">
-                  <controls:CarouselHeader Title="EXPLORE"/>
+                <StackPanel x:Name="HomeExploreSection" Margin="0,0,0,32">
+                  <controls:CarouselHeader Title="Explore from your library"/>
                   <ScrollViewer Style="{StaticResource CarouselScrollViewerStyle}">
-                    <ItemsControl x:Name="HomeExploreList" ItemTemplate="{StaticResource AlbumCardTemplate}">
+                    <ItemsControl x:Name="HomeExploreList" ItemTemplate="{StaticResource HomeAlbumCardTemplate}">
                       <ItemsControl.ItemsPanel>
-                        <ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate>
+                        <ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="16"/></ItemsPanelTemplate>
                       </ItemsControl.ItemsPanel>
                     </ItemsControl>
                   </ScrollViewer>
                 </StackPanel>
 
-                <!-- Featured genres -->
-                <StackPanel x:Name="HomeGenresSection" Margin="0,0,0,28">
-                  <controls:CarouselHeader Title="FEATURED GENRES"/>
-                  <ScrollViewer Style="{StaticResource CarouselScrollViewerStyle}">
-                    <ItemsControl x:Name="HomeGenresList">
-                      <ItemsControl.ItemsPanel>
-                        <ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate>
-                      </ItemsControl.ItemsPanel>
-                      <ItemsControl.ItemTemplate>
-                        <DataTemplate>
-                          <Border Width="168" Height="92" Margin="0,0,12,0" CornerRadius="8"
-                                  Background="{StaticResource RaisedBrush}" Tag="{Binding}" Tapped="GenreCard_Tapped"
-                                  controls:Motion.HoverBackground="{StaticResource HoverBrush}"
-                                  controls:Motion.HoverScale="1.03">
-                            <StackPanel VerticalAlignment="Center" Margin="14,0">
-                              <TextBlock Text="{Binding Name}" FontSize="15" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
-                              <TextBlock Text="{Binding AlbumCount, Converter={StaticResource Format}, ConverterParameter='{}{0} albums'}"
-                                         FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,4,0,0"/>
-                            </StackPanel>
-                          </Border>
-                        </DataTemplate>
-                      </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                  </ScrollViewer>
-                </StackPanel>
-
-                <!-- Playlists -->
-                <StackPanel x:Name="HomePlaylistsSection" Margin="0,0,0,10">
-                  <controls:CarouselHeader Title="PLAYLISTS"/>
+                <StackPanel x:Name="HomePlaylistsSection" Margin="0,0,0,16">
+                  <controls:CarouselHeader Title="Playlists"/>
                   <ScrollViewer Style="{StaticResource CarouselScrollViewerStyle}">
                     <ItemsControl x:Name="HomePlaylistsList">
                       <ItemsControl.ItemsPanel>
-                        <ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate>
+                        <ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="16"/></ItemsPanelTemplate>
                       </ItemsControl.ItemsPanel>
                       <ItemsControl.ItemTemplate>
                         <DataTemplate>
-                          <StackPanel Width="112" Margin="2,4" Background="Transparent" Tag="{Binding}"
-                                      Tapped="HomePlaylistCard_Tapped">
-                            <Border Width="104" Height="104" CornerRadius="8" HorizontalAlignment="Left"
-                                    Background="{StaticResource RaisedBrush}">
+                          <StackPanel Width="{Binding CardWidth, Source={StaticResource HomeLayout}}" Background="Transparent"
+                                      Tag="{Binding}" Tapped="HomePlaylistCard_Tapped">
+                            <Border CornerRadius="6" Background="{StaticResource RaisedBrush}"
+                                    Width="{Binding CardWidth, Source={StaticResource HomeLayout}}"
+                                    Height="{Binding CardWidth, Source={StaticResource HomeLayout}}">
                               <Image Source="{Binding CoverArtUrl}" Stretch="UniformToFill" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                             </Border>
-                            <TextBlock Text="{Binding Name}" FontSize="12" Margin="2,6,0,0" TextTrimming="CharacterEllipsis" MaxWidth="104"
-                                       HorizontalAlignment="Left"/>
+                            <TextBlock Text="{Binding Name}" FontSize="14" FontWeight="SemiBold" Margin="0,10,0,0" TextTrimming="CharacterEllipsis"/>
                             <TextBlock Text="{Binding SongCount, Converter={StaticResource Format}, ConverterParameter='{}{0} tracks'}"
-                                       FontSize="11" Margin="2,1,0,0" Foreground="{StaticResource TextSecondaryBrush}"/>
+                                       FontSize="13" Margin="0,3,0,0" Foreground="{StaticResource TextSecondaryBrush}"/>
                           </StackPanel>
                         </DataTemplate>
                       </ItemsControl.ItemTemplate>
@@ -427,7 +461,7 @@
             <!-- Artist detail (Feishin's artist page): blurred-art header with the cover, an
                  "ARTIST" eyebrow, big name, album/track counts, Play / Next / Last + favorite,
                  then the "Album" grid. -->
-            <ScrollViewer x:Name="ArtistDetailPage" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
+            <ScrollViewer x:Name="ArtistDetailPage" controls:WheelScroll.Enabled="True" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
               <StackPanel Margin="0,0,16,16">
                 <Grid Height="290" Margin="0,0,0,28">
                   <Border CornerRadius="14" Background="{StaticResource RaisedBrush}"/>
@@ -520,7 +554,7 @@
             <!-- Album page (Feishin): header tinted with the cover's average color, cover,
                  "ALBUM" eyebrow, big title, meta line, artist link, Play / Next / Last, then a
                  searchable # / TITLE / time / favorite track table. -->
-            <ScrollViewer x:Name="AlbumPage" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
+            <ScrollViewer x:Name="AlbumPage" controls:WheelScroll.Enabled="True" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
               <StackPanel Margin="0,0,16,16">
                 <Grid Height="290" Margin="0,0,0,24">
                   <Border x:Name="AlbumHeaderTint" CornerRadius="14" Background="{StaticResource RaisedBrush}"/>
@@ -636,7 +670,7 @@
                 <TextBlock Grid.Column="0" Text="ALL ALBUMS" Style="{StaticResource SectionHeaderStyle}" Margin="2,0,10,0"/>
                 <TextBox x:Name="AllAlbumsSearchBox" Grid.Column="2" PlaceholderText="Search" TextChanged="AllAlbumsSearchBox_TextChanged"/>
               </Grid>
-              <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+              <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" controls:WheelScroll.Enabled="True">
                 <muxc:ItemsRepeater x:Name="AllAlbumsList" ItemTemplate="{StaticResource LargeAlbumCardTemplate}">
                   <muxc:ItemsRepeater.Layout>
                     <muxc:UniformGridLayout MinItemWidth="162" MinItemHeight="200" ItemsStretch="None"
@@ -690,7 +724,7 @@
               </Grid.RowDefinitions>
               <TextBlock x:Name="GenreAlbumsHeader" Grid.Row="0" Text="GENRE" Style="{StaticResource SectionHeaderStyle}"
                          Margin="0,0,0,10"/>
-              <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+              <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" controls:WheelScroll.Enabled="True">
                 <muxc:ItemsRepeater x:Name="GenreAlbumsList" ItemTemplate="{StaticResource LargeAlbumCardTemplate}">
                   <muxc:ItemsRepeater.Layout>
                     <muxc:UniformGridLayout MinItemWidth="162" MinItemHeight="200" ItemsStretch="None"
@@ -928,5 +962,4 @@
       </Border>
     </Grid>
   </Grid>
-  </controls:ScaleHost>
 </Page>

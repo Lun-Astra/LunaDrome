@@ -32,14 +32,15 @@ public sealed class CarouselHeader : Grid
 
     public CarouselHeader()
     {
-        Margin = new Thickness(0, 0, 0, 10);
+        Margin = new Thickness(0, 0, 0, 14);
         ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
         _title = new TextBlock
         {
-            Style = (Style)Application.Current.Resources["SectionHeaderStyle"],
+            FontSize = 24,
+            FontWeight = Microsoft.UI.Text.FontWeights.Bold,
             Margin = new Thickness(0),
             VerticalAlignment = VerticalAlignment.Center
         };
@@ -116,9 +117,46 @@ public sealed class CarouselHeader : Grid
         if (_target == null)
             return;
 
-        var step = Math.Max(100, _target.ViewportWidth * 0.8);
-        var offset = Math.Clamp(_target.HorizontalOffset + direction * step, 0, _target.ScrollableWidth);
-        _target.ChangeView(offset, null, null, false);
+        // Page by exactly the cards that fit in view, landing on a card boundary. The card stride
+        // (card width + panel spacing) is measured from the real items, because HomeLayout
+        // floors the card width, so viewport-based steps drifted a few px per page and left the
+        // first card cut off.
+        var stride = MeasureStride();
+        double offset;
+        if (stride > 0)
+        {
+            var perView = Math.Max(1, Math.Floor((_target.ViewportWidth + 1) / stride));
+            var current = Math.Round(_target.HorizontalOffset / stride);
+            offset = (current + direction * perView) * stride;
+        }
+        else
+        {
+            offset = _target.HorizontalOffset + direction * _target.ViewportWidth;
+        }
+
+        _target.ChangeView(Math.Clamp(offset, 0, _target.ScrollableWidth), null, null, false);
+    }
+
+    private double MeasureStride()
+    {
+        var panel = FindHorizontalPanel(_target!);
+        if (panel == null || panel.Children.Count == 0 || panel.Children[0] is not FrameworkElement first)
+            return 0;
+        return first.ActualWidth + panel.Spacing;
+    }
+
+    private static StackPanel? FindHorizontalPanel(DependencyObject root)
+    {
+        var count = VisualTreeHelper.GetChildrenCount(root);
+        for (var i = 0; i < count; i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is StackPanel { Orientation: Orientation.Horizontal } panel)
+                return panel;
+            if (FindHorizontalPanel(child) is { } deeper)
+                return deeper;
+        }
+        return null;
     }
 
     private void UpdateArrows()

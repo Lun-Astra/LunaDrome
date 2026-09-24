@@ -410,6 +410,7 @@
         <Setter Property="BorderThickness" Value="0"/>
         <Setter Property="Padding" Value="0"/>
         <Setter Property="ItemContainerStyle" Value="{StaticResource RowItemStyle}"/>
+        <Setter Property="controls:WheelScroll.Enabled" Value="True"/>
       </Style>
 
       <!-- ===== Slider (progress / volume): 4px track, white fill, 12px white thumb ===== -->
