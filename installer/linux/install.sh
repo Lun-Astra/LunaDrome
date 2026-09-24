@@ -24,9 +24,11 @@ rm -rf "$prefix"
 mkdir -p "$prefix" "$bindir" "$appdir" "$icondir"
 cp -r "$here/app/." "$prefix/"
 chmod +x "$prefix/LunaDrome"
-ln -sf "$prefix/LunaDrome" "$bindir/lunadrome"
+rm -f "$bindir/lunadrome"
+sed "s|@APPDIR@|$prefix|" "$here/lunadrome-launcher.sh" > "$bindir/lunadrome"
+chmod +x "$bindir/lunadrome"
 cp "$here/lunadrome.png" "$icondir/lunadrome.png"
-sed "s|^Exec=.*|Exec=$prefix/LunaDrome|" "$here/lunadrome.desktop" > "$appdir/lunadrome.desktop"
+sed "s|^Exec=.*|Exec=$bindir/lunadrome|" "$here/lunadrome.desktop" > "$appdir/lunadrome.desktop"
 
 # The app asks for plain "libvlc" (libvlc.so), but most distros' runtime packages only ship the
 # versioned file (libvlc.so.5). Link it next to the app so playback works without libvlc-dev.

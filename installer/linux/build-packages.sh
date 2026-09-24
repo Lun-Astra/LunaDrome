@@ -19,7 +19,8 @@ deb="$work/deb"
 mkdir -p "$deb/DEBIAN" "$deb/opt/lunadrome" "$deb/usr/bin" "$deb/usr/share/applications" \
          "$deb/usr/share/icons/hicolor/128x128/apps"
 cp -r "$publish/." "$deb/opt/lunadrome/"
-ln -s /opt/lunadrome/LunaDrome "$deb/usr/bin/lunadrome"
+sed "s|@APPDIR@|/opt/lunadrome|" "$here/lunadrome-launcher.sh" > "$deb/usr/bin/lunadrome"
+chmod 755 "$deb/usr/bin/lunadrome"
 cp "$here/lunadrome.desktop" "$deb/usr/share/applications/lunadrome.desktop"
 cp "$here/lunadrome.png" "$deb/usr/share/icons/hicolor/128x128/apps/lunadrome.png"
 size_kb=$(du -sk "$deb" | cut -f1)
@@ -71,7 +72,7 @@ dpkg-deb -Zxz --build --root-owner-group "$deb" "$out/lunadrome_${version}_amd64
 tgz="$work/LunaDrome-$version-linux-x64"
 mkdir -p "$tgz/app"
 cp -r "$publish/." "$tgz/app/"
-cp "$here/install.sh" "$here/uninstall.sh" "$here/lunadrome.desktop" "$here/lunadrome.png" "$tgz/"
+cp "$here/install.sh" "$here/uninstall.sh" "$here/lunadrome.desktop" "$here/lunadrome.png" "$here/lunadrome-launcher.sh" "$tgz/"
 chmod +x "$tgz/install.sh" "$tgz/uninstall.sh" "$tgz/app/LunaDrome"
 tar -C "$work" -czf "$out/LunaDrome-$version-linux-x64.tar.gz" "LunaDrome-$version-linux-x64"
 
