@@ -172,6 +172,9 @@
     </DataTemplate>
   </Page.Resources>
 
+  <!-- Zooms the whole UI down proportionally in windows smaller than full screen (see ScaleHost). -->
+  <controls:ScaleHost x:Name="RootScaleHost">
+
   <Grid>
     <!-- ================= Login ================= -->
     <Grid x:Name="LoginPanel">
@@ -932,4 +935,5 @@
       </Border>
     </Grid>
   </Grid>
+  </controls:ScaleHost>
 </Page>
