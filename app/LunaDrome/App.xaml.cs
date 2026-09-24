@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using Microsoft.Extensions.Logging;
 using Uno.Resizetizer;
 
@@ -19,10 +19,13 @@ public partial class App : Application
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
-        MainWindow = new Window();
-#if DEBUG
-        MainWindow.UseStudio();
-#endif
+        // No UseStudio() here: in Debug it overlays Uno's Hot Design toolbar on the top-left of the
+        // window, right over the sidebar logo, which made debug builds look unlike the live app.
+        MainWindow = new Window { Title = "LunaDrome" };
+
+        // Same default size as the WPF app's MainWindow (1200x720).
+        try { MainWindow.AppWindow.Resize(new Windows.Graphics.SizeInt32 { Width = 1200, Height = 720 }); }
+        catch { /* not supported on every Uno host */ }
 
 
         // Do not repeat app initialization when the Window already has content,

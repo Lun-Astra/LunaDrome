@@ -109,6 +109,88 @@ public static class Motion
         }
     }
 
+    // --- ClickableText: WPF's ClickableTextStyle (white + underline while hovered) ---
+
+    public static readonly DependencyProperty ClickableTextProperty =
+        DependencyProperty.RegisterAttached("ClickableText", typeof(bool), typeof(Motion),
+            new PropertyMetadata(false, OnClickableTextChanged));
+
+    public static bool GetClickableText(DependencyObject d) => (bool)d.GetValue(ClickableTextProperty);
+    public static void SetClickableText(DependencyObject d, bool value) => d.SetValue(ClickableTextProperty, value);
+
+    private static readonly DependencyProperty RestForegroundProperty =
+        DependencyProperty.RegisterAttached("RestForeground", typeof(Brush), typeof(Motion), new PropertyMetadata(null));
+
+    private static readonly PointerEventHandler ClickableEntered = (s, _) =>
+    {
+        var text = (TextBlock)s;
+        text.SetValue(RestForegroundProperty, text.Foreground);
+        text.Foreground = (Brush)Application.Current.Resources["AccentBrush"];
+        text.TextDecorations = Windows.UI.Text.TextDecorations.Underline;
+    };
+
+    private static readonly PointerEventHandler ClickableExited = (s, _) =>
+    {
+        var text = (TextBlock)s;
+        if (text.GetValue(RestForegroundProperty) is Brush rest)
+            text.Foreground = rest;
+        text.TextDecorations = Windows.UI.Text.TextDecorations.None;
+    };
+
+    private static void OnClickableTextChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is not TextBlock text)
+            return;
+
+        text.PointerEntered -= ClickableEntered;
+        text.PointerExited -= ClickableExited;
+        if ((bool)e.NewValue)
+        {
+            text.PointerEntered += ClickableEntered;
+            text.PointerExited += ClickableExited;
+        }
+    }
+
+    // --- HoverBackground: swaps a Border's background while hovered (WPF genre tiles) ---
+
+    public static readonly DependencyProperty HoverBackgroundProperty =
+        DependencyProperty.RegisterAttached("HoverBackground", typeof(Brush), typeof(Motion),
+            new PropertyMetadata(null, OnHoverBackgroundChanged));
+
+    public static Brush? GetHoverBackground(DependencyObject d) => (Brush?)d.GetValue(HoverBackgroundProperty);
+    public static void SetHoverBackground(DependencyObject d, Brush? value) => d.SetValue(HoverBackgroundProperty, value);
+
+    private static readonly DependencyProperty RestBackgroundProperty =
+        DependencyProperty.RegisterAttached("RestBackground", typeof(Brush), typeof(Motion), new PropertyMetadata(null));
+
+    private static readonly PointerEventHandler HoverBackgroundEntered = (s, _) =>
+    {
+        var border = (Border)s;
+        border.SetValue(RestBackgroundProperty, border.Background);
+        border.Background = GetHoverBackground(border);
+    };
+
+    private static readonly PointerEventHandler HoverBackgroundExited = (s, _) =>
+    {
+        var border = (Border)s;
+        if (border.GetValue(RestBackgroundProperty) is Brush rest)
+            border.Background = rest;
+    };
+
+    private static void OnHoverBackgroundChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is not Border border)
+            return;
+
+        border.PointerEntered -= HoverBackgroundEntered;
+        border.PointerExited -= HoverBackgroundExited;
+        if (e.NewValue != null)
+        {
+            border.PointerEntered += HoverBackgroundEntered;
+            border.PointerExited += HoverBackgroundExited;
+        }
+    }
+
     // --- Animation plumbing ---
 
     private static CompositeTransform EnsureTransform(UIElement element)
@@ -141,12 +223,21 @@ public static class Motion
         storyboard.Begin();
     }
 
-    private static void AnimateOpacity(UIElement element, double to)
+    /// <summary>Page-switch fade, same 0.18s as the WPF app's FadeIn.</summary>
+    public static void FadeIn(UIElement element)
+    {
+        element.Opacity = 0;
+        AnimateOpacity(element, 1, TimeSpan.FromMilliseconds(180));
+    }
+
+    private static void AnimateOpacity(UIElement element, double to) => AnimateOpacity(element, to, Hover);
+
+    private static void AnimateOpacity(UIElement element, double to, TimeSpan duration)
     {
         var fade = new DoubleAnimation
         {
             To = to,
-            Duration = Hover,
+            Duration = duration,
             EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
         };
         Storyboard.SetTarget(fade, element);

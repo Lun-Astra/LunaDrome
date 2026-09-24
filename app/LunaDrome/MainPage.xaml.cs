@@ -1,40 +1,75 @@
 using System.Collections.ObjectModel;
+using LunaDrome.Controls;
 using LunaDrome.Core.Models;
 using LunaDrome.Core.Services;
-using Microsoft.UI.Xaml.Controls.Primitives;
 using LunaDrome.Services;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Imaging;
 using Windows.Media.Core;
 using Windows.Media.Playback;
 
 namespace LunaDrome;
 
+// Behavior mirrors the WPF app's MainWindow.xaml.cs page for page (nav, Home rows + hero,
+// artist page with album drill-in, sort menus, context menus, full-screen player), so the two
+// feel the same to use - see MainPage.xaml for the layout side of the port.
 public sealed partial class MainPage : Page
 {
     private enum RepeatMode { Off, All, One }
 
+    /// <summary>Per-track-list state: raw songs + search/sort, for album, library and playlist views.</summary>
+    private sealed class TrackView
+    {
+        public required ListView List { get; init; }
+        public required TextBox Search { get; init; }
+        public required Button SortButton { get; init; }
+        public required Button DirectionButton { get; init; }
+        public List<Song> Raw { get; set; } = new();
+        public string? SortKey { get; set; }
+        public bool Ascending { get; set; } = true;
+    }
+
+    private static readonly (string Tag, string Label)[] SortOptions =
+    {
+        ("Album", "Album"), ("AlbumArtist", "Album Artist"), ("Artist", "Artist"), ("Duration", "Duration"),
+        ("Favorited", "Is favorited"), ("Genre", "Genre"), ("Name", "Name"), ("PlayCount", "Play count"),
+        ("Random", "Random"), ("RecentlyAdded", "Recently added"), ("RecentlyPlayed", "Recently played"),
+        ("ReleaseYear", "Release year"), ("Year", "Year"),
+    };
+
+    private static readonly Random SortRandom = new();
+
     private readonly NavidromeClient _client = new();
     private readonly MediaPlayer _player = new();
     private readonly DispatcherTimer _progressTimer;
-    private Song? _currentSong;
 
-    private ObservableCollection<Song> _queue = new();
+    private readonly ObservableCollection<Song> _queue = new();
     private int _queueIndex = -1;
     private bool _isShuffled;
     private RepeatMode _repeatMode = RepeatMode.Off;
     private readonly Random _random = new();
+    private bool _isPlaying;
+    private bool _isUserSeeking;
+    private bool _lyricsAreSynced;
 
-    private bool _homeLoaded;
-    private bool _allAlbumsLoaded;
-    private bool _genresLoaded;
+    private readonly Dictionary<string, TrackView> _trackViews;
+
+    private bool _initialized;
+    private bool _suppressNavEvents;
+    private bool _albumsPageLoaded;
+    private bool _songsPageLoaded;
+
+    private List<Playlist> _playlists = new();
     private Playlist? _currentPlaylist;
     private Artist? _currentArtist;
-
-    // Raw (unfiltered) lists cached for the client-side search boxes.
+    private Album? _currentAlbum;
+    private List<Album> _heroAlbums = new();
+    private int _heroIndex;
+    private int _heroLoadToken;
     private List<Artist> _artistsRaw = new();
     private List<Album> _allAlbumsRaw = new();
-    private List<Song> _allSongsRaw = new();
 
     // Visualizer: loopback capture feeds the analyzer on its own thread; the render loop pulls
     // the latest bands once per display frame (see OnVisualizerRenderFrame).
@@ -50,14 +85,30 @@ public sealed partial class MainPage : Page
         this.InitializeComponent();
         Unloaded += (_, _) => { StopVisualizer(); _loopback.Dispose(); };
 
+        _trackViews = new()
+        {
+            ["AlbumTracks"] = new() { List = SongsList, Search = AlbumTrackSearchBox, SortButton = AlbumTrackSortButton, DirectionButton = AlbumTrackSortDirectionButton },
+            ["AllTracks"] = new() { List = AllSongsList, Search = AllTracksSearchBox, SortButton = AllTracksSortButton, DirectionButton = AllTracksSortDirectionButton },
+            ["PlaylistTracks"] = new() { List = PlaylistSongsList, Search = PlaylistTrackSearchBox, SortButton = PlaylistTrackSortButton, DirectionButton = PlaylistTrackSortDirectionButton },
+        };
+
         _progressTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(400) };
         _progressTimer.Tick += ProgressTimer_Tick;
         _progressTimer.Start();
 
-        _player.Volume = VolumeSlider.Value / 100.0;
+        _player.Volume = VolumeSlider.Value;
         _player.MediaEnded += (_, _) => DispatcherQueue.TryEnqueue(OnMediaEnded);
 
+        // Slider marks its own pointer events handled, so listen with handledEventsToo to know
+        // when the user is dragging (the progress timer mustn't fight the drag) and when to seek.
+        ProgressSlider.AddHandler(PointerPressedEvent, new PointerEventHandler((_, _) => _isUserSeeking = true), true);
+        ProgressSlider.AddHandler(PointerReleasedEvent, new PointerEventHandler((_, _) => CommitSeek()), true);
+        ProgressSlider.AddHandler(PointerCaptureLostEvent, new PointerEventHandler((_, _) => CommitSeek()), true);
+
         QueueList.ItemsSource = _queue;
+        QueueTabButton.IsChecked = true;
+
+        _initialized = true;
 
         var saved = SettingsService.Load();
         if (!string.IsNullOrWhiteSpace(saved.ServerUrl))
@@ -72,6 +123,8 @@ public sealed partial class MainPage : Page
             _ = TryLoginAsync();
         }
     }
+
+    // ================= Login =================
 
     private async void LoginButton_Click(object sender, RoutedEventArgs e) => await TryLoginAsync();
 
@@ -102,135 +155,308 @@ public sealed partial class MainPage : Page
             return;
         }
 
-        if (RememberMeBox.IsChecked == true)
-        {
-            SettingsService.Save(new AppSettings
-            {
-                ServerUrl = serverUrl,
-                Username = username,
-                ProtectedPassword = CredentialProtector.Protect(password)
-            });
-        }
-        else
-        {
-            SettingsService.Save(new AppSettings());
-        }
-
-        _artistsRaw = await _client.GetArtistsAsync();
-        ArtistsList.ItemsSource = _artistsRaw;
-
-        _allSongsRaw = await _client.GetAllSongsAsync(limit: 200);
-        RefreshAllTracks();
+        SettingsService.Save(RememberMeBox.IsChecked == true
+            ? new AppSettings { ServerUrl = serverUrl, Username = username, ProtectedPassword = CredentialProtector.Protect(password) }
+            : new AppSettings());
 
         LoginPanel.Visibility = Visibility.Collapsed;
         LibraryPanel.Visibility = Visibility.Visible;
 
-        await LoadHomeAsync();
-        await LoadPlaylistsAsync();
+        NavHome.IsChecked = true;
+        _ = LoadPlaylistsAsync();
+
+        try
+        {
+            _artistsRaw = await _client.GetArtistsAsync();
+            RefreshArtists();
+        }
+        catch (Exception ex)
+        {
+            await ShowErrorAsync($"Failed to load artists: {ex.Message}");
+        }
     }
 
-    private async Task LoadPlaylistsAsync()
+    private async Task ShowErrorAsync(string message)
     {
-        var playlists = await _client.GetPlaylistsAsync();
-        PlaylistsList.ItemsSource = playlists;
+        try
+        {
+            await new ContentDialog
+            {
+                Title = "LunaDrome",
+                Content = message,
+                CloseButtonText = "OK",
+                XamlRoot = this.XamlRoot
+            }.ShowAsync();
+        }
+        catch { /* another dialog already open */ }
     }
 
-    // Subsonic's album list endpoints don't include cover art URLs directly - Navidrome
-    // resolves cover art from an id via a separate endpoint, so this is filled in after
-    // the fact for whichever albums are about to be displayed.
-    private void PopulateCoverArt(IEnumerable<Album> albums, int size = 240)
+    // ================= Navigation =================
+
+    private void HideAllPages()
     {
-        foreach (var album in albums)
-            album.CoverArtUrl = _client.GetCoverArtUrl(album.Id, size);
+        HomePage.Visibility = Visibility.Collapsed;
+        ArtistsPage.Visibility = Visibility.Collapsed;
+        ArtistDetailPage.Visibility = Visibility.Collapsed;
+        AlbumsPage.Visibility = Visibility.Collapsed;
+        SongsPage.Visibility = Visibility.Collapsed;
+        GenreAlbumsPage.Visibility = Visibility.Collapsed;
+        PlaylistsPage.Visibility = Visibility.Collapsed;
     }
 
-    private void ShowPanel(string name)
+    private static void ShowPage(UIElement page)
     {
-        HomePanel.Visibility = name == "Home" ? Visibility.Visible : Visibility.Collapsed;
-        ArtistsPanel.Visibility = name == "Artists" ? Visibility.Visible : Visibility.Collapsed;
-        ArtistDetailPanel.Visibility = name == "ArtistDetail" ? Visibility.Visible : Visibility.Collapsed;
-        AlbumsPanel.Visibility = name == "Albums" ? Visibility.Visible : Visibility.Collapsed;
-        AlbumDetailPanel.Visibility = name == "AlbumDetail" ? Visibility.Visible : Visibility.Collapsed;
-        TracksPanel.Visibility = name == "Tracks" ? Visibility.Visible : Visibility.Collapsed;
-        PlaylistDetailPanel.Visibility = name == "PlaylistDetail" ? Visibility.Visible : Visibility.Collapsed;
-        GenresPanel.Visibility = name == "Genres" ? Visibility.Visible : Visibility.Collapsed;
-        GenreDetailPanel.Visibility = name == "GenreDetail" ? Visibility.Visible : Visibility.Collapsed;
+        page.Visibility = Visibility.Visible;
+        Motion.FadeIn(page);
     }
 
-    private async void Nav_Click(object sender, RoutedEventArgs e)
+    // Opening an artist/genre/playlist acts like its own page: exactly one thing in the sidebar
+    // (a nav item OR a playlist) should look active, so clear the rest.
+    private void ClearSidebarSelection(bool keepPlaylist = false)
     {
-        if (sender is not Button { Tag: string panel })
+        _suppressNavEvents = true;
+        NavHome.IsChecked = false;
+        NavArtists.IsChecked = false;
+        NavAlbums.IsChecked = false;
+        NavSongs.IsChecked = false;
+        if (!keepPlaylist)
+            PlaylistsList.SelectedItem = null;
+        _suppressNavEvents = false;
+    }
+
+    private void Nav_Checked(object sender, RoutedEventArgs e)
+    {
+        if (!_initialized || _suppressNavEvents || sender is not RadioButton { Tag: string tag })
             return;
 
-        if (panel == "Home")
-            await LoadHomeAsync();
-        else if (panel == "Albums")
-            await LoadAllAlbumsAsync();
-        else if (panel == "Genres")
-            await LoadGenresAsync();
+        FullScreenPlayerOverlay.Visibility = Visibility.Collapsed;
+        UpdateVisualizerCaptureState();
 
-        ShowPanel(panel);
+        _suppressNavEvents = true;
+        PlaylistsList.SelectedItem = null;
+        _suppressNavEvents = false;
+
+        HideAllPages();
+        switch (tag)
+        {
+            case "Home":
+                ShowPage(HomePage);
+                _ = LoadHomeAsync();
+                break;
+            case "Artists":
+                ArtistsList.SelectedItem = null;
+                ShowPage(ArtistsPage);
+                break;
+            case "Albums":
+                ShowPage(AlbumsPage);
+                if (!_albumsPageLoaded)
+                {
+                    _albumsPageLoaded = true;
+                    _ = LoadAllAlbumsAsync();
+                }
+                break;
+            case "Songs":
+                ShowPage(SongsPage);
+                if (!_songsPageLoaded)
+                {
+                    _songsPageLoaded = true;
+                    _ = LoadAllSongsAsync();
+                }
+                break;
+        }
     }
+
+    // ================= Home =================
+
+    private bool _homeLoaded;
 
     private async Task LoadHomeAsync()
     {
         if (_homeLoaded)
             return;
-
-        var albums = await _client.GetAlbumListAsync("newest", size: 20);
-        PopulateCoverArt(albums);
-        HomeAlbumsList.ItemsSource = albums;
         _homeLoaded = true;
+
+        try
+        {
+            var heroTask = _client.GetAlbumListAsync("random", 10);
+            var recentlyPlayedTask = _client.GetAlbumListAsync("recent", 20);
+            var mostPlayedTask = _client.GetAlbumListAsync("frequent", 20);
+            var recentlyAddedTask = _client.GetAlbumListAsync("newest", 20);
+            var exploreTask = _client.GetAlbumListAsync("random", 20);
+            var genresTask = _client.GetGenresAsync();
+            await Task.WhenAll(heroTask, recentlyPlayedTask, mostPlayedTask, recentlyAddedTask, exploreTask, genresTask);
+
+            _heroAlbums = heroTask.Result;
+            foreach (var album in _heroAlbums)
+                album.CoverArtUrl = _client.GetCoverArtUrl(album.Id, 480);
+
+            _heroIndex = 0;
+            if (_heroAlbums.Count > 0)
+            {
+                ShowHeroAlbum(0);
+                HomeHeroCard.Visibility = Visibility.Visible;
+            }
+
+            BindHomeRow(HomeRecentlyPlayedSection, HomeRecentlyPlayedList, recentlyPlayedTask.Result);
+            BindHomeRow(HomeMostPlayedSection, HomeMostPlayedList, mostPlayedTask.Result);
+            BindHomeRow(HomeRecentlyAddedSection, HomeAlbumsList, recentlyAddedTask.Result);
+            BindHomeRow(HomeExploreSection, HomeExploreList, exploreTask.Result);
+
+            var genres = genresTask.Result.Take(10).ToList();
+            HomeGenresList.ItemsSource = genres;
+            HomeGenresSection.Visibility = genres.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        }
+        catch (Exception ex)
+        {
+            _homeLoaded = false;
+            await ShowErrorAsync($"Failed to load home page: {ex.Message}");
+        }
     }
+
+    // Most/recently-played rows can legitimately be empty (no play history yet) - collapse the
+    // whole row rather than showing an empty header.
+    private void BindHomeRow(FrameworkElement section, ItemsControl list, List<Album> albums)
+    {
+        foreach (var album in albums)
+            album.CoverArtUrl = _client.GetCoverArtUrl(album.Id, 240);
+
+        list.ItemsSource = albums;
+        section.Visibility = albums.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private async void ShowHeroAlbum(int index)
+    {
+        var album = _heroAlbums[index];
+        SetImage(HeroArt, album.CoverArtUrl);
+        HeroTitleText.Text = album.Name;
+        HeroArtistText.Text = album.ArtistName;
+
+        var meta = new List<string>();
+        if (!string.IsNullOrWhiteSpace(album.Genre))
+            meta.Add(album.Genre);
+        if (album.Year is > 0)
+            meta.Add(album.Year.Value.ToString());
+        HeroMetaText.Text = string.Join(" · ", meta);
+
+        // Blur renders off-thread; drop the result if the user already clicked on to another album.
+        var token = ++_heroLoadToken;
+        var blurred = await BlurredArt.LoadAsync(album.CoverArtUrl);
+        if (token == _heroLoadToken)
+            HeroBackdrop.Source = blurred;
+    }
+
+    private void HeroPrevButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_heroAlbums.Count == 0)
+            return;
+        _heroIndex = (_heroIndex - 1 + _heroAlbums.Count) % _heroAlbums.Count;
+        ShowHeroAlbum(_heroIndex);
+    }
+
+    private void HeroNextButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_heroAlbums.Count == 0)
+            return;
+        _heroIndex = (_heroIndex + 1) % _heroAlbums.Count;
+        ShowHeroAlbum(_heroIndex);
+    }
+
+    private async void HeroTitleText_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        if (_heroAlbums.Count > 0)
+            await OpenAlbumAsync(_heroAlbums[_heroIndex]);
+    }
+
+    private async void HeroArtistText_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        if (_heroAlbums.Count == 0)
+            return;
+        var album = _heroAlbums[_heroIndex];
+        await NavigateToArtistAsync(album.ArtistId, album.ArtistName);
+    }
+
+    private async void HeroPlayOverlay_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        if (_heroAlbums.Count > 0)
+            await PlayAlbumAsync(_heroAlbums[_heroIndex]);
+    }
+
+    private void HomeMoreAlbumsButton_Click(object sender, RoutedEventArgs e) => NavAlbums.IsChecked = true;
+
+    // A horizontal-only ScrollViewer doesn't turn the (vertical) mouse wheel into horizontal
+    // scrolling by itself - redirect it, so wheeling over a row scrolls the row, not the page.
+    private void Carousel_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is not ScrollViewer scrollViewer)
+            return;
+
+        scrollViewer.Loaded -= Carousel_Loaded;
+        scrollViewer.AddHandler(PointerWheelChangedEvent, new PointerEventHandler((_, args) =>
+        {
+            var delta = args.GetCurrentPoint(scrollViewer).Properties.MouseWheelDelta;
+            if (scrollViewer.ScrollableWidth <= 0)
+                return;
+            scrollViewer.ChangeView(scrollViewer.HorizontalOffset - delta, null, null, true);
+            args.Handled = true;
+        }), true);
+    }
+
+    private void HomePlaylistCard_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: Playlist playlist })
+            PlaylistsList.SelectedItem = _playlists.FirstOrDefault(p => p.Id == playlist.Id) ?? playlist;
+    }
+
+    private async void GenreCard_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: Genre genre })
+            return;
+
+        FullScreenPlayerOverlay.Visibility = Visibility.Collapsed;
+        ClearSidebarSelection();
+        HideAllPages();
+        GenreAlbumsHeader.Text = genre.Name.ToUpperInvariant();
+        GenreAlbumsList.ItemsSource = null;
+        ShowPage(GenreAlbumsPage);
+
+        try
+        {
+            var albums = await _client.GetAlbumsByGenreAsync(genre.Name, 500);
+            foreach (var album in albums)
+                album.CoverArtUrl = _client.GetCoverArtUrl(album.Id, 240);
+            GenreAlbumsList.ItemsSource = albums;
+        }
+        catch (Exception ex)
+        {
+            await ShowErrorAsync($"Failed to load albums: {ex.Message}");
+        }
+    }
+
+    // ================= Albums =================
 
     private async Task LoadAllAlbumsAsync()
     {
-        if (_allAlbumsLoaded)
+        try
+        {
+            _allAlbumsRaw = await _client.GetAlbumListAsync("alphabeticalByName", 500);
+            foreach (var album in _allAlbumsRaw)
+                album.CoverArtUrl = _client.GetCoverArtUrl(album.Id, 240);
+            RefreshAllAlbums();
+        }
+        catch (Exception ex)
+        {
+            _albumsPageLoaded = false;
+            await ShowErrorAsync($"Failed to load albums: {ex.Message}");
+        }
+    }
+
+    private void AllAlbumsSearchBox_TextChanged(object sender, TextChangedEventArgs e) => RefreshAllAlbums();
+
+    private void RefreshAllAlbums()
+    {
+        if (AllAlbumsSearchBox == null)
             return;
 
-        _allAlbumsRaw = await _client.GetAlbumListAsync("alphabeticalByName", size: 200);
-        PopulateCoverArt(_allAlbumsRaw);
-        AllAlbumsList.ItemsSource = _allAlbumsRaw;
-        _allAlbumsLoaded = true;
-    }
-
-    private async Task LoadGenresAsync()
-    {
-        if (_genresLoaded)
-            return;
-
-        var genres = await _client.GetGenresAsync();
-        GenresList.ItemsSource = genres;
-        _genresLoaded = true;
-    }
-
-    private async void GenreRow_ItemClick(object sender, ItemClickEventArgs e)
-    {
-        if (e.ClickedItem is not Genre genre)
-            return;
-
-        GenreDetailHeader.Text = genre.Name;
-        var albums = await _client.GetAlbumsByGenreAsync(genre.Name);
-        PopulateCoverArt(albums);
-        GenreAlbumsList.ItemsSource = albums;
-
-        ShowPanel("GenreDetail");
-    }
-
-    private void GenreBack_Click(object sender, RoutedEventArgs e) => ShowPanel("Genres");
-
-    // --- Search filters (client-side, over the cached raw lists) ---
-
-    private void ArtistSearchBox_TextChanged(object sender, TextChangedEventArgs e)
-    {
-        var q = ArtistSearchBox.Text.Trim();
-        ArtistsList.ItemsSource = string.IsNullOrEmpty(q)
-            ? _artistsRaw
-            : _artistsRaw.Where(a => a.Name.Contains(q, StringComparison.OrdinalIgnoreCase)).ToList();
-    }
-
-    private void AllAlbumsSearchBox_TextChanged(object sender, TextChangedEventArgs e)
-    {
         var q = AllAlbumsSearchBox.Text.Trim();
         AllAlbumsList.ItemsSource = string.IsNullOrEmpty(q)
             ? _allAlbumsRaw
@@ -239,59 +465,119 @@ public sealed partial class MainPage : Page
                 a.ArtistName.Contains(q, StringComparison.OrdinalIgnoreCase)).ToList();
     }
 
-    private void AllTracksSearchBox_TextChanged(object sender, TextChangedEventArgs e) => RefreshAllTracks();
-
-    private void TracksSortCombo_SelectionChanged(object sender, SelectionChangedEventArgs e) => RefreshAllTracks();
-
-    private void RefreshAllTracks()
+    // Clicking the art area plays (the hover overlay covers it); anywhere else on the card opens.
+    private async void AlbumCard_Tapped(object sender, TappedRoutedEventArgs e)
     {
-        // Guard: TextChanged/SelectionChanged can fire during InitializeComponent, before
-        // the raw list or other named controls exist yet.
-        if (AllTracksSearchBox == null || TracksSortCombo == null)
-            return;
+        if (sender is FrameworkElement { Tag: Album album })
+            await OpenAlbumAsync(album);
+    }
 
-        var q = AllTracksSearchBox.Text?.Trim() ?? "";
-        IEnumerable<Song> filtered = string.IsNullOrEmpty(q)
-            ? _allSongsRaw
-            : _allSongsRaw.Where(s =>
-                s.Title.Contains(q, StringComparison.OrdinalIgnoreCase) ||
-                s.ArtistName.Contains(q, StringComparison.OrdinalIgnoreCase));
+    private async void AlbumPlayOverlay_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        e.Handled = true;
+        if (sender is FrameworkElement { Tag: Album album })
+            await PlayAlbumAsync(album);
+    }
 
-        filtered = ((TracksSortCombo.SelectedItem as ComboBoxItem)?.Content as string) switch
+    private async void CardArtistText_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        e.Handled = true;
+        if (sender is FrameworkElement { Tag: Album album })
+            await NavigateToArtistAsync(album.ArtistId, album.ArtistName);
+    }
+
+    private async Task PlayAlbumAsync(Album album)
+    {
+        try
         {
-            "Artist" => filtered.OrderBy(s => s.ArtistName).ThenBy(s => s.Title),
-            "Longest first" => filtered.OrderByDescending(s => s.DurationSeconds),
-            "Shortest first" => filtered.OrderBy(s => s.DurationSeconds),
-            _ => filtered.OrderBy(s => s.Title)
-        };
-
-        TracksList.ItemsSource = filtered.ToList();
+            var songs = await _client.GetSongsForAlbumAsync(album.Id);
+            PopulateSongArt(songs);
+            if (songs.Count > 0)
+                PlayQueueFrom(songs, 0);
+        }
+        catch (Exception ex)
+        {
+            await ShowErrorAsync($"Failed to play album: {ex.Message}");
+        }
     }
 
-    // --- Artist / album drill-down ---
-
-    private async void ArtistRow_Tapped(object sender, TappedRoutedEventArgs e)
+    // "Open an album" = go to its artist, with that album pre-opened (there's no separate album page).
+    private async Task OpenAlbumAsync(Album album)
     {
-        if (e.OriginalSource is not FrameworkElement fe)
-            return;
-
-        var current = fe;
-        while (current != null && current.Tag is not Artist)
-            current = current.Parent as FrameworkElement;
-
-        if (current?.Tag is not Artist artist)
-            return;
-
-        _currentArtist = artist;
-        ArtistDetailHeader.Text = artist.Name;
-        var (detail, albums) = await _client.GetArtistDetailAsync(artist.Id);
-        _currentArtist = detail;
-        ArtistFavoriteButton.Content = detail.IsFavorited ? "★" : "☆";
-        PopulateCoverArt(albums);
-        ArtistAlbumsList.ItemsSource = albums;
-
-        ShowPanel("ArtistDetail");
+        await NavigateToArtistAsync(album.ArtistId, album.ArtistName);
+        await ShowAlbumTracksAsync(album);
     }
+
+    // ================= Artists =================
+
+    private void ArtistSearchBox_TextChanged(object sender, TextChangedEventArgs e) => RefreshArtists();
+
+    private void RefreshArtists()
+    {
+        if (ArtistSearchBox == null)
+            return;
+
+        var q = ArtistSearchBox.Text.Trim();
+        ArtistsList.ItemsSource = string.IsNullOrEmpty(q)
+            ? _artistsRaw
+            : _artistsRaw.Where(a => a.Name.Contains(q, StringComparison.OrdinalIgnoreCase)).ToList();
+    }
+
+    private async void ArtistsList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (ArtistsList.SelectedItem is Artist artist)
+            await NavigateToArtistAsync(artist.Id, artist.Name);
+    }
+
+    private async Task NavigateToArtistAsync(string artistId, string fallbackName)
+    {
+        if (string.IsNullOrEmpty(artistId))
+            return;
+
+        FullScreenPlayerOverlay.Visibility = Visibility.Collapsed;
+        UpdateVisualizerCaptureState();
+        HideAllPages();
+        ShowPage(ArtistDetailPage);
+        ClearSidebarSelection();
+
+        ArtistAlbumTracksView.Visibility = Visibility.Collapsed;
+        ArtistDiscographyView.Visibility = Visibility.Visible;
+        ArtistAlbumsList.ItemsSource = null;
+        SongsList.ItemsSource = null;
+        _trackViews["AlbumTracks"].Raw = new();
+
+        ArtistHeaderNameText.Text = fallbackName;
+        ArtistHeaderStatsText.Text = "";
+        ArtistHeaderBackdrop.Source = null;
+        ArtistHeaderArt.Fill = null;
+        SetArtistFavoriteIcon(false);
+
+        try
+        {
+            var (artist, albums) = await _client.GetArtistDetailAsync(artistId);
+            _currentArtist = artist;
+            foreach (var album in albums)
+                album.CoverArtUrl = _client.GetCoverArtUrl(album.Id, 240);
+
+            ArtistAlbumsList.ItemsSource = albums;
+
+            var totalSongs = albums.Sum(a => a.SongCount);
+            ArtistHeaderNameText.Text = artist.Name;
+            ArtistHeaderStatsText.Text = $"{albums.Count} album{(albums.Count == 1 ? "" : "s")} · {totalSongs} track{(totalSongs == 1 ? "" : "s")}";
+            ArtistHeaderArt.Fill = MakeImageBrush(artist.CoverArtUrl);
+            SetArtistFavoriteIcon(artist.IsFavorited);
+            ArtistHeaderBackdrop.Source = await BlurredArt.LoadAsync(artist.CoverArtUrl);
+        }
+        catch (Exception ex)
+        {
+            await ShowErrorAsync($"Failed to load albums: {ex.Message}");
+        }
+    }
+
+    private void SetArtistFavoriteIcon(bool favorited) =>
+        ArtistFavoriteIcon.Fill = favorited
+            ? (Brush)Application.Current.Resources["AccentBrush"]
+            : new SolidColorBrush(Microsoft.UI.Colors.Transparent);
 
     private async void ArtistFavoriteButton_Click(object sender, RoutedEventArgs e)
     {
@@ -306,68 +592,375 @@ public sealed partial class MainPage : Page
                 await _client.StarArtistAsync(_currentArtist.Id);
 
             _currentArtist.IsFavorited = !_currentArtist.IsFavorited;
-            ArtistFavoriteButton.Content = _currentArtist.IsFavorited ? "★" : "☆";
+            SetArtistFavoriteIcon(_currentArtist.IsFavorited);
         }
         catch { /* best-effort */ }
     }
 
-    private string _albumDetailReturnPanel = "Albums";
+    private async void ArtistHeaderPlayButton_Click(object sender, RoutedEventArgs e) => await PlayArtistAsync(shuffle: false);
 
-    private async void AlbumCard_Tapped(object sender, TappedRoutedEventArgs e)
+    private async void ArtistHeaderShuffleButton_Click(object sender, RoutedEventArgs e) => await PlayArtistAsync(shuffle: true);
+
+    private async Task PlayArtistAsync(bool shuffle)
     {
-        if (sender is not FrameworkElement { Tag: Album album })
+        if (ArtistAlbumsList.ItemsSource is not List<Album> albums || albums.Count == 0)
             return;
 
-        // A tap on the hover play button should only play the album (AlbumPlayOverlay_Click),
-        // not also open its track list.
-        for (var el = e.OriginalSource as DependencyObject; el != null && el != sender; el = VisualTreeHelper.GetParent(el))
+        try
         {
-            if (el is Button)
+            var songs = new List<Song>();
+            foreach (var album in albums)
+                songs.AddRange(await _client.GetSongsForAlbumAsync(album.Id));
+            PopulateSongArt(songs);
+            if (songs.Count == 0)
                 return;
+
+            if (shuffle)
+                songs = songs.OrderBy(_ => _random.Next()).ToList();
+            PlayQueueFrom(songs, 0);
+        }
+        catch (Exception ex)
+        {
+            await ShowErrorAsync($"Failed to play artist: {ex.Message}");
+        }
+    }
+
+    private async Task ShowAlbumTracksAsync(Album album)
+    {
+        _currentAlbum = album;
+        ArtistDiscographyView.Visibility = Visibility.Collapsed;
+        ShowPage(ArtistAlbumTracksView);
+        ArtistAlbumTracksHeader.Text = album.Name.ToUpperInvariant();
+        SongsList.ItemsSource = null;
+
+        try
+        {
+            var songs = await _client.GetSongsForAlbumAsync(album.Id);
+            PopulateSongArt(songs);
+            _trackViews["AlbumTracks"].Raw = songs;
+            RefreshTrackView("AlbumTracks");
+        }
+        catch (Exception ex)
+        {
+            await ShowErrorAsync($"Failed to load songs: {ex.Message}");
+        }
+    }
+
+    private void BackToDiscographyButton_Click(object sender, RoutedEventArgs e)
+    {
+        ArtistAlbumTracksView.Visibility = Visibility.Collapsed;
+        ShowPage(ArtistDiscographyView);
+    }
+
+    private async void SongArtistText_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        e.Handled = true;
+        if (sender is FrameworkElement { Tag: Song song })
+            await NavigateToArtistAsync(song.ArtistId, song.ArtistName);
+    }
+
+    // ================= Tracks (library-wide) =================
+
+    private async Task LoadAllSongsAsync()
+    {
+        try
+        {
+            var songs = await _client.GetAllSongsAsync(500);
+            PopulateSongArt(songs);
+            _trackViews["AllTracks"].Raw = songs;
+            RefreshTrackView("AllTracks");
+        }
+        catch (Exception ex)
+        {
+            _songsPageLoaded = false;
+            await ShowErrorAsync($"Failed to load songs: {ex.Message}");
+        }
+    }
+
+    private void PopulateSongArt(IEnumerable<Song> songs)
+    {
+        foreach (var song in songs)
+            song.CoverArtUrl = _client.GetCoverArtUrl(song.AlbumId, 240);
+    }
+
+    // ================= Track views: search / sort =================
+
+    private void TrackSearchBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_trackViews != null && sender is FrameworkElement { Tag: string key })
+            RefreshTrackView(key);
+    }
+
+    private void RefreshTrackView(string key)
+    {
+        var view = _trackViews[key];
+        var filtered = FilterSongs(view.Raw, view.Search.Text?.Trim() ?? "");
+        view.List.ItemsSource = SortSongs(filtered, view.SortKey, view.Ascending);
+    }
+
+    private static IEnumerable<Song> FilterSongs(IEnumerable<Song> source, string search)
+    {
+        if (string.IsNullOrWhiteSpace(search))
+            return source;
+
+        return source.Where(s =>
+            s.Title.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+            s.ArtistName.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+            s.AlbumName.Contains(search, StringComparison.OrdinalIgnoreCase));
+    }
+
+    // sortKey is one of SortOptions' tags; null keeps the source order. Subsonic only has one
+    // year per track, so ReleaseYear and Year sort the same field (same as the WPF app).
+    private static List<Song> SortSongs(IEnumerable<Song> source, string? sortKey, bool ascending) => sortKey switch
+    {
+        "Album" => Order(source, s => s.AlbumName, ascending, StringComparer.OrdinalIgnoreCase),
+        "AlbumArtist" => Order(source, s => s.AlbumArtistName, ascending, StringComparer.OrdinalIgnoreCase),
+        "Artist" => Order(source, s => s.ArtistName, ascending, StringComparer.OrdinalIgnoreCase),
+        "Duration" => Order(source, s => s.DurationSeconds, ascending),
+        "Favorited" => Order(source, s => s.IsFavorited, ascending),
+        "Genre" => Order(source, s => s.Genre, ascending, StringComparer.OrdinalIgnoreCase),
+        "Name" => Order(source, s => s.Title, ascending, StringComparer.OrdinalIgnoreCase),
+        "PlayCount" => Order(source, s => s.PlayCount, ascending),
+        "Random" => source.OrderBy(_ => SortRandom.Next()).ToList(),
+        "RecentlyAdded" => Order(source, s => s.CreatedAt ?? DateTime.MinValue, ascending),
+        "RecentlyPlayed" => Order(source, s => s.PlayedAt ?? DateTime.MinValue, ascending),
+        "ReleaseYear" or "Year" => Order(source, s => s.Year ?? 0, ascending),
+        _ => source.ToList()
+    };
+
+    private static List<Song> Order<TKey>(IEnumerable<Song> source, Func<Song, TKey> keySelector, bool ascending, IComparer<TKey>? comparer = null)
+    {
+        comparer ??= Comparer<TKey>.Default;
+        return (ascending ? source.OrderBy(keySelector, comparer) : source.OrderByDescending(keySelector, comparer)).ToList();
+    }
+
+    private void SortButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: string key } button)
+            return;
+
+        var view = _trackViews[key];
+        var flyout = new MenuFlyout { Placement = FlyoutPlacementMode.BottomEdgeAlignedLeft };
+        foreach (var (tag, label) in SortOptions)
+        {
+            var item = new ToggleMenuFlyoutItem { Text = label, IsChecked = view.SortKey == tag };
+            item.Click += (_, _) =>
+            {
+                view.SortKey = view.SortKey == tag ? null : tag; // clicking the active sort clears it
+                RefreshTrackView(key);
+            };
+            flyout.Items.Add(item);
+        }
+        flyout.ShowAt(button);
+    }
+
+    private void SortDirectionButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: string key })
+            return;
+
+        var view = _trackViews[key];
+        view.Ascending = !view.Ascending;
+        view.DirectionButton.Content = view.Ascending ? "↑" : "↓";
+        RefreshTrackView(key);
+    }
+
+    // The small ▶ next to each list header: pops out Play / Shuffle.
+    private void PlayMenuButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: string key } button)
+            return;
+
+        var flyout = new MenuFlyout { Placement = FlyoutPlacementMode.BottomEdgeAlignedLeft };
+        var play = new MenuFlyoutItem { Text = "Play" };
+        play.Click += (_, _) => PlayTrackView(key, shuffle: false);
+        var shuffle = new MenuFlyoutItem { Text = "Shuffle" };
+        shuffle.Click += (_, _) => PlayTrackView(key, shuffle: true);
+        flyout.Items.Add(play);
+        flyout.Items.Add(shuffle);
+        flyout.ShowAt(button);
+    }
+
+    private void PlayTrackView(string key, bool shuffle)
+    {
+        if (_trackViews[key].List.ItemsSource is not List<Song> { Count: > 0 } songs)
+            return;
+
+        PlayQueueFrom(shuffle ? songs.OrderBy(_ => _random.Next()).ToList() : songs, 0);
+    }
+
+    // Double-click a row to play: queues the whole list as shown (search + sort), from that track.
+    private void TrackList_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
+    {
+        if (sender is not ListView { ItemsSource: List<Song> source } || (e.OriginalSource as FrameworkElement)?.DataContext is not Song song)
+            return;
+
+        var index = source.IndexOf(song);
+        if (index >= 0)
+            PlayQueueFrom(source, index);
+    }
+
+    // Right-click: select the row under the cursor, then the WPF app's song context menu.
+    private void TrackList_RightTapped(object sender, RightTappedRoutedEventArgs e)
+    {
+        if (sender is not ListView { Tag: string key } list || (e.OriginalSource as FrameworkElement)?.DataContext is not Song song)
+            return;
+
+        list.SelectedItem = song;
+        var flyout = new MenuFlyout();
+
+        AddMenuItem(flyout, "Play now", () =>
+        {
+            if (list.ItemsSource is List<Song> source && source.IndexOf(song) is var i and >= 0)
+                PlayQueueFrom(source, i);
+        });
+        AddMenuItem(flyout, "Play next", () => QueuePlayNext(song));
+        AddMenuItem(flyout, "Add to queue", () => QueueAppend(song));
+        flyout.Items.Add(new MenuFlyoutSeparator());
+        flyout.Items.Add(BuildAddToPlaylistSubmenu(song));
+        AddFavoriteToggle(flyout, song);
+
+        if (key == "AlbumTracks")
+        {
+            flyout.Items.Add(new MenuFlyoutSeparator());
+            AddMenuItem(flyout, "Add album to queue", () =>
+            {
+                foreach (var s in _trackViews["AlbumTracks"].Raw)
+                    QueueAppend(s);
+            });
+        }
+        else if (key == "PlaylistTracks")
+        {
+            flyout.Items.Add(new MenuFlyoutSeparator());
+            AddMenuItem(flyout, "Remove from playlist", async () => await RemoveFromPlaylistAsync(song));
         }
 
-        _albumDetailReturnPanel = HomePanel.Visibility == Visibility.Visible ? "Home"
-            : ArtistDetailPanel.Visibility == Visibility.Visible ? "ArtistDetail"
-            : GenreDetailPanel.Visibility == Visibility.Visible ? "GenreDetail"
-            : "Albums";
-
-        AlbumDetailHeader.Text = album.Name;
-        var songs = await _client.GetSongsForAlbumAsync(album.Id);
-        AlbumTracksList.ItemsSource = songs;
-
-        ShowPanel("AlbumDetail");
+        flyout.ShowAt(list, e.GetPosition(list));
+        e.Handled = true;
     }
 
-    private async void AlbumPlayOverlay_Click(object sender, RoutedEventArgs e)
+    private static void AddMenuItem(MenuFlyout flyout, string text, Action onClick)
     {
-        if (sender is not FrameworkElement { Tag: Album album })
-            return;
-
-        var songs = await _client.GetSongsForAlbumAsync(album.Id);
-        if (songs.Count > 0)
-            PlayQueueFrom(songs, 0);
+        var item = new MenuFlyoutItem { Text = text };
+        item.Click += (_, _) => onClick();
+        flyout.Items.Add(item);
     }
 
-    private void ArtistBack_Click(object sender, RoutedEventArgs e) => ShowPanel("Artists");
+    private void AddFavoriteToggle(MenuFlyout flyout, Song song) =>
+        AddMenuItem(flyout, song.IsFavorited ? "Remove from favorites" : "Add to favorites", async () =>
+        {
+            try
+            {
+                if (song.IsFavorited)
+                    await _client.UnstarSongAsync(song.Id);
+                else
+                    await _client.StarSongAsync(song.Id);
+                song.IsFavorited = !song.IsFavorited;
+            }
+            catch { /* best-effort */ }
+        });
 
-    private void AlbumBack_Click(object sender, RoutedEventArgs e) => ShowPanel(_albumDetailReturnPanel);
-
-    // --- Playlists ---
-
-    private async void PlaylistRow_ItemClick(object sender, ItemClickEventArgs e)
+    private MenuFlyoutSubItem BuildAddToPlaylistSubmenu(Song song)
     {
-        if (e.ClickedItem is not Playlist playlist)
+        var sub = new MenuFlyoutSubItem { Text = "Add to playlist" };
+        foreach (var playlist in _playlists)
+        {
+            var item = new MenuFlyoutItem { Text = playlist.Name };
+            item.Click += async (_, _) =>
+            {
+                try
+                {
+                    await _client.AddSongToPlaylistAsync(playlist.Id, song.Id);
+                    await LoadPlaylistsAsync();
+                }
+                catch (Exception ex) { await ShowErrorAsync($"Failed to add to playlist: {ex.Message}"); }
+            };
+            sub.Items.Add(item);
+        }
+
+        if (_playlists.Count > 0)
+            sub.Items.Add(new MenuFlyoutSeparator());
+
+        var create = new MenuFlyoutItem { Text = "New playlist..." };
+        create.Click += async (_, _) =>
+        {
+            var name = await PromptForPlaylistNameAsync();
+            if (string.IsNullOrWhiteSpace(name))
+                return;
+            var id = await _client.CreatePlaylistAsync(name);
+            if (id != null)
+                await _client.AddSongToPlaylistAsync(id, song.Id);
+            await LoadPlaylistsAsync();
+        };
+        sub.Items.Add(create);
+        return sub;
+    }
+
+    // ================= Playlists =================
+
+    private async Task LoadPlaylistsAsync()
+    {
+        try
+        {
+            var selectedId = (PlaylistsList.SelectedItem as Playlist)?.Id;
+            _playlists = await _client.GetPlaylistsAsync();
+
+            _suppressNavEvents = true;
+            PlaylistsList.ItemsSource = _playlists;
+            PlaylistsList.SelectedItem = _playlists.FirstOrDefault(p => p.Id == selectedId);
+            _suppressNavEvents = false;
+
+            HomePlaylistsList.ItemsSource = _playlists;
+            HomePlaylistsSection.Visibility = _playlists.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        }
+        catch (Exception ex)
+        {
+            _suppressNavEvents = false;
+            await ShowErrorAsync($"Failed to load playlists: {ex.Message}");
+        }
+    }
+
+    private async void PlaylistsList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_suppressNavEvents || PlaylistsList.SelectedItem is not Playlist playlist)
             return;
+
+        FullScreenPlayerOverlay.Visibility = Visibility.Collapsed;
+        UpdateVisualizerCaptureState();
+        ClearSidebarSelection(keepPlaylist: true);
+        HideAllPages();
+        ShowPage(PlaylistsPage);
 
         _currentPlaylist = playlist;
-        PlaylistDetailHeader.Text = playlist.Name;
-        var songs = await _client.GetPlaylistSongsAsync(playlist.Id);
-        PlaylistTracksList.ItemsSource = songs;
+        PlaylistTracksHeader.Text = playlist.Name.ToUpperInvariant();
+        SetImage(PlaylistHeaderArt, playlist.CoverArtUrl);
+        PlaylistSongsList.ItemsSource = null;
 
-        ShowPanel("PlaylistDetail");
+        try
+        {
+            var songs = await _client.GetPlaylistSongsAsync(playlist.Id);
+            PopulateSongArt(songs);
+            _trackViews["PlaylistTracks"].Raw = songs;
+            RefreshTrackView("PlaylistTracks");
+        }
+        catch (Exception ex)
+        {
+            await ShowErrorAsync($"Failed to load playlist: {ex.Message}");
+        }
     }
 
-    private async void NewPlaylist_Click(object sender, RoutedEventArgs e)
+    private void PlaylistsList_RightTapped(object sender, RightTappedRoutedEventArgs e)
+    {
+        if ((e.OriginalSource as FrameworkElement)?.DataContext is not Playlist playlist)
+            return;
+
+        var flyout = new MenuFlyout();
+        AddMenuItem(flyout, "Delete playlist", async () => await DeletePlaylistAsync(playlist));
+        flyout.ShowAt(PlaylistsList, e.GetPosition(PlaylistsList));
+        e.Handled = true;
+    }
+
+    private async void NewPlaylistButton_Click(object sender, RoutedEventArgs e)
     {
         var name = await PromptForPlaylistNameAsync();
         if (string.IsNullOrWhiteSpace(name))
@@ -392,15 +985,12 @@ public sealed partial class MainPage : Page
         return await dialog.ShowAsync() == ContentDialogResult.Primary ? nameBox.Text.Trim() : null;
     }
 
-    private async void DeletePlaylist_Click(object sender, RoutedEventArgs e)
+    private async Task DeletePlaylistAsync(Playlist playlist)
     {
-        if (_currentPlaylist == null)
-            return;
-
         var confirm = new ContentDialog
         {
             Title = "Delete playlist",
-            Content = $"Delete \"{_currentPlaylist.Name}\"? This can't be undone.",
+            Content = $"Delete \"{playlist.Name}\"? This can't be undone.",
             PrimaryButtonText = "Delete",
             CloseButtonText = "Cancel",
             XamlRoot = this.XamlRoot
@@ -409,106 +999,112 @@ public sealed partial class MainPage : Page
         if (await confirm.ShowAsync() != ContentDialogResult.Primary)
             return;
 
-        await _client.DeletePlaylistAsync(_currentPlaylist.Id);
-        _currentPlaylist = null;
+        await _client.DeletePlaylistAsync(playlist.Id);
+        if (_currentPlaylist?.Id == playlist.Id)
+        {
+            _currentPlaylist = null;
+            NavHome.IsChecked = true;
+        }
         await LoadPlaylistsAsync();
-        await LoadHomeAsync();
-        ShowPanel("Home");
     }
 
-    private async void AddToPlaylistButton_Click(object sender, RoutedEventArgs e)
+    private async Task RemoveFromPlaylistAsync(Song song)
     {
-        if (_currentSong == null)
+        if (_currentPlaylist == null || song.PlaylistIndex < 0)
             return;
 
-        var playlists = await _client.GetPlaylistsAsync();
-
-        var list = new ListView { SelectionMode = ListViewSelectionMode.Single };
-        list.ItemsSource = playlists;
-        list.DisplayMemberPath = nameof(Playlist.Name);
-
-        var dialog = new ContentDialog
+        try
         {
-            Title = $"Add \"{_currentSong.Title}\" to playlist",
-            Content = list,
-            PrimaryButtonText = "Add",
-            SecondaryButtonText = "New playlist...",
-            CloseButtonText = "Cancel",
-            XamlRoot = this.XamlRoot
-        };
-
-        var result = await dialog.ShowAsync();
-
-        if (result == ContentDialogResult.Primary)
-        {
-            if (list.SelectedItem is Playlist selected)
-                await _client.AddSongToPlaylistAsync(selected.Id, _currentSong.Id);
-        }
-        else if (result == ContentDialogResult.Secondary)
-        {
-            var name = await PromptForPlaylistNameAsync();
-            if (string.IsNullOrWhiteSpace(name))
-                return;
-
-            var newId = await _client.CreatePlaylistAsync(name);
-            if (newId != null)
-                await _client.AddSongToPlaylistAsync(newId, _currentSong.Id);
-
+            await _client.RemoveSongFromPlaylistAsync(_currentPlaylist.Id, song.PlaylistIndex);
+            var songs = await _client.GetPlaylistSongsAsync(_currentPlaylist.Id);
+            PopulateSongArt(songs);
+            _trackViews["PlaylistTracks"].Raw = songs;
+            RefreshTrackView("PlaylistTracks");
             await LoadPlaylistsAsync();
         }
-    }
-
-    // --- Lyrics ---
-
-    private async void LyricsButton_Click(object sender, RoutedEventArgs e)
-    {
-        if (LyricsPanel.Visibility == Visibility.Visible)
+        catch (Exception ex)
         {
-            LyricsPanel.Visibility = Visibility.Collapsed;
-            return;
+            await ShowErrorAsync($"Failed to remove from playlist: {ex.Message}");
         }
-
-        QueuePanel.Visibility = Visibility.Collapsed;
-        CloseVisualizer();
-        LyricsPanel.Visibility = Visibility.Visible;
-        await LoadLyricsForCurrentSongAsync();
     }
 
-    private void CloseLyrics_Click(object sender, RoutedEventArgs e) => LyricsPanel.Visibility = Visibility.Collapsed;
+    // ================= Full-screen player: Queue / Lyrics / Visualizer =================
 
-    private void QueueButton_Click(object sender, RoutedEventArgs e)
+    private void NowPlayingText_Tapped(object sender, TappedRoutedEventArgs e)
     {
-        if (QueuePanel.Visibility == Visibility.Visible)
-        {
-            QueuePanel.Visibility = Visibility.Collapsed;
-            return;
-        }
-
-        LyricsPanel.Visibility = Visibility.Collapsed;
-        CloseVisualizer();
-        QueuePanel.Visibility = Visibility.Visible;
+        FullScreenPlayerOverlay.Visibility = FullScreenPlayerOverlay.Visibility == Visibility.Visible
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+        if (FullScreenPlayerOverlay.Visibility == Visibility.Visible)
+            Motion.FadeIn(FullScreenPlayerOverlay);
+        UpdateVisualizerCaptureState();
     }
 
-    private void CloseQueue_Click(object sender, RoutedEventArgs e) => QueuePanel.Visibility = Visibility.Collapsed;
-
-    private void QueueList_ItemClick(object sender, ItemClickEventArgs e)
+    private void QueueToggleButton_Click(object sender, RoutedEventArgs e)
     {
-        if (e.ClickedItem is not Song song)
+        QueueTabButton.IsChecked = true;
+        FullScreenPlayerOverlay.Visibility = Visibility.Visible;
+        Motion.FadeIn(FullScreenPlayerOverlay);
+        UpdateVisualizerCaptureState();
+    }
+
+    private void CloseFullScreenPlayer_Click(object sender, RoutedEventArgs e)
+    {
+        FullScreenPlayerOverlay.Visibility = Visibility.Collapsed;
+        UpdateVisualizerCaptureState();
+    }
+
+    private async void NowPlayingArtist_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        e.Handled = true;
+        if (_queueIndex < 0 || _queueIndex >= _queue.Count)
+            return;
+
+        var song = _queue[_queueIndex];
+        await NavigateToArtistAsync(song.ArtistId, song.ArtistName);
+    }
+
+    private async void SidePanelTabButton_Checked(object sender, RoutedEventArgs e)
+    {
+        if (sender is not RadioButton { Tag: string panel } || QueueList == null)
+            return;
+
+        QueueList.Visibility = panel == "Queue" ? Visibility.Visible : Visibility.Collapsed;
+        LyricsPanelView.Visibility = panel == "Lyrics" ? Visibility.Visible : Visibility.Collapsed;
+        VisualizerPanelView.Visibility = panel == "Visualizer" ? Visibility.Visible : Visibility.Collapsed;
+        UpdateVisualizerCaptureState();
+
+        if (panel == "Lyrics")
+            await LoadLyricsForCurrentSongAsync();
+    }
+
+    private void QueueList_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
+    {
+        if ((e.OriginalSource as FrameworkElement)?.DataContext is not Song song)
             return;
 
         var index = _queue.IndexOf(song);
-        if (index < 0)
-            return;
-
-        _queueIndex = index;
-        PlaySong(song);
+        if (index >= 0)
+            PlayQueueIndex(index);
     }
 
-    private void RemoveFromQueue_Click(object sender, RoutedEventArgs e)
+    private void QueueList_RightTapped(object sender, RightTappedRoutedEventArgs e)
     {
-        if (sender is not FrameworkElement { Tag: Song song })
+        if ((e.OriginalSource as FrameworkElement)?.DataContext is not Song song)
             return;
 
+        QueueList.SelectedItem = song;
+        var flyout = new MenuFlyout();
+        flyout.Items.Add(BuildAddToPlaylistSubmenu(song));
+        AddFavoriteToggle(flyout, song);
+        flyout.Items.Add(new MenuFlyoutSeparator());
+        AddMenuItem(flyout, "Remove from queue", () => RemoveFromQueue(song));
+        flyout.ShowAt(QueueList, e.GetPosition(QueueList));
+        e.Handled = true;
+    }
+
+    private void RemoveFromQueue(Song song)
+    {
         var index = _queue.IndexOf(song);
         if (index < 0)
             return;
@@ -520,48 +1116,60 @@ public sealed partial class MainPage : Page
             _queueIndex--;
         else if (index == _queueIndex)
             _queueIndex = Math.Min(_queueIndex, _queue.Count - 1);
+
+        QueueList.SelectedIndex = _queueIndex;
     }
 
     private async Task LoadLyricsForCurrentSongAsync()
     {
-        if (_currentSong == null)
+        var song = _queueIndex >= 0 && _queueIndex < _queue.Count ? _queue[_queueIndex] : null;
+        if (song == null)
         {
-            LyricsList.ItemsSource = new List<LyricLine> { new() { Text = "Nothing playing." } };
+            LyricsList.ItemsSource = null;
+            LyricsPlaceholder.Text = "Nothing playing.";
+            LyricsPlaceholder.Visibility = Visibility.Visible;
             return;
         }
 
-        var (lines, _) = await _client.GetLyricsAsync(_currentSong.Id, _currentSong.ArtistName, _currentSong.Title);
-        LyricsList.ItemsSource = lines.Count > 0
-            ? lines
-            : new List<LyricLine> { new() { Text = "No lyrics found for this track." } };
-    }
-
-    // --- Visualizer ---
-
-    private void VisualizerButton_Click(object sender, RoutedEventArgs e)
-    {
-        if (VisualizerPanel.Visibility == Visibility.Visible)
+        try
         {
-            CloseVisualizer();
-            return;
+            var (lines, synced) = await _client.GetLyricsAsync(song.Id, song.ArtistName, song.Title);
+            _lyricsAreSynced = synced;
+            LyricsList.ItemsSource = lines;
+            LyricsPlaceholder.Text = "No lyrics found for this track.";
+            LyricsPlaceholder.Visibility = lines.Count > 0 ? Visibility.Collapsed : Visibility.Visible;
         }
-
-        LyricsPanel.Visibility = Visibility.Collapsed;
-        QueuePanel.Visibility = Visibility.Collapsed;
-        VisualizerPanel.Visibility = Visibility.Visible;
-        StartVisualizer();
+        catch
+        {
+            LyricsList.ItemsSource = null;
+            LyricsPlaceholder.Text = "No lyrics found for this track.";
+            LyricsPlaceholder.Visibility = Visibility.Visible;
+        }
     }
 
-    private void CloseVisualizer_Click(object sender, RoutedEventArgs e) => CloseVisualizer();
-
-    private void CloseVisualizer()
+    // Synced lyrics: double-click a line to jump there.
+    private void LyricsList_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
     {
-        VisualizerPanel.Visibility = Visibility.Collapsed;
-        StopVisualizer();
+        if (!_lyricsAreSynced || (e.OriginalSource as FrameworkElement)?.DataContext is not LyricLine line)
+            return;
+
+        _player.PlaybackSession.Position = line.Start;
     }
 
-    // Capture + per-frame rendering only run while the panel is open - no point capturing
-    // audio or redrawing every frame for a panel nobody can see.
+    // ================= Visualizer =================
+
+    // Capture + per-frame rendering only run while the Visualizer tab of the (open) full-screen
+    // player is showing - no point capturing audio or redrawing for a panel nobody can see.
+    private void UpdateVisualizerCaptureState()
+    {
+        var showing = FullScreenPlayerOverlay.Visibility == Visibility.Visible
+                      && VisualizerPanelView.Visibility == Visibility.Visible;
+        if (showing)
+            StartVisualizer();
+        else
+            StopVisualizer();
+    }
+
     private void StartVisualizer()
     {
         if (_visualizerRenderHooked)
@@ -702,21 +1310,7 @@ public sealed partial class MainPage : Page
         return geometry;
     }
 
-    // --- Queue / playback ---
-
-    private void TrackList_ItemClick(object sender, ItemClickEventArgs e)
-    {
-        if (sender is not ListView { ItemsSource: List<Song> source } || e.ClickedItem is not Song clicked)
-            return;
-
-        var index = source.IndexOf(clicked);
-        if (index < 0)
-            return;
-
-        // Matches the WPF app's behavior: clicking a track queues the whole list it came
-        // from (album, playlist, or library-wide), starting from that track.
-        PlayQueueFrom(source, index);
-    }
+    // ================= Queue / playback =================
 
     private void PlayQueueFrom(List<Song> source, int startIndex)
     {
@@ -724,30 +1318,11 @@ public sealed partial class MainPage : Page
         foreach (var song in source)
             _queue.Add(song);
 
-        _queueIndex = startIndex;
-        PlaySong(_queue[_queueIndex]);
+        PlayQueueIndex(startIndex);
     }
 
-    private void TrackRow_RightTapped(object sender, RightTappedRoutedEventArgs e)
-    {
-        if (sender is not FrameworkElement { Tag: Song song } fe)
-            return;
-
-        var flyout = new MenuFlyout();
-
-        var playNext = new MenuFlyoutItem { Text = "Play next" };
-        playNext.Click += (_, _) => QueuePlayNext(song);
-        flyout.Items.Add(playNext);
-
-        var addToQueue = new MenuFlyoutItem { Text = "Add to queue" };
-        addToQueue.Click += (_, _) => QueueAppend(song);
-        flyout.Items.Add(addToQueue);
-
-        flyout.ShowAt(fe, e.GetPosition(fe));
-    }
-
-    // Inserts right after the currently playing track without interrupting playback - if
-    // nothing is playing yet, this just starts the queue with this one song.
+    // Inserts right after the current track without interrupting playback; if nothing is
+    // playing yet, starts the queue with this one song.
     private void QueuePlayNext(Song song)
     {
         if (_queueIndex < 0)
@@ -755,7 +1330,6 @@ public sealed partial class MainPage : Page
             PlayQueueFrom(new List<Song> { song }, 0);
             return;
         }
-
         _queue.Insert(_queueIndex + 1, song);
     }
 
@@ -766,27 +1340,45 @@ public sealed partial class MainPage : Page
             PlayQueueFrom(new List<Song> { song }, 0);
             return;
         }
-
         _queue.Add(song);
     }
 
-    private async void PlaySong(Song song)
+    private async void PlayQueueIndex(int index)
     {
-        _currentSong = song;
+        if (index < 0 || index >= _queue.Count)
+            return;
+
+        _queueIndex = index;
+        var song = _queue[index];
+
         _player.Source = MediaSource.CreateFromUri(new Uri(_client.GetStreamUrl(song.Id)));
         _player.Play();
-        PlayPauseButton.Content = "Pause";
-        NowPlayingText.Text = $"{song.Title} — {song.ArtistName}";
-        FavoriteButton.Content = song.IsFavorited ? "★ Fav" : "☆ Fav";
+        SetPlaying(true);
 
-        if (LyricsPanel.Visibility == Visibility.Visible)
+        NowPlayingText.Text = song.Title;
+        NowPlayingSubText.Text = song.ArtistName;
+        SetImage(NowPlayingArt, song.CoverArtUrl ?? _client.GetCoverArtUrl(song.AlbumId, 240));
+        FullScreenTitleText.Text = song.Title;
+        FullScreenArtistText.Text = song.ArtistName;
+        // The full-screen art is 360x360 - fetch a bigger rendition than the 240px list thumbnails.
+        SetImage(FullScreenArt, _client.GetCoverArtUrl(song.AlbumId, 720));
+        QueueList.SelectedIndex = index;
+
+        if (LyricsPanelView.Visibility == Visibility.Visible)
             await LoadLyricsForCurrentSongAsync();
+    }
+
+    private void SetPlaying(bool playing)
+    {
+        _isPlaying = playing;
+        PlayIcon.Visibility = playing ? Visibility.Collapsed : Visibility.Visible;
+        PauseIcon.Visibility = playing ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void ShuffleButton_Click(object sender, RoutedEventArgs e)
     {
         _isShuffled = !_isShuffled;
-        ShuffleButton.Content = _isShuffled ? "Shuffle: On" : "Shuffle";
+        ShuffleIconPath.Stroke = (Brush)Application.Current.Resources[_isShuffled ? "AccentBrush" : "TextSecondaryBrush"];
     }
 
     private void RepeatButton_Click(object sender, RoutedEventArgs e)
@@ -797,17 +1389,16 @@ public sealed partial class MainPage : Page
             RepeatMode.All => RepeatMode.One,
             _ => RepeatMode.Off
         };
-        RepeatButton.Content = _repeatMode switch
-        {
-            RepeatMode.All => "Repeat: All",
-            RepeatMode.One => "Repeat: One",
-            _ => "Repeat: Off"
-        };
+
+        var brush = (Brush)Application.Current.Resources[_repeatMode == RepeatMode.Off ? "TextSecondaryBrush" : "AccentBrush"];
+        RepeatIconPath.Stroke = brush;
+        RepeatArrowHead.Fill = brush;
+        RepeatOneBadge.Foreground = brush;
+        RepeatOneBadge.Visibility = _repeatMode == RepeatMode.One ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    // Centralizes "what plays next" so both the Next button and auto-advance-on-completion
-    // use the same rule: random-excluding-current when shuffled, else sequential, wrapping
-    // to 0 only when RepeatMode.All. Returns -1 when there's nothing next to play.
+    // One rule for both the Next button and auto-advance: random-excluding-current when
+    // shuffled, else sequential, wrapping to 0 only with RepeatMode.All. -1 = nothing next.
     private int GetNextQueueIndex()
     {
         if (_queue.Count == 0 || _queueIndex < 0)
@@ -828,67 +1419,48 @@ public sealed partial class MainPage : Page
 
     private void PreviousButton_Click(object sender, RoutedEventArgs e)
     {
-        if (_queueIndex <= 0 || _queueIndex >= _queue.Count)
-            return;
-
-        _queueIndex--;
-        PlaySong(_queue[_queueIndex]);
+        if (_queueIndex > 0)
+            PlayQueueIndex(_queueIndex - 1);
     }
 
-    private void NextButton_Click(object sender, RoutedEventArgs e) => PlayNext();
+    private void NextButton_Click(object sender, RoutedEventArgs e) => PlayQueueIndex(GetNextQueueIndex());
 
-    private void PlayNext()
-    {
-        var next = GetNextQueueIndex();
-        if (next < 0)
-            return;
-
-        _queueIndex = next;
-        PlaySong(_queue[_queueIndex]);
-    }
-
-    // Natural completion only (not on Stop/skip), matching the WPF app's scrobble policy -
-    // skipping through tracks shouldn't inflate their play count.
+    // Natural completion only (not Stop/skip) scrobbles - skipping shouldn't inflate play counts.
     private async void OnMediaEnded()
     {
-        if (_currentSong != null)
+        if (_queueIndex >= 0 && _queueIndex < _queue.Count)
         {
-            try { await _client.ScrobbleAsync(_currentSong.Id); }
+            try { await _client.ScrobbleAsync(_queue[_queueIndex].Id); }
             catch { /* best-effort */ }
         }
 
         if (_repeatMode == RepeatMode.One && _queueIndex >= 0 && _queueIndex < _queue.Count)
         {
-            PlaySong(_queue[_queueIndex]);
+            PlayQueueIndex(_queueIndex);
             return;
         }
 
         var next = GetNextQueueIndex();
         if (next >= 0)
-        {
-            _queueIndex = next;
-            PlaySong(_queue[_queueIndex]);
-        }
+            PlayQueueIndex(next);
         else
-        {
-            PlayPauseButton.Content = "Play";
-        }
+            SetPlaying(false);
     }
 
     private void PlayPauseButton_Click(object sender, RoutedEventArgs e)
     {
-        if (_currentSong == null)
+        if (_queueIndex < 0)
             return;
 
         if (_player.PlaybackSession.PlaybackState == MediaPlaybackState.Playing)
         {
             _player.Pause();
-            PlayPauseButton.Content = "Play";
+            SetPlaying(false);
         }
         else
         {
             _player.Play();
-            PlayPauseButton.Content = "Pause";
+            SetPlaying(true);
         }
     }
 
@@ -896,39 +1468,22 @@ public sealed partial class MainPage : Page
     {
         _player.Pause();
         _player.PlaybackSession.Position = TimeSpan.Zero;
-        PlayPauseButton.Content = "Play";
-    }
-
-    private async void FavoriteButton_Click(object sender, RoutedEventArgs e)
-    {
-        if (_currentSong == null)
-            return;
-
-        try
-        {
-            if (_currentSong.IsFavorited)
-                await _client.UnstarSongAsync(_currentSong.Id);
-            else
-                await _client.StarSongAsync(_currentSong.Id);
-
-            _currentSong.IsFavorited = !_currentSong.IsFavorited;
-            FavoriteButton.Content = _currentSong.IsFavorited ? "★ Fav" : "☆ Fav";
-        }
-        catch { /* best-effort */ }
+        SetPlaying(false);
     }
 
     private void VolumeSlider_ValueChanged(object sender, RangeBaseValueChangedEventArgs e)
     {
-        _player.Volume = e.NewValue / 100.0;
+        _player.Volume = e.NewValue;
     }
 
-    private void ProgressSlider_PointerCaptureLost(object sender, PointerRoutedEventArgs e)
+    private void CommitSeek()
     {
-        var duration = _player.PlaybackSession.NaturalDuration;
-        if (duration <= TimeSpan.Zero)
+        if (!_isUserSeeking)
             return;
 
-        _player.PlaybackSession.Position = TimeSpan.FromSeconds(ProgressSlider.Value * duration.TotalSeconds);
+        _isUserSeeking = false;
+        if (_player.PlaybackSession.NaturalDuration > TimeSpan.Zero)
+            _player.PlaybackSession.Position = TimeSpan.FromSeconds(ProgressSlider.Value);
     }
 
     private void ProgressTimer_Tick(object? sender, object e)
@@ -940,8 +1495,23 @@ public sealed partial class MainPage : Page
         var position = session.Position;
         var duration = session.NaturalDuration;
 
-        ProgressSlider.Value = position.TotalSeconds / duration.TotalSeconds;
+        if (!_isUserSeeking)
+        {
+            ProgressSlider.Maximum = duration.TotalSeconds;
+            ProgressSlider.Value = position.TotalSeconds;
+        }
         ElapsedText.Text = $"{(int)position.TotalMinutes}:{position.Seconds:D2}";
         DurationText.Text = $"{(int)duration.TotalMinutes}:{duration.Seconds:D2}";
     }
+
+    // ================= Image helpers =================
+
+    // Single named art elements (hero, now playing, full-screen, playlist header) use an
+    // ImageBrush background on a rounded Border, like the WPF app does.
+    private static void SetImage(Border target, string? url) => target.Background = MakeImageBrush(url);
+
+    private static ImageBrush? MakeImageBrush(string? url) =>
+        string.IsNullOrEmpty(url)
+            ? null
+            : new ImageBrush { ImageSource = new BitmapImage(new Uri(url)), Stretch = Stretch.UniformToFill };
 }

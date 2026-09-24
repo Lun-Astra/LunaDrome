@@ -16,15 +16,13 @@ public sealed class TrackColumnLayout : INotifyPropertyChanged
 {
     public const double MinWidth = 48;
 
-    private double _titleWidth = 340;
-    private double _artistWidth = 200;
-    private double _albumWidth = 200;
-    private double _durationWidth = 64;
+    private double _titleWidth = 290;
+    private double _timeWidth = 64;
+    private double _genreWidth = 140;
 
     public double TitleWidth { get => _titleWidth; set => Set(ref _titleWidth, value); }
-    public double ArtistWidth { get => _artistWidth; set => Set(ref _artistWidth, value); }
-    public double AlbumWidth { get => _albumWidth; set => Set(ref _albumWidth, value); }
-    public double DurationWidth { get => _durationWidth; set => Set(ref _durationWidth, value); }
+    public double TimeWidth { get => _timeWidth; set => Set(ref _timeWidth, value); }
+    public double GenreWidth { get => _genreWidth; set => Set(ref _genreWidth, value); }
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -40,7 +38,7 @@ public sealed class TrackColumnLayout : INotifyPropertyChanged
 }
 
 /// <summary>
-/// Header row (TITLE / ARTIST / ALBUM / TIME) with a drag handle at the right edge of each
+/// Header row (TITLE / TIME / GENRE, matching the WPF app's GridView columns) with a drag handle at the right edge of each
 /// column, driving a shared <see cref="TrackColumnLayout"/>.
 /// </summary>
 public sealed class TrackListHeader : Grid
@@ -58,15 +56,17 @@ public sealed class TrackListHeader : Grid
     private static readonly (string Header, string Property)[] Columns =
     {
         ("TITLE", nameof(TrackColumnLayout.TitleWidth)),
-        ("ARTIST", nameof(TrackColumnLayout.ArtistWidth)),
-        ("ALBUM", nameof(TrackColumnLayout.AlbumWidth)),
-        ("TIME", nameof(TrackColumnLayout.DurationWidth)),
+        ("TIME", nameof(TrackColumnLayout.TimeWidth)),
+        ("GENRE", nameof(TrackColumnLayout.GenreWidth)),
     };
 
     public TrackListHeader()
     {
-        // Matches ListViewItem's default horizontal padding so headers line up with cells.
-        Padding = new Thickness(8, 0, 8, 6);
+        // WPF GridViewColumnHeader look: 11px semibold secondary text, 8,4 padding, a hairline rule.
+        Padding = new Thickness(0);
+        Margin = new Thickness(0, 0, 0, 2);
+        BorderBrush = (Brush)Application.Current.Resources["BorderBrush2"];
+        BorderThickness = new Thickness(0, 1, 0, 0);
 
         for (var i = 0; i < Columns.Length; i++)
         {
@@ -77,10 +77,10 @@ public sealed class TrackListHeader : Grid
                 Text = Columns[i].Header,
                 FontSize = 11,
                 FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-                Foreground = (Brush)Application.Current.Resources["TextSecondaryBrush"],
+                Foreground = (Brush)Application.Current.Resources["TextPrimaryBrush"],
                 VerticalAlignment = VerticalAlignment.Center,
                 TextTrimming = TextTrimming.CharacterEllipsis,
-                Padding = new Thickness(0, 0, 12, 0)
+                Padding = new Thickness(8, 4, 8, 4)
             };
             var cell = new Grid();
             cell.Children.Add(label);
@@ -115,9 +115,8 @@ public sealed class TrackListHeader : Grid
     internal double GetWidth(string property) => property switch
     {
         nameof(TrackColumnLayout.TitleWidth) => Layout!.TitleWidth,
-        nameof(TrackColumnLayout.ArtistWidth) => Layout!.ArtistWidth,
-        nameof(TrackColumnLayout.AlbumWidth) => Layout!.AlbumWidth,
-        _ => Layout!.DurationWidth
+        nameof(TrackColumnLayout.TimeWidth) => Layout!.TimeWidth,
+        _ => Layout!.GenreWidth
     };
 
     internal void SetWidth(string property, double value)
@@ -125,9 +124,8 @@ public sealed class TrackListHeader : Grid
         switch (property)
         {
             case nameof(TrackColumnLayout.TitleWidth): Layout!.TitleWidth = value; break;
-            case nameof(TrackColumnLayout.ArtistWidth): Layout!.ArtistWidth = value; break;
-            case nameof(TrackColumnLayout.AlbumWidth): Layout!.AlbumWidth = value; break;
-            default: Layout!.DurationWidth = value; break;
+            case nameof(TrackColumnLayout.TimeWidth): Layout!.TimeWidth = value; break;
+            default: Layout!.GenreWidth = value; break;
         }
     }
 
