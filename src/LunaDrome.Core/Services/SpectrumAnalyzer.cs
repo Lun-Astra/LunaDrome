@@ -30,6 +30,22 @@ public sealed class SpectrumAnalyzer
 
     public int SampleRate { get; set; } = 44100;
 
+    /// <summary>
+    /// Automatic gain: scale so the recent loudest band sits near full height, making the
+    /// visualizer independent of playback volume (GitHub issue #1: on Linux it barely moved below
+    /// ~90% volume, because the captured signal is taken after the volume is applied).
+    /// Off by default - the Windows capture was tuned without it.
+    /// </summary>
+    public bool AutoGain { get; set; }
+
+    // Peak-follower for AutoGain: jumps up to a louder peak immediately, decays slowly so quiet
+    // passages in a song stay quieter than loud ones instead of all being pumped to full height.
+    private float _peakDb = -60f;
+    private const float PeakDecayDbPerSecond = 6f;
+    private const float TargetPeakDb = -6f;   // loudest recent band lands at 90% height
+    private const float MaxBoostDb = 40f;     // never amplify more than this...
+    private const float SilenceDb = -85f;     // ...and never pump up (near-)silence
+
     public void AddSamples(ReadOnlySpan<float> samples)
     {
         foreach (var sample in samples)
@@ -49,8 +65,24 @@ public sealed class SpectrumAnalyzer
             Array.Copy(_latestBands, destination, BandCount);
     }
 
+    private float UpdateAutoGain(float[] bandDb)
+    {
+        var frameMax = float.MinValue;
+        foreach (var db in bandDb)
+            frameMax = Math.Max(frameMax, db);
+
+        var decayPerFrame = PeakDecayDbPerSecond * FftLength / Math.Max(1, SampleRate);
+        _peakDb = Math.Max(frameMax, _peakDb - decayPerFrame);
+
+        if (_peakDb < SilenceDb)
+            return 0f;
+
+        return Math.Clamp(TargetPeakDb - _peakDb, 0f, MaxBoostDb);
+    }
+
     public void Reset()
     {
+        _peakDb = -60f;
         _windowPos = 0;
         lock (_lock)
             Array.Clear(_latestBands);
@@ -71,6 +103,7 @@ public sealed class SpectrumAnalyzer
         const float scale = 1f / FftLength;
 
         var bands = new float[BandCount];
+        var bandDb = new float[BandCount];
         var usableBins = FftLength / 2;
         const float minFreq = 40f;
         var maxFreq = Math.Min(16000f, SampleRate / 2f);
@@ -92,9 +125,12 @@ public sealed class SpectrumAnalyzer
                 sum += MathF.Sqrt(_re[i] * _re[i] + _im[i] * _im[i]) * scale;
 
             var magnitude = sum / (binEnd - binStart + 1);
-            var dB = 20f * MathF.Log10(magnitude + 1e-6f);
-            bands[band] = Math.Clamp((dB + 60f) / 60f, 0f, 1f);
+            bandDb[band] = 20f * MathF.Log10(magnitude + 1e-6f);
         }
+
+        var gainDb = AutoGain ? UpdateAutoGain(bandDb) : 0f;
+        for (var band = 0; band < BandCount; band++)
+            bands[band] = Math.Clamp((bandDb[band] + gainDb + 60f) / 60f, 0f, 1f);
 
         lock (_lock)
             Array.Copy(bands, _latestBands, BandCount);
