@@ -43,6 +43,9 @@ internal class Program
         }
     }
 
+    // Thread-safe "already reported" set (P/Invokes can resolve from several threads).
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> ReportedLibraries = new();
+
     private static IntPtr ResolveLibVlc(string name, Assembly assembly, DllImportSearchPath? searchPath)
     {
         string[] candidates = name switch
@@ -56,7 +59,8 @@ internal class Program
         {
             if (NativeLibrary.TryLoad(candidate, assembly, searchPath, out var handle))
             {
-                if (Environment.GetEnvironmentVariable("LUNADROME_LOG") == "1")
+                // The resolver runs once per P/Invoke entry point, so report each library once.
+                if (Environment.GetEnvironmentVariable("LUNADROME_LOG") == "1" && ReportedLibraries.TryAdd(name, 0))
                     Console.Error.WriteLine($"[LunaDrome] loaded {name} as {candidate}");
                 return handle;
             }
