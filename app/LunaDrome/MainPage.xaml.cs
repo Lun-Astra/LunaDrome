@@ -2,7 +2,9 @@ using System.Collections.ObjectModel;
 using LunaDrome.Core.Models;
 using LunaDrome.Core.Services;
 using Microsoft.UI.Xaml.Controls.Primitives;
+using LunaDrome.Services;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using Windows.Media.Core;
 using Windows.Media.Playback;
 
@@ -34,9 +36,19 @@ public sealed partial class MainPage : Page
     private List<Album> _allAlbumsRaw = new();
     private List<Song> _allSongsRaw = new();
 
+    // Visualizer: loopback capture feeds the analyzer on its own thread; the render loop pulls
+    // the latest bands once per display frame (see OnVisualizerRenderFrame).
+    private readonly SpectrumAnalyzer _spectrum = new();
+    private readonly LoopbackCapture _loopback;
+    private readonly float[] _visualizerLatestBands = new float[SpectrumAnalyzer.BandCount];
+    private readonly float[] _visualizerSmoothed = new float[SpectrumAnalyzer.BandCount];
+    private bool _visualizerRenderHooked;
+
     public MainPage()
     {
+        _loopback = new LoopbackCapture(_spectrum);
         this.InitializeComponent();
+        Unloaded += (_, _) => { StopVisualizer(); _loopback.Dispose(); };
 
         _progressTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(400) };
         _progressTimer.Tick += ProgressTimer_Tick;
@@ -306,6 +318,14 @@ public sealed partial class MainPage : Page
         if (sender is not FrameworkElement { Tag: Album album })
             return;
 
+        // A tap on the hover play button should only play the album (AlbumPlayOverlay_Click),
+        // not also open its track list.
+        for (var el = e.OriginalSource as DependencyObject; el != null && el != sender; el = VisualTreeHelper.GetParent(el))
+        {
+            if (el is Button)
+                return;
+        }
+
         _albumDetailReturnPanel = HomePanel.Visibility == Visibility.Visible ? "Home"
             : ArtistDetailPanel.Visibility == Visibility.Visible ? "ArtistDetail"
             : GenreDetailPanel.Visibility == Visibility.Visible ? "GenreDetail"
@@ -316,6 +336,16 @@ public sealed partial class MainPage : Page
         AlbumTracksList.ItemsSource = songs;
 
         ShowPanel("AlbumDetail");
+    }
+
+    private async void AlbumPlayOverlay_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: Album album })
+            return;
+
+        var songs = await _client.GetSongsForAlbumAsync(album.Id);
+        if (songs.Count > 0)
+            PlayQueueFrom(songs, 0);
     }
 
     private void ArtistBack_Click(object sender, RoutedEventArgs e) => ShowPanel("Artists");
@@ -439,6 +469,7 @@ public sealed partial class MainPage : Page
         }
 
         QueuePanel.Visibility = Visibility.Collapsed;
+        CloseVisualizer();
         LyricsPanel.Visibility = Visibility.Visible;
         await LoadLyricsForCurrentSongAsync();
     }
@@ -454,6 +485,7 @@ public sealed partial class MainPage : Page
         }
 
         LyricsPanel.Visibility = Visibility.Collapsed;
+        CloseVisualizer();
         QueuePanel.Visibility = Visibility.Visible;
     }
 
@@ -502,6 +534,172 @@ public sealed partial class MainPage : Page
         LyricsList.ItemsSource = lines.Count > 0
             ? lines
             : new List<LyricLine> { new() { Text = "No lyrics found for this track." } };
+    }
+
+    // --- Visualizer ---
+
+    private void VisualizerButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (VisualizerPanel.Visibility == Visibility.Visible)
+        {
+            CloseVisualizer();
+            return;
+        }
+
+        LyricsPanel.Visibility = Visibility.Collapsed;
+        QueuePanel.Visibility = Visibility.Collapsed;
+        VisualizerPanel.Visibility = Visibility.Visible;
+        StartVisualizer();
+    }
+
+    private void CloseVisualizer_Click(object sender, RoutedEventArgs e) => CloseVisualizer();
+
+    private void CloseVisualizer()
+    {
+        VisualizerPanel.Visibility = Visibility.Collapsed;
+        StopVisualizer();
+    }
+
+    // Capture + per-frame rendering only run while the panel is open - no point capturing
+    // audio or redrawing every frame for a panel nobody can see.
+    private void StartVisualizer()
+    {
+        if (_visualizerRenderHooked)
+            return;
+
+        _visualizerRenderHooked = true;
+        Array.Clear(_visualizerSmoothed);
+        _loopback.Start();
+        CompositionTarget.Rendering += OnVisualizerRenderFrame;
+    }
+
+    private void StopVisualizer()
+    {
+        if (!_visualizerRenderHooked)
+            return;
+
+        _visualizerRenderHooked = false;
+        CompositionTarget.Rendering -= OnVisualizerRenderFrame;
+        _loopback.Stop();
+    }
+
+    // Ported from the WPF app's OnVisualizerRenderFrame/UpdateSmoothCurve, where every constant
+    // below was tuned with Luna (see PROJECT_MEMORY.md's visualizer entries): temporal smoothing
+    // 0.88/0.12, a 5-tap spatial average, smoothstep fade over 22 bands at each end, fixed flat
+    // "anchor" zones at both edges, baseline at mid-height, and Catmull-Rom-to-Bezier curves with
+    // horizontal-tangent connectors into the flat zones. Rebuilds the geometry each frame rather
+    // than mutating segments in place, since in-place segment edits aren't guaranteed to
+    // invalidate rendering on every Uno backend.
+    private void OnVisualizerRenderFrame(object? sender, object e)
+    {
+        _spectrum.CopyLatestBandsTo(_visualizerLatestBands);
+
+        var width = VisualizerContainer.ActualWidth > 0 ? VisualizerContainer.ActualWidth : 280;
+        var height = VisualizerContainer.ActualHeight > 0 ? VisualizerContainer.ActualHeight : 160;
+        VisualizerPath.Width = width;
+        VisualizerPath.Height = height;
+
+        const double padding = 6;
+        var baselineY = height / 2;
+        var drawableHeight = Math.Max(1, baselineY - padding);
+
+        const double anchorWidth = 38;
+        var moveZoneWidth = Math.Max(1, width - padding * 2 - anchorWidth * 2);
+        var leftMoveX = padding + anchorWidth;
+        var rightMoveX = width - padding - anchorWidth;
+
+        const int fadeBands = 22;
+        var bandCount = _visualizerLatestBands.Length;
+
+        for (var i = 0; i < bandCount; i++)
+            _visualizerSmoothed[i] = _visualizerSmoothed[i] * 0.88f + _visualizerLatestBands[i] * 0.12f;
+
+        var points = new Windows.Foundation.Point[bandCount + 4];
+        points[0] = new(padding, baselineY);
+        points[1] = new(leftMoveX, baselineY);
+
+        for (var i = 0; i < bandCount; i++)
+        {
+            float sum = 0;
+            var count = 0;
+            for (var k = -2; k <= 2; k++)
+            {
+                var idx = i + k;
+                if (idx < 0 || idx >= bandCount)
+                    continue;
+                sum += _visualizerSmoothed[idx];
+                count++;
+            }
+            var level = sum / count;
+
+            float fade = 1f;
+            if (i < fadeBands)
+            {
+                var t = (i + 1f) / (fadeBands + 1f);
+                fade = t * t * (3f - 2f * t);
+            }
+            else if (i >= bandCount - fadeBands)
+            {
+                var t = (bandCount - i) / (float)(fadeBands + 1);
+                fade = t * t * (3f - 2f * t);
+            }
+
+            var x = leftMoveX + i * moveZoneWidth / (bandCount - 1);
+            points[i + 2] = new(x, baselineY - level * fade * drawableHeight);
+        }
+
+        points[^2] = new(rightMoveX, baselineY);
+        points[^1] = new(width - padding, baselineY);
+
+        VisualizerPath.Data = BuildSmoothCurve(points, bandCount, padding, baselineY);
+    }
+
+    // Segments by index: [0]=flat line, [1]=entry connector, [2..bandCount]=interior Catmull-Rom,
+    // [bandCount+1]=exit connector, [last]=flat line. Control points clamped to [minY, maxY] so a
+    // loud band can't overshoot past the baseline or the top edge.
+    private static PathGeometry BuildSmoothCurve(Windows.Foundation.Point[] points, int bandCount, double minY, double maxY)
+    {
+        var figure = new PathFigure { StartPoint = points[0], IsFilled = true, IsClosed = false };
+        var segmentCount = points.Length - 1;
+
+        for (var i = 0; i < segmentCount; i++)
+        {
+            var p1 = points[i];
+            var p2 = points[i + 1];
+
+            if (i == 0 || i == segmentCount - 1)
+            {
+                figure.Segments.Add(new LineSegment { Point = p2 });
+                continue;
+            }
+
+            Windows.Foundation.Point c1, c2;
+            if (i == 1)
+            {
+                var next = points[i + 2];
+                c1 = new(p1.X + (p2.X - p1.X) / 3.0, p1.Y);
+                c2 = new(p2.X - (next.X - p1.X) / 6.0, Math.Clamp(p2.Y - (next.Y - p1.Y) / 6.0, minY, maxY));
+            }
+            else if (i == bandCount + 1)
+            {
+                var prev = points[i - 1];
+                c1 = new(p1.X + (p2.X - prev.X) / 6.0, Math.Clamp(p1.Y + (p2.Y - prev.Y) / 6.0, minY, maxY));
+                c2 = new(p2.X - (p2.X - p1.X) / 3.0, p2.Y);
+            }
+            else
+            {
+                var p0 = points[i - 1];
+                var p3 = points[i + 2];
+                c1 = new(p1.X + (p2.X - p0.X) / 6.0, Math.Clamp(p1.Y + (p2.Y - p0.Y) / 6.0, minY, maxY));
+                c2 = new(p2.X - (p3.X - p1.X) / 6.0, Math.Clamp(p2.Y - (p3.Y - p1.Y) / 6.0, minY, maxY));
+            }
+
+            figure.Segments.Add(new BezierSegment { Point1 = c1, Point2 = c2, Point3 = p2 });
+        }
+
+        var geometry = new PathGeometry();
+        geometry.Figures.Add(figure);
+        return geometry;
     }
 
     // --- Queue / playback ---

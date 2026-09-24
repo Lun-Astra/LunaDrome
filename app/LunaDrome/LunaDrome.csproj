@@ -32,4 +32,8 @@
     <ProjectReference Include="..\..\src\LunaDrome.Core\LunaDrome.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="NAudio.Wasapi" />
+  </ItemGroup>
+
 </Project>

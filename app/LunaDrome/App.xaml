@@ -1,7 +1,8 @@
 <Application x:Class="LunaDrome.App"
        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-       xmlns:us="using:Uno.Simple">
+       xmlns:us="using:Uno.Simple"
+       xmlns:controls="using:LunaDrome.Controls">
 
   <Application.Resources>
     <ResourceDictionary>
@@ -43,6 +44,8 @@
 
       <Style TargetType="Button">
         <Setter Property="Padding" Value="12,6"/>
+        <!-- Tactile press feedback (scale to 0.94), ported from the WPF app's button storyboard. -->
+        <Setter Property="controls:Motion.PressScale" Value="True"/>
       </Style>
 
       <Style TargetType="TextBox">
@@ -67,6 +70,13 @@
         <Setter Property="BorderThickness" Value="0"/>
         <Setter Property="CornerRadius" Value="6"/>
       </Style>
+
+      <!-- List row hover/press colors via WinUI's named theme-resource keys, matching the palette. -->
+      <SolidColorBrush x:Key="ListViewItemBackgroundPointerOver" Color="#FF2C2E33"/>
+      <SolidColorBrush x:Key="ListViewItemBackgroundPressed" Color="#FF373A40"/>
+      <SolidColorBrush x:Key="ListViewItemBackgroundSelected" Color="#FF25262B"/>
+      <SolidColorBrush x:Key="ListViewItemBackgroundSelectedPointerOver" Color="#FF2C2E33"/>
+      <SolidColorBrush x:Key="ListViewItemBackgroundSelectedPressed" Color="#FF373A40"/>
 
       <Style TargetType="ListViewItem">
         <Setter Property="Padding" Value="8,4"/>

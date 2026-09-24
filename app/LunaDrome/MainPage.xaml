@@ -3,30 +3,46 @@
       xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
       xmlns:local="using:LunaDrome"
       xmlns:us="using:Uno.Simple"
+      xmlns:controls="using:LunaDrome.Controls"
       Background="{ThemeResource BackgroundBrush}">
 
   <Page.Resources>
+    <controls:TrackColumnLayout x:Key="TrackColumns"/>
+
+    <!-- Hover motion ported from the WPF app: the whole card scales up slightly, and a scrim +
+         play button fades in over the art (on the overlay's own pointer-over, not an ancestor's). -->
     <DataTemplate x:Key="AlbumCardTemplate">
-      <StackPanel Width="140" Margin="0,0,16,16" Tapped="AlbumCard_Tapped" Tag="{Binding}">
+      <StackPanel Width="140" Margin="0,0,16,16" Tapped="AlbumCard_Tapped" Tag="{Binding}"
+                  Background="Transparent" controls:Motion.HoverScale="1.035">
         <Grid Width="140" Height="140" CornerRadius="6" Background="{StaticResource RaisedBrush}">
           <Image Source="{Binding CoverArtUrl}" Stretch="UniformToFill"/>
+          <Grid Background="#66000000" controls:Motion.HoverFade="True">
+            <Button Width="44" Height="44" CornerRadius="22" Padding="0"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    Background="{StaticResource AccentBrush}" Foreground="{StaticResource OnAccentBrush}"
+                    Tag="{Binding}" Click="AlbumPlayOverlay_Click">
+              <FontIcon Glyph="&#xE768;" FontSize="16"/>
+            </Button>
+          </Grid>
         </Grid>
         <TextBlock Text="{Binding Name}" FontSize="13" Margin="0,6,0,0" TextTrimming="CharacterEllipsis"/>
         <TextBlock Text="{Binding ArtistName}" FontSize="11" Opacity="0.6" TextTrimming="CharacterEllipsis"/>
       </StackPanel>
     </DataTemplate>
 
+    <!-- Cell widths bind to the shared TrackColumns layout, which the TrackListHeader above each
+         list resizes by dragging. -->
     <DataTemplate x:Key="TrackRowTemplate">
-      <Grid Margin="0,4" Tag="{Binding}" RightTapped="TrackRow_RightTapped">
-        <Grid.ColumnDefinitions>
-          <ColumnDefinition Width="*"/>
-          <ColumnDefinition Width="180"/>
-          <ColumnDefinition Width="50"/>
-        </Grid.ColumnDefinitions>
-        <TextBlock Grid.Column="0" Text="{Binding Title}" FontSize="14" TextTrimming="CharacterEllipsis"/>
-        <TextBlock Grid.Column="1" Text="{Binding ArtistName}" FontSize="12" Opacity="0.6" TextTrimming="CharacterEllipsis"/>
-        <TextBlock Grid.Column="2" Text="{Binding DurationDisplay}" FontSize="12" Opacity="0.6"/>
-      </Grid>
+      <StackPanel Orientation="Horizontal" Margin="0,4" Tag="{Binding}" RightTapped="TrackRow_RightTapped" Background="Transparent">
+        <TextBlock Text="{Binding Title}" FontSize="14" TextTrimming="CharacterEllipsis" Padding="0,0,12,0"
+                   Width="{Binding TitleWidth, Source={StaticResource TrackColumns}}"/>
+        <TextBlock Text="{Binding ArtistName}" FontSize="12" Opacity="0.6" TextTrimming="CharacterEllipsis" Padding="0,0,12,0"
+                   VerticalAlignment="Center" Width="{Binding ArtistWidth, Source={StaticResource TrackColumns}}"/>
+        <TextBlock Text="{Binding AlbumName}" FontSize="12" Opacity="0.6" TextTrimming="CharacterEllipsis" Padding="0,0,12,0"
+                   VerticalAlignment="Center" Width="{Binding AlbumWidth, Source={StaticResource TrackColumns}}"/>
+        <TextBlock Text="{Binding DurationDisplay}" FontSize="12" Opacity="0.6" Padding="0,0,12,0"
+                   VerticalAlignment="Center" Width="{Binding DurationWidth, Source={StaticResource TrackColumns}}"/>
+      </StackPanel>
     </DataTemplate>
 
     <DataTemplate x:Key="GenreRowTemplate">
@@ -166,8 +182,15 @@
               <Button x:Name="AlbumBackButton" Content="&lt; Back" Click="AlbumBack_Click"/>
               <TextBlock x:Name="AlbumDetailHeader" FontSize="20" FontWeight="Bold" VerticalAlignment="Center"/>
             </StackPanel>
-            <ListView Grid.Row="1" x:Name="AlbumTracksList" ItemTemplate="{StaticResource TrackRowTemplate}"
-                      IsItemClickEnabled="True" ItemClick="TrackList_ItemClick"/>
+            <Grid Grid.Row="1">
+              <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+              </Grid.RowDefinitions>
+              <controls:TrackListHeader Grid.Row="0" Layout="{StaticResource TrackColumns}"/>
+              <ListView Grid.Row="1" x:Name="AlbumTracksList" ItemTemplate="{StaticResource TrackRowTemplate}"
+                        IsItemClickEnabled="True" ItemClick="TrackList_ItemClick"/>
+            </Grid>
           </Grid>
 
           <!-- Tracks: whole library -->
@@ -186,8 +209,15 @@
                 <ComboBoxItem Content="Shortest first"/>
               </ComboBox>
             </StackPanel>
-            <ListView Grid.Row="1" x:Name="TracksList" ItemTemplate="{StaticResource TrackRowTemplate}"
-                      IsItemClickEnabled="True" ItemClick="TrackList_ItemClick"/>
+            <Grid Grid.Row="1">
+              <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+              </Grid.RowDefinitions>
+              <controls:TrackListHeader Grid.Row="0" Layout="{StaticResource TrackColumns}"/>
+              <ListView Grid.Row="1" x:Name="TracksList" ItemTemplate="{StaticResource TrackRowTemplate}"
+                        IsItemClickEnabled="True" ItemClick="TrackList_ItemClick"/>
+            </Grid>
           </Grid>
 
           <!-- Playlist detail -->
@@ -200,8 +230,15 @@
               <TextBlock x:Name="PlaylistDetailHeader" FontSize="20" FontWeight="Bold" VerticalAlignment="Center"/>
               <Button Content="Delete playlist" Click="DeletePlaylist_Click"/>
             </StackPanel>
-            <ListView Grid.Row="1" x:Name="PlaylistTracksList" ItemTemplate="{StaticResource TrackRowTemplate}"
-                      IsItemClickEnabled="True" ItemClick="TrackList_ItemClick"/>
+            <Grid Grid.Row="1">
+              <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+              </Grid.RowDefinitions>
+              <controls:TrackListHeader Grid.Row="0" Layout="{StaticResource TrackColumns}"/>
+              <ListView Grid.Row="1" x:Name="PlaylistTracksList" ItemTemplate="{StaticResource TrackRowTemplate}"
+                        IsItemClickEnabled="True" ItemClick="TrackList_ItemClick"/>
+            </Grid>
           </Grid>
 
           <!-- Genres list -->
@@ -280,6 +317,32 @@
             </ListView.ItemTemplate>
           </ListView>
         </Grid>
+
+        <!-- Visualizer overlay: the WPF app's single bending line with a filled gradient under it
+             (Feishin / audioMotion "graph" mode), fed by system loopback capture. -->
+        <Grid x:Name="VisualizerPanel" Grid.Column="1" Visibility="Collapsed"
+              Background="{StaticResource PanelBrush}">
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+          </Grid.RowDefinitions>
+          <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="16" Spacing="12">
+            <TextBlock Text="Visualizer" FontSize="16" FontWeight="Bold" VerticalAlignment="Center"/>
+            <Button Content="✕" Click="CloseVisualizer_Click"/>
+          </StackPanel>
+          <Grid Grid.Row="1" x:Name="VisualizerContainer" Margin="24,0,24,24">
+            <Path x:Name="VisualizerPath" Stroke="{StaticResource AccentBrush}" StrokeThickness="2"
+                  StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                  HorizontalAlignment="Left" VerticalAlignment="Top">
+              <Path.Fill>
+                <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                  <GradientStop Color="#66FFFFFF" Offset="0"/>
+                  <GradientStop Color="#00FFFFFF" Offset="0.5"/>
+                </LinearGradientBrush>
+              </Path.Fill>
+            </Path>
+          </Grid>
+        </Grid>
       </Grid>
 
       <!-- Playback bar -->
@@ -306,6 +369,7 @@
           <Button x:Name="AddToPlaylistButton" Content="+ Playlist" Click="AddToPlaylistButton_Click" Width="90"/>
           <Button x:Name="LyricsButton" Content="Lyrics" Click="LyricsButton_Click" Width="70"/>
           <Button x:Name="QueueButton" Content="Queue" Click="QueueButton_Click" Width="70"/>
+          <Button x:Name="VisualizerButton" Content="Visualizer" Click="VisualizerButton_Click" Width="90"/>
         </StackPanel>
 
         <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" Margin="16,0">
