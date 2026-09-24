@@ -29,11 +29,11 @@ Version: $version
 Section: sound
 Priority: optional
 Architecture: amd64
-Maintainer: Keviiin02 <https://github.com/Keviiin02/LunaDrome>
+Maintainer: LunAstra <https://github.com/Lun-Astra/LunaDrome>
 Installed-Size: $size_kb
 Depends: libvlc5, vlc-plugin-base, libx11-6, libfontconfig1, libgl1
 Recommends: pulseaudio-utils
-Homepage: https://github.com/Keviiin02/LunaDrome
+Homepage: https://github.com/Lun-Astra/LunaDrome
 Description: Music player for your Navidrome server
  LunaDrome is a desktop client for Navidrome (Subsonic API) with a
  Feishin-style interface, playlists, lyrics and an audio visualizer.

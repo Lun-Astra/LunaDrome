@@ -38,7 +38,7 @@ src/
 
 ## Installing
 
-Grab the latest build from the [Releases](https://github.com/Keviiin02/LunaDrome/releases) page:
+Grab the latest build from the [Releases](https://github.com/Lun-Astra/LunaDrome/releases) page:
 
 - **Windows:** `LunaDrome-Setup-<version>.exe` - per-user install (no admin), Start menu +
   optional desktop shortcut, uninstall from Apps & features.
