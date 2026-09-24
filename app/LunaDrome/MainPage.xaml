@@ -303,8 +303,8 @@
 
                 <!-- Recently played -->
                 <StackPanel x:Name="HomeRecentlyPlayedSection" Margin="0,0,0,28">
-                  <TextBlock Text="RECENTLY PLAYED" Style="{StaticResource SectionHeaderStyle}" Margin="0,0,0,10"/>
-                  <ScrollViewer Style="{StaticResource CarouselScrollViewerStyle}" Loaded="Carousel_Loaded">
+                  <controls:CarouselHeader Title="RECENTLY PLAYED"/>
+                  <ScrollViewer Style="{StaticResource CarouselScrollViewerStyle}">
                     <ItemsControl x:Name="HomeRecentlyPlayedList" ItemTemplate="{StaticResource AlbumCardTemplate}">
                       <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate>
@@ -315,8 +315,8 @@
 
                 <!-- Most played -->
                 <StackPanel x:Name="HomeMostPlayedSection" Margin="0,0,0,28">
-                  <TextBlock Text="MOST PLAYED" Style="{StaticResource SectionHeaderStyle}" Margin="0,0,0,10"/>
-                  <ScrollViewer Style="{StaticResource CarouselScrollViewerStyle}" Loaded="Carousel_Loaded">
+                  <controls:CarouselHeader Title="MOST PLAYED"/>
+                  <ScrollViewer Style="{StaticResource CarouselScrollViewerStyle}">
                     <ItemsControl x:Name="HomeMostPlayedList" ItemTemplate="{StaticResource AlbumCardTemplate}">
                       <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate>
@@ -327,15 +327,8 @@
 
                 <!-- Recently added -->
                 <StackPanel x:Name="HomeRecentlyAddedSection" Margin="0,0,0,28">
-                  <Grid Margin="0,0,0,10">
-                    <Grid.ColumnDefinitions>
-                      <ColumnDefinition Width="*"/>
-                      <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="RECENTLY ADDED" Style="{StaticResource SectionHeaderStyle}" Margin="0"/>
-                    <Button Grid.Column="1" Content="More ›" Style="{StaticResource LinkButtonStyle}" Click="HomeMoreAlbumsButton_Click"/>
-                  </Grid>
-                  <ScrollViewer Style="{StaticResource CarouselScrollViewerStyle}" Loaded="Carousel_Loaded">
+                  <controls:CarouselHeader Title="RECENTLY ADDED" ShowMore="True" MoreClick="HomeMoreAlbumsButton_Click"/>
+                  <ScrollViewer Style="{StaticResource CarouselScrollViewerStyle}">
                     <ItemsControl x:Name="HomeAlbumsList" ItemTemplate="{StaticResource AlbumCardTemplate}">
                       <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate>
@@ -346,8 +339,8 @@
 
                 <!-- Explore -->
                 <StackPanel x:Name="HomeExploreSection" Margin="0,0,0,28">
-                  <TextBlock Text="EXPLORE" Style="{StaticResource SectionHeaderStyle}" Margin="0,0,0,10"/>
-                  <ScrollViewer Style="{StaticResource CarouselScrollViewerStyle}" Loaded="Carousel_Loaded">
+                  <controls:CarouselHeader Title="EXPLORE"/>
+                  <ScrollViewer Style="{StaticResource CarouselScrollViewerStyle}">
                     <ItemsControl x:Name="HomeExploreList" ItemTemplate="{StaticResource AlbumCardTemplate}">
                       <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate>
@@ -358,8 +351,8 @@
 
                 <!-- Featured genres -->
                 <StackPanel x:Name="HomeGenresSection" Margin="0,0,0,28">
-                  <TextBlock Text="FEATURED GENRES" Style="{StaticResource SectionHeaderStyle}" Margin="0,0,0,10"/>
-                  <ScrollViewer Style="{StaticResource CarouselScrollViewerStyle}" Loaded="Carousel_Loaded">
+                  <controls:CarouselHeader Title="FEATURED GENRES"/>
+                  <ScrollViewer Style="{StaticResource CarouselScrollViewerStyle}">
                     <ItemsControl x:Name="HomeGenresList">
                       <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate>
@@ -384,8 +377,8 @@
 
                 <!-- Playlists -->
                 <StackPanel x:Name="HomePlaylistsSection" Margin="0,0,0,10">
-                  <TextBlock Text="PLAYLISTS" Style="{StaticResource SectionHeaderStyle}" Margin="0,0,0,10"/>
-                  <ScrollViewer Style="{StaticResource CarouselScrollViewerStyle}" Loaded="Carousel_Loaded">
+                  <controls:CarouselHeader Title="PLAYLISTS"/>
+                  <ScrollViewer Style="{StaticResource CarouselScrollViewerStyle}">
                     <ItemsControl x:Name="HomePlaylistsList">
                       <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate>

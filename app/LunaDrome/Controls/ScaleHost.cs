@@ -15,10 +15,10 @@ namespace LunaDrome.Controls;
 /// </summary>
 public sealed class ScaleHost : Panel
 {
-    // Luna's maximized client area (1936x1056 window on a 1920x1080 screen).
-    public double DesignWidth { get; set; } = 1920;
-    public double DesignHeight { get; set; } = 1010;
-    public double MinScale { get; set; } = 0.75;
+    // Full size (scale 1) from 1600x850 up; Luna found 1920x1010 / 75% too small in windowed mode.
+    public double DesignWidth { get; set; } = 1600;
+    public double DesignHeight { get; set; } = 850;
+    public double MinScale { get; set; } = 0.85;
 
     private readonly ScaleTransform _transform = new();
 

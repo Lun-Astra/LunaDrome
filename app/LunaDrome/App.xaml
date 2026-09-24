@@ -45,10 +45,12 @@
         <Setter Property="Margin" Value="2,0,0,10"/>
       </Style>
 
-      <!-- Horizontal-only row scroller (Home carousels). -->
+      <!-- Home row scroller: no scrollbar and no wheel/drag scrolling - the ‹ › arrows in each
+           row's CarouselHeader page it (ChangeView still works with the mode disabled), so the
+           mouse wheel scrolls the page itself. -->
       <Style x:Key="CarouselScrollViewerStyle" TargetType="ScrollViewer">
-        <Setter Property="HorizontalScrollMode" Value="Enabled"/>
-        <Setter Property="HorizontalScrollBarVisibility" Value="Auto"/>
+        <Setter Property="HorizontalScrollMode" Value="Disabled"/>
+        <Setter Property="HorizontalScrollBarVisibility" Value="Hidden"/>
         <Setter Property="VerticalScrollMode" Value="Disabled"/>
         <Setter Property="VerticalScrollBarVisibility" Value="Disabled"/>
       </Style>

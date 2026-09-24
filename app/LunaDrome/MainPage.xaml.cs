@@ -390,24 +390,6 @@ public sealed partial class MainPage : Page
 
     private void HomeMoreAlbumsButton_Click(object sender, RoutedEventArgs e) => NavAlbums.IsChecked = true;
 
-    // A horizontal-only ScrollViewer doesn't turn the (vertical) mouse wheel into horizontal
-    // scrolling by itself - redirect it, so wheeling over a row scrolls the row, not the page.
-    private void Carousel_Loaded(object sender, RoutedEventArgs e)
-    {
-        if (sender is not ScrollViewer scrollViewer)
-            return;
-
-        scrollViewer.Loaded -= Carousel_Loaded;
-        scrollViewer.AddHandler(PointerWheelChangedEvent, new PointerEventHandler((_, args) =>
-        {
-            var delta = args.GetCurrentPoint(scrollViewer).Properties.MouseWheelDelta;
-            if (scrollViewer.ScrollableWidth <= 0)
-                return;
-            scrollViewer.ChangeView(scrollViewer.HorizontalOffset - delta, null, null, true);
-            args.Handled = true;
-        }), true);
-    }
-
     private void HomePlaylistCard_Tapped(object sender, TappedRoutedEventArgs e)
     {
         if (sender is FrameworkElement { Tag: Playlist playlist })
