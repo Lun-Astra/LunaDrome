@@ -90,23 +90,73 @@ public static class Motion
     public static bool GetHoverFade(DependencyObject d) => (bool)d.GetValue(HoverFadeProperty);
     public static void SetHoverFade(DependencyObject d, bool value) => d.SetValue(HoverFadeProperty, value);
 
-    private static readonly PointerEventHandler HoverFadeEntered = (s, _) => AnimateOpacity((UIElement)s, 1);
-    private static readonly PointerEventHandler HoverFadeExited = (s, _) => AnimateOpacity((UIElement)s, 0);
+    // The faded-out overlay is Collapsed, not just Opacity 0: on Uno's Skia renderer an Opacity-0
+    // element still costs full compositing work every frame, and with ~100 album-card overlays on
+    // Home that alone made maximized scrolling drop from 60fps to ~17fps (measured: 58ms -> 16.9ms
+    // per frame with overlays collapsed). A collapsed element can't detect the pointer itself, so
+    // hover is tracked on its parent (the cover art Grid) and the overlay is shown for the fade-in
+    // and collapsed again once the fade-out finishes.
+    private static readonly DependencyProperty FadeTargetProperty =
+        DependencyProperty.RegisterAttached("FadeTarget", typeof(UIElement), typeof(Motion), new PropertyMetadata(null));
+
+    private static readonly PointerEventHandler HoverFadeEntered = (s, _) =>
+    {
+        if (((DependencyObject)s).GetValue(FadeTargetProperty) is UIElement overlay)
+            FadeOverlay(overlay, show: true);
+    };
+
+    private static readonly PointerEventHandler HoverFadeExited = (s, _) =>
+    {
+        if (((DependencyObject)s).GetValue(FadeTargetProperty) is UIElement overlay)
+            FadeOverlay(overlay, show: false);
+    };
 
     private static void OnHoverFadeChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
-        if (d is not UIElement element)
+        if (d is not FrameworkElement element || !(bool)e.NewValue)
             return;
 
-        element.RemoveHandler(UIElement.PointerEnteredEvent, HoverFadeEntered);
-        element.RemoveHandler(UIElement.PointerExitedEvent, HoverFadeExited);
-
-        if ((bool)e.NewValue)
+        element.Opacity = 0;
+        element.Visibility = Visibility.Collapsed;
+        element.Loaded += (_, _) =>
         {
-            element.Opacity = 0;
-            element.AddHandler(UIElement.PointerEnteredEvent, HoverFadeEntered, true);
-            element.AddHandler(UIElement.PointerExitedEvent, HoverFadeExited, true);
+            if (VisualTreeHelper.GetParent(element) is not UIElement parent || parent.GetValue(FadeTargetProperty) != null)
+                return;
+
+            parent.SetValue(FadeTargetProperty, element);
+            parent.AddHandler(UIElement.PointerEnteredEvent, HoverFadeEntered, true);
+            parent.AddHandler(UIElement.PointerExitedEvent, HoverFadeExited, true);
+        };
+    }
+
+    private static void FadeOverlay(UIElement overlay, bool show)
+    {
+        var fade = new DoubleAnimation
+        {
+            To = show ? 1 : 0,
+            Duration = Hover,
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+        };
+        Storyboard.SetTarget(fade, overlay);
+        Storyboard.SetTargetProperty(fade, nameof(UIElement.Opacity));
+        var storyboard = new Storyboard();
+        storyboard.Children.Add(fade);
+
+        if (show)
+        {
+            overlay.Visibility = Visibility.Visible;
         }
+        else
+        {
+            storyboard.Completed += (_, _) =>
+            {
+                // Only collapse if nothing re-showed it mid-fade.
+                if (overlay.Opacity < 0.01)
+                    overlay.Visibility = Visibility.Collapsed;
+            };
+        }
+
+        storyboard.Begin();
     }
 
     // --- ClickableText: WPF's ClickableTextStyle (white + underline while hovered) ---
