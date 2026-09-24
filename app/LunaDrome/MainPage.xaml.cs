@@ -94,7 +94,6 @@ public sealed partial class MainPage : Page
 
         _trackViews = new()
         {
-            ["AlbumTracks"] = new() { List = SongsList, Search = AlbumTrackSearchBox, SortButton = AlbumTrackSortButton, DirectionButton = AlbumTrackSortDirectionButton },
             ["AllTracks"] = new() { List = AllSongsList, Search = AllTracksSearchBox, SortButton = AllTracksSortButton, DirectionButton = AllTracksSortDirectionButton },
             ["PlaylistTracks"] = new() { List = PlaylistSongsList, Search = PlaylistTrackSearchBox, SortButton = PlaylistTrackSortButton, DirectionButton = PlaylistTrackSortDirectionButton },
         };
@@ -203,6 +202,7 @@ public sealed partial class MainPage : Page
     private void HideAllPages()
     {
         HomePage.Visibility = Visibility.Collapsed;
+        AlbumPage.Visibility = Visibility.Collapsed;
         ArtistsPage.Visibility = Visibility.Collapsed;
         ArtistDetailPage.Visibility = Visibility.Collapsed;
         AlbumsPage.Visibility = Visibility.Collapsed;
@@ -508,11 +508,11 @@ public sealed partial class MainPage : Page
         }
     }
 
-    // "Open an album" = go to its artist, with that album pre-opened (there's no separate album page).
-    private async Task OpenAlbumAsync(Album album)
+    private async void CardAlbumText_Tapped(object sender, TappedRoutedEventArgs e)
     {
-        await NavigateToArtistAsync(album.ArtistId, album.ArtistName);
-        await ShowAlbumTracksAsync(album);
+        e.Handled = true;
+        if (sender is FrameworkElement { Tag: Album album })
+            await OpenAlbumAsync(album);
     }
 
     // ================= Artists =================
@@ -536,6 +536,10 @@ public sealed partial class MainPage : Page
             await NavigateToArtistAsync(artist.Id, artist.Name);
     }
 
+    private int _artistLoadToken;
+
+    // Feishin-style artist page: header (blurred art, cover, name, counts, Play/Next/Last,
+    // favorite) + the artist's album grid.
     private async Task NavigateToArtistAsync(string artistId, string fallbackName)
     {
         if (string.IsNullOrEmpty(artistId))
@@ -546,38 +550,45 @@ public sealed partial class MainPage : Page
         HideAllPages();
         ShowPage(ArtistDetailPage);
         ClearSidebarSelection();
+        ArtistDetailPage.ChangeView(null, 0, null, true);
 
-        ArtistAlbumTracksView.Visibility = Visibility.Collapsed;
-        ArtistDiscographyView.Visibility = Visibility.Visible;
+        var token = ++_artistLoadToken;
         ArtistAlbumsList.ItemsSource = null;
-        SongsList.ItemsSource = null;
-        _trackViews["AlbumTracks"].Raw = new();
-
         ArtistHeaderNameText.Text = fallbackName;
         ArtistHeaderStatsText.Text = "";
+        ArtistAlbumCountText.Text = "";
         ArtistHeaderBackdrop.Source = null;
-        ArtistHeaderArt.Fill = null;
+        ArtistHeaderArt.Background = null;
         SetArtistFavoriteIcon(false);
 
         try
         {
             var (artist, albums) = await _client.GetArtistDetailAsync(artistId);
+            if (token != _artistLoadToken)
+                return;
+
             _currentArtist = artist;
             foreach (var album in albums)
-                album.CoverArtUrl = _client.GetCoverArtUrl(album.Id, 240);
+                album.CoverArtUrl = _client.GetCoverArtUrl(album.Id, 300);
 
+            // Newest first, like Feishin's default "Release date" sort on the artist page.
+            albums = albums.OrderByDescending(a => a.Year ?? 0).ToList();
             ArtistAlbumsList.ItemsSource = albums;
+            ArtistAlbumCountText.Text = albums.Count.ToString();
 
             var totalSongs = albums.Sum(a => a.SongCount);
             ArtistHeaderNameText.Text = artist.Name;
-            ArtistHeaderStatsText.Text = $"{albums.Count} album{(albums.Count == 1 ? "" : "s")} · {totalSongs} track{(totalSongs == 1 ? "" : "s")}";
-            ArtistHeaderArt.Fill = MakeImageBrush(artist.CoverArtUrl);
+            ArtistHeaderStatsText.Text = $"{albums.Count} album{(albums.Count == 1 ? "" : "s")}  •  {totalSongs} track{(totalSongs == 1 ? "" : "s")}";
+            SetImage(ArtistHeaderArt, artist.CoverArtUrl);
             SetArtistFavoriteIcon(artist.IsFavorited);
-            ArtistHeaderBackdrop.Source = await BlurredArt.LoadAsync(artist.CoverArtUrl);
+
+            var backdrop = await BlurredArt.LoadAsync(artist.CoverArtUrl);
+            if (token == _artistLoadToken)
+                ArtistHeaderBackdrop.Source = backdrop;
         }
         catch (Exception ex)
         {
-            await ShowErrorAsync($"Failed to load albums: {ex.Message}");
+            await ShowErrorAsync($"Failed to load artist: {ex.Message}");
         }
     }
 
@@ -604,61 +615,218 @@ public sealed partial class MainPage : Page
         catch { /* best-effort */ }
     }
 
-    private async void ArtistHeaderPlayButton_Click(object sender, RoutedEventArgs e) => await PlayArtistAsync(shuffle: false);
-
-    private async void ArtistHeaderShuffleButton_Click(object sender, RoutedEventArgs e) => await PlayArtistAsync(shuffle: true);
-
-    private async Task PlayArtistAsync(bool shuffle)
+    private async Task<List<Song>> GetArtistSongsAsync()
     {
-        if (ArtistAlbumsList.ItemsSource is not List<Album> albums || albums.Count == 0)
-            return;
+        var songs = new List<Song>();
+        if (ArtistAlbumsList.ItemsSource is not List<Album> albums)
+            return songs;
 
         try
         {
-            var songs = new List<Song>();
-            foreach (var album in albums)
+            // Oldest album first so "Play" runs through the discography in release order.
+            foreach (var album in albums.OrderBy(a => a.Year ?? 0))
                 songs.AddRange(await _client.GetSongsForAlbumAsync(album.Id));
             PopulateSongArt(songs);
-            if (songs.Count == 0)
-                return;
-
-            if (shuffle)
-                songs = songs.OrderBy(_ => _random.Next()).ToList();
-            PlayQueueFrom(songs, 0);
         }
         catch (Exception ex)
         {
-            await ShowErrorAsync($"Failed to play artist: {ex.Message}");
+            await ShowErrorAsync($"Failed to load artist tracks: {ex.Message}");
         }
+        return songs;
     }
 
-    private async Task ShowAlbumTracksAsync(Album album)
+    private async void ArtistHeaderPlayButton_Click(object sender, RoutedEventArgs e)
     {
+        var songs = await GetArtistSongsAsync();
+        if (songs.Count > 0)
+            PlayQueueFrom(songs, 0);
+    }
+
+    private async void ArtistHeaderNextButton_Click(object sender, RoutedEventArgs e) => QueueSongsNext(await GetArtistSongsAsync());
+
+    private async void ArtistHeaderLastButton_Click(object sender, RoutedEventArgs e) => QueueSongsLast(await GetArtistSongsAsync());
+
+    // Feishin's "Next" = insert right after the current track (keeping their order);
+    // "Last" = append to the end of the queue.
+    private void QueueSongsNext(List<Song> songs)
+    {
+        if (songs.Count == 0)
+            return;
+
+        if (_queueIndex < 0)
+        {
+            PlayQueueFrom(songs, 0);
+            return;
+        }
+
+        for (var i = 0; i < songs.Count; i++)
+            _queue.Insert(_queueIndex + 1 + i, songs[i]);
+    }
+
+    private void QueueSongsLast(List<Song> songs)
+    {
+        if (songs.Count == 0)
+            return;
+
+        if (_queueIndex < 0)
+        {
+            PlayQueueFrom(songs, 0);
+            return;
+        }
+
+        foreach (var song in songs)
+            _queue.Add(song);
+    }
+
+    // ================= Album page =================
+
+    private List<Song> _albumSongsRaw = new();
+    private int _albumLoadToken;
+
+    private async Task OpenAlbumAsync(Album album)
+    {
+        FullScreenPlayerOverlay.Visibility = Visibility.Collapsed;
+        UpdateVisualizerCaptureState();
+        HideAllPages();
+        ShowPage(AlbumPage);
+        ClearSidebarSelection();
+        AlbumPage.ChangeView(null, 0, null, true);
+
+        var token = ++_albumLoadToken;
         _currentAlbum = album;
-        ArtistDiscographyView.Visibility = Visibility.Collapsed;
-        ShowPage(ArtistAlbumTracksView);
-        ArtistAlbumTracksHeader.Text = album.Name.ToUpperInvariant();
-        SongsList.ItemsSource = null;
+        _albumSongsRaw = new();
+        AlbumSongsList.ItemsSource = null;
+        AlbumTrackSearchBox.Text = "";
+        AlbumHeaderTitleText.Text = album.Name;
+        AlbumHeaderArtistText.Text = album.ArtistName;
+        AlbumHeaderMetaText.Text = album.Year is > 0 ? album.Year.Value.ToString() : "";
+        AlbumGenreText.Text = album.Genre ?? "";
+        AlbumGenrePanel.Visibility = string.IsNullOrWhiteSpace(album.Genre) ? Visibility.Collapsed : Visibility.Visible;
+        var artUrl = _client.GetCoverArtUrl(album.Id, 480);
+        SetImage(AlbumHeaderArt, artUrl);
+        AlbumHeaderTint.Background = (Brush)Application.Current.Resources["RaisedBrush"];
 
         try
         {
             var songs = await _client.GetSongsForAlbumAsync(album.Id);
+            if (token != _albumLoadToken)
+                return;
+
             PopulateSongArt(songs);
-            _trackViews["AlbumTracks"].Raw = songs;
-            RefreshTrackView("AlbumTracks");
+            _albumSongsRaw = songs;
+            RefreshAlbumTracks();
+
+            // "2013 • 11 tracks • 43m 13s • 94 plays", like Feishin's album meta line.
+            var totalSeconds = songs.Sum(s => s.DurationSeconds);
+            var duration = totalSeconds >= 3600
+                ? $"{totalSeconds / 3600}h {totalSeconds % 3600 / 60}m {totalSeconds % 60}s"
+                : $"{totalSeconds / 60}m {totalSeconds % 60}s";
+            var meta = new List<string>();
+            if (album.Year is > 0)
+                meta.Add(album.Year.Value.ToString());
+            meta.Add($"{songs.Count} track{(songs.Count == 1 ? "" : "s")}");
+            meta.Add(duration);
+            var plays = songs.Sum(s => s.PlayCount);
+            if (plays > 0)
+                meta.Add($"{plays} play{(plays == 1 ? "" : "s")}");
+            AlbumHeaderMetaText.Text = string.Join("  •  ", meta);
+
+            if (string.IsNullOrWhiteSpace(album.Genre) && songs.FirstOrDefault(s => !string.IsNullOrWhiteSpace(s.Genre)) is { } withGenre)
+            {
+                AlbumGenreText.Text = withGenre.Genre;
+                AlbumGenrePanel.Visibility = Visibility.Visible;
+            }
+
+            // Header tint: the cover's average color, darkened so white text stays readable,
+            // fading out toward the bottom (Feishin colors its album header from the art too).
+            if (await BlurredArt.AverageColorAsync(artUrl) is { } avg && token == _albumLoadToken)
+            {
+                var dark = Windows.UI.Color.FromArgb(255, (byte)(avg.R * 0.55), (byte)(avg.G * 0.55), (byte)(avg.B * 0.55));
+                AlbumHeaderTint.Background = new LinearGradientBrush
+                {
+                    StartPoint = new Windows.Foundation.Point(0, 0),
+                    EndPoint = new Windows.Foundation.Point(0, 1),
+                    GradientStops =
+                    {
+                        new GradientStop { Color = dark, Offset = 0 },
+                        new GradientStop { Color = Windows.UI.Color.FromArgb(255, (byte)(dark.R * 0.7 + 26 * 0.3), (byte)(dark.G * 0.7 + 27 * 0.3), (byte)(dark.B * 0.7 + 30 * 0.3)), Offset = 1 }
+                    }
+                };
+            }
         }
         catch (Exception ex)
         {
-            await ShowErrorAsync($"Failed to load songs: {ex.Message}");
+            await ShowErrorAsync($"Failed to load album: {ex.Message}");
         }
     }
 
-    private void BackToDiscographyButton_Click(object sender, RoutedEventArgs e)
+    private void AlbumTrackSearchBox_TextChanged(object sender, TextChangedEventArgs e) => RefreshAlbumTracks();
+
+    private void RefreshAlbumTracks()
     {
-        ArtistAlbumTracksView.Visibility = Visibility.Collapsed;
-        ShowPage(ArtistDiscographyView);
+        if (AlbumSongsList == null)
+            return;
+        AlbumSongsList.ItemsSource = FilterSongs(_albumSongsRaw, AlbumTrackSearchBox.Text?.Trim() ?? "").ToList();
     }
 
+    private async void AlbumHeaderArtistText_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        if (_currentAlbum != null)
+            await NavigateToArtistAsync(_currentAlbum.ArtistId, _currentAlbum.ArtistName);
+    }
+
+    private void AlbumPlayButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_albumSongsRaw.Count > 0)
+            PlayQueueFrom(_albumSongsRaw, 0);
+    }
+
+    private void AlbumNextButton_Click(object sender, RoutedEventArgs e) => QueueSongsNext(_albumSongsRaw);
+
+    private void AlbumLastButton_Click(object sender, RoutedEventArgs e) => QueueSongsLast(_albumSongsRaw);
+
+    private void AlbumTrackRow_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: Song song } || AlbumSongsList.ItemsSource is not List<Song> shown)
+            return;
+
+        var index = shown.IndexOf(song);
+        if (index >= 0)
+            PlayQueueFrom(shown, index);
+    }
+
+    private void AlbumTrackRow_RightTapped(object sender, RightTappedRoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: Song song } row || AlbumSongsList.ItemsSource is not List<Song> shown)
+            return;
+
+        var flyout = BuildSongMenu(song, shown);
+        flyout.Items.Add(new MenuFlyoutSeparator());
+        AddMenuItem(flyout, "Add album to queue", () => QueueSongsLast(_albumSongsRaw));
+        flyout.ShowAt(row, e.GetPosition(row));
+        e.Handled = true;
+    }
+
+    private async void TrackFavorite_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        e.Handled = true;
+        if (sender is not Panel { Tag: Song song } cell)
+            return;
+
+        try
+        {
+            if (song.IsFavorited)
+                await _client.UnstarSongAsync(song.Id);
+            else
+                await _client.StarSongAsync(song.Id);
+            song.IsFavorited = !song.IsFavorited;
+
+            // Song isn't observable, so update this row's heart directly.
+            if (cell.Children.FirstOrDefault() is Microsoft.UI.Xaml.Shapes.Path heart)
+                heart.Fill = (Brush)new FavoriteFillConverter().Convert(song.IsFavorited, typeof(Brush), null!, "");
+        }
+        catch { /* best-effort */ }
+    }
     private async void SongArtistText_Tapped(object sender, TappedRoutedEventArgs e)
     {
         e.Handled = true;
@@ -814,29 +982,9 @@ public sealed partial class MainPage : Page
             return;
 
         list.SelectedItem = song;
-        var flyout = new MenuFlyout();
+        var flyout = BuildSongMenu(song, list.ItemsSource as List<Song>);
 
-        AddMenuItem(flyout, "Play now", () =>
-        {
-            if (list.ItemsSource is List<Song> source && source.IndexOf(song) is var i and >= 0)
-                PlayQueueFrom(source, i);
-        });
-        AddMenuItem(flyout, "Play next", () => QueuePlayNext(song));
-        AddMenuItem(flyout, "Add to queue", () => QueueAppend(song));
-        flyout.Items.Add(new MenuFlyoutSeparator());
-        flyout.Items.Add(BuildAddToPlaylistSubmenu(song));
-        AddFavoriteToggle(flyout, song);
-
-        if (key == "AlbumTracks")
-        {
-            flyout.Items.Add(new MenuFlyoutSeparator());
-            AddMenuItem(flyout, "Add album to queue", () =>
-            {
-                foreach (var s in _trackViews["AlbumTracks"].Raw)
-                    QueueAppend(s);
-            });
-        }
-        else if (key == "PlaylistTracks")
+        if (key == "PlaylistTracks")
         {
             flyout.Items.Add(new MenuFlyoutSeparator());
             AddMenuItem(flyout, "Remove from playlist", async () => await RemoveFromPlaylistAsync(song));
@@ -844,6 +992,23 @@ public sealed partial class MainPage : Page
 
         flyout.ShowAt(list, e.GetPosition(list));
         e.Handled = true;
+    }
+
+    // The shared part of every song context menu; callers append list-specific items.
+    private MenuFlyout BuildSongMenu(Song song, List<Song>? source)
+    {
+        var flyout = new MenuFlyout();
+        AddMenuItem(flyout, "Play now", () =>
+        {
+            if (source != null && source.IndexOf(song) is var i and >= 0)
+                PlayQueueFrom(source, i);
+        });
+        AddMenuItem(flyout, "Play next", () => QueuePlayNext(song));
+        AddMenuItem(flyout, "Add to queue", () => QueueAppend(song));
+        flyout.Items.Add(new MenuFlyoutSeparator());
+        flyout.Items.Add(BuildAddToPlaylistSubmenu(song));
+        AddFavoriteToggle(flyout, song);
+        return flyout;
     }
 
     private static void AddMenuItem(MenuFlyout flyout, string text, Action onClick)

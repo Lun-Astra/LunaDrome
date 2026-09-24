@@ -15,8 +15,12 @@
     <controls:TrackColumnLayout x:Key="TrackColumns"/>
     <controls:FormatConverter x:Key="Format"/>
 
-    <!-- Small album card (Home rows, artist discography): 112 wide, 104 art. Clicking the art
-         plays the album (hover overlay covers the whole art, like WPF); clicking the text opens it. -->
+    <controls:FavoriteFillConverter x:Key="FavoriteFill"/>
+
+    <!-- Album cards, Feishin-style interaction: the album name is a link to the album page and
+         the artist name a link to the artist page (both turn white + underlined on hover, with a
+         hand cursor); clicking the cover also opens the album; the round button in the hover
+         overlay plays it. Sizes stay the WPF app's (small: 112/104, large: 152/140). -->
     <DataTemplate x:Key="AlbumCardTemplate">
       <StackPanel Width="112" Margin="2,4" Background="Transparent" Tag="{Binding}"
                   Tapped="AlbumCard_Tapped" controls:Motion.HoverScale="1.035">
@@ -24,25 +28,26 @@
           <Border CornerRadius="8" Background="{StaticResource RaisedBrush}">
             <Image Source="{Binding CoverArtUrl}" Stretch="UniformToFill" HorizontalAlignment="Center" VerticalAlignment="Center"/>
           </Border>
-          <Border CornerRadius="8" Background="#99000000" controls:Motion.HoverFade="True"
-                  Tag="{Binding}" Tapped="AlbumPlayOverlay_Tapped">
+          <Border CornerRadius="8" Background="#99000000" controls:Motion.HoverFade="True">
             <Border Width="34" Height="34" CornerRadius="17" Background="{StaticResource AccentBrush}"
-                    HorizontalAlignment="Center" VerticalAlignment="Center">
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    Tag="{Binding}" Tapped="AlbumPlayOverlay_Tapped" controls:Motion.HoverScale="1.08"
+                    ToolTipService.ToolTip="Play">
               <Polygon Points="0,0 10,6 0,12" Fill="{StaticResource OnAccentBrush}"
                        HorizontalAlignment="Center" VerticalAlignment="Center" Margin="3,0,0,0"/>
             </Border>
           </Border>
         </Grid>
-        <TextBlock Text="{Binding Name}" FontSize="12" Margin="2,6,0,0" TextTrimming="CharacterEllipsis" MaxWidth="104"
-                   HorizontalAlignment="Left"/>
-        <TextBlock Text="{Binding ArtistName}" FontSize="11" Margin="2,1,0,0" Foreground="{StaticResource TextSecondaryBrush}"
-                   TextTrimming="CharacterEllipsis" MaxWidth="104" HorizontalAlignment="Left"
-                   controls:Motion.ClickableText="True" Tag="{Binding}" Tapped="CardArtistText_Tapped"
-                   ToolTipService.ToolTip="Go to artist"/>
+        <Border Background="Transparent" Margin="2,6,0,0" HorizontalAlignment="Left" controls:Motion.ClickableText="True" Tag="{Binding}" Tapped="CardAlbumText_Tapped">
+          <TextBlock Text="{Binding Name}" FontSize="12" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" MaxWidth="104"/>
+        </Border>
+        <Border Background="Transparent" Margin="2,1,0,0" HorizontalAlignment="Left" controls:Motion.ClickableText="True" Tag="{Binding}" Tapped="CardArtistText_Tapped">
+          <TextBlock Text="{Binding ArtistName}" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" MaxWidth="104"/>
+        </Border>
+        <TextBlock Text="{Binding Year}" FontSize="11" Margin="2,1,0,0" Foreground="{StaticResource TextSecondaryBrush}"/>
       </StackPanel>
     </DataTemplate>
 
-    <!-- Large album card (Albums page, genre pages): 152 wide, 140 art. -->
     <DataTemplate x:Key="LargeAlbumCardTemplate">
       <StackPanel Width="152" Margin="5,8" Background="Transparent" Tag="{Binding}"
                   Tapped="AlbumCard_Tapped" controls:Motion.HoverScale="1.035">
@@ -50,23 +55,83 @@
           <Border CornerRadius="9" Background="{StaticResource RaisedBrush}">
             <Image Source="{Binding CoverArtUrl}" Stretch="UniformToFill" HorizontalAlignment="Center" VerticalAlignment="Center"/>
           </Border>
-          <Border CornerRadius="9" Background="#99000000" controls:Motion.HoverFade="True"
-                  Tag="{Binding}" Tapped="AlbumPlayOverlay_Tapped">
+          <Border CornerRadius="9" Background="#99000000" controls:Motion.HoverFade="True">
             <Border Width="44" Height="44" CornerRadius="22" Background="{StaticResource AccentBrush}"
-                    HorizontalAlignment="Center" VerticalAlignment="Center">
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    Tag="{Binding}" Tapped="AlbumPlayOverlay_Tapped" controls:Motion.HoverScale="1.08"
+                    ToolTipService.ToolTip="Play">
               <Polygon Points="0,0 13,8 0,16" Fill="{StaticResource OnAccentBrush}"
                        HorizontalAlignment="Center" VerticalAlignment="Center" Margin="3,0,0,0"/>
             </Border>
           </Border>
         </Grid>
-        <TextBlock Text="{Binding Name}" FontSize="12" Margin="2,8,0,0" TextTrimming="CharacterEllipsis" MaxWidth="140"
-                   HorizontalAlignment="Left"/>
-        <TextBlock Text="{Binding ArtistName}" FontSize="11" Margin="2,2,0,0" Foreground="{StaticResource TextSecondaryBrush}"
-                   TextTrimming="CharacterEllipsis" MaxWidth="140" HorizontalAlignment="Left"
-                   controls:Motion.ClickableText="True" Tag="{Binding}" Tapped="CardArtistText_Tapped"
-                   ToolTipService.ToolTip="Go to artist"/>
+        <Border Background="Transparent" Margin="2,8,0,0" HorizontalAlignment="Left" controls:Motion.ClickableText="True" Tag="{Binding}" Tapped="CardAlbumText_Tapped">
+          <TextBlock Text="{Binding Name}" FontSize="12" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" MaxWidth="140"/>
+        </Border>
+        <Border Background="Transparent" Margin="2,2,0,0" HorizontalAlignment="Left" controls:Motion.ClickableText="True" Tag="{Binding}" Tapped="CardArtistText_Tapped">
+          <TextBlock Text="{Binding ArtistName}" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" MaxWidth="140"/>
+        </Border>
+        <TextBlock Text="{Binding Year}" FontSize="11" Margin="2,2,0,0" Foreground="{StaticResource TextSecondaryBrush}"/>
       </StackPanel>
     </DataTemplate>
+
+    <!-- Artist page album card, Feishin's size: 172px square art, 14/13px text. -->
+    <DataTemplate x:Key="FeishinAlbumCardTemplate">
+      <StackPanel Width="172" Margin="0,0,12,20" Background="Transparent" Tag="{Binding}"
+                  Tapped="AlbumCard_Tapped">
+        <Grid Width="172" Height="172">
+          <Border CornerRadius="6" Background="{StaticResource RaisedBrush}">
+            <Image Source="{Binding CoverArtUrl}" Stretch="UniformToFill" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+          </Border>
+          <Border CornerRadius="6" Background="#80000000" controls:Motion.HoverFade="True">
+            <Border Width="48" Height="48" CornerRadius="24" Background="{StaticResource AccentBrush}"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    Tag="{Binding}" Tapped="AlbumPlayOverlay_Tapped" controls:Motion.HoverScale="1.08"
+                    ToolTipService.ToolTip="Play">
+              <Polygon Points="0,0 14,9 0,18" Fill="{StaticResource OnAccentBrush}"
+                       HorizontalAlignment="Center" VerticalAlignment="Center" Margin="3,0,0,0"/>
+            </Border>
+          </Border>
+        </Grid>
+        <Border Background="Transparent" Margin="0,10,0,0" HorizontalAlignment="Left" controls:Motion.ClickableText="True" Tag="{Binding}" Tapped="CardAlbumText_Tapped">
+          <TextBlock Text="{Binding Name}" FontSize="14" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" MaxWidth="172"/>
+        </Border>
+        <Border Background="Transparent" Margin="0,3,0,0" HorizontalAlignment="Left" controls:Motion.ClickableText="True" Tag="{Binding}" Tapped="CardArtistText_Tapped">
+          <TextBlock Text="{Binding ArtistName}" FontSize="13" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" MaxWidth="172"/>
+        </Border>
+        <TextBlock Text="{Binding Year}" FontSize="13" Margin="0,3,0,0" Foreground="{StaticResource TextSecondaryBrush}"/>
+      </StackPanel>
+    </DataTemplate>
+
+    <!-- Album page track row (Feishin): # / TITLE / duration / heart. -->
+    <DataTemplate x:Key="AlbumTrackRowTemplate">
+      <Border Height="40" CornerRadius="4" Background="Transparent" Tag="{Binding}"
+              controls:Motion.HoverBackground="{StaticResource RaisedBrush}"
+              DoubleTapped="AlbumTrackRow_DoubleTapped" RightTapped="AlbumTrackRow_RightTapped">
+        <Grid>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="60"/>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="90"/>
+            <ColumnDefinition Width="60"/>
+          </Grid.ColumnDefinitions>
+          <TextBlock Grid.Column="0" Text="{Binding Track}" FontSize="14" Foreground="{StaticResource TextSecondaryBrush}"
+                     HorizontalAlignment="Center" VerticalAlignment="Center"/>
+          <TextBlock Grid.Column="1" Text="{Binding Title}" FontSize="14" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
+                     VerticalAlignment="Center" Margin="0,0,12,0"/>
+          <TextBlock Grid.Column="2" Text="{Binding DurationDisplay}" FontSize="14" Foreground="{StaticResource TextSecondaryBrush}"
+                     HorizontalAlignment="Center" VerticalAlignment="Center"/>
+          <Grid Grid.Column="3" Background="Transparent" Tag="{Binding}" Tapped="TrackFavorite_Tapped"
+                ToolTipService.ToolTip="Favorite">
+            <Path Width="15" Height="14" Stretch="Uniform" Stroke="{StaticResource TextSecondaryBrush}" StrokeThickness="1.5"
+                  Fill="{Binding IsFavorited, Converter={StaticResource FavoriteFill}}"
+                  HorizontalAlignment="Center" VerticalAlignment="Center"
+                  Data="M8,15 C8,15 1,10.5 1,5.8 C1,3 3,1.3 5.4,1.3 C6.9,1.3 7.7,2.1 8,2.6 C8.3,2.1 9.1,1.3 10.6,1.3 C13,1.3 15,3 15,5.8 C15,10.5 8,15 8,15 Z"/>
+          </Grid>
+        </Grid>
+      </Border>
+    </DataTemplate>
+
 
     <!-- Track row: TITLE (40px art + title + clickable artist) / TIME / GENRE, widths from the
          shared, drag-resizable TrackColumns layout. -->
@@ -79,10 +144,9 @@
           </Border>
           <StackPanel VerticalAlignment="Center">
             <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis"/>
-            <TextBlock Text="{Binding ArtistName}" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"
-                       TextTrimming="CharacterEllipsis" Margin="0,2,0,0" HorizontalAlignment="Left"
-                       controls:Motion.ClickableText="True" Tag="{Binding}" Tapped="SongArtistText_Tapped"
-                       ToolTipService.ToolTip="Go to artist"/>
+            <Border Background="Transparent" Margin="0,2,0,0" HorizontalAlignment="Left" controls:Motion.ClickableText="True" Tag="{Binding}" Tapped="SongArtistText_Tapped" ToolTipService.ToolTip="Go to artist">
+              <TextBlock Text="{Binding ArtistName}" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis"/>
+            </Border>
           </StackPanel>
         </StackPanel>
         <TextBlock Text="{Binding DurationDisplay}" VerticalAlignment="Center" Padding="6,0,6,0"
@@ -100,10 +164,9 @@
         </Border>
         <StackPanel VerticalAlignment="Center">
           <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis"/>
-          <TextBlock Text="{Binding ArtistName}" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"
-                     TextTrimming="CharacterEllipsis" Margin="0,2,0,0" HorizontalAlignment="Left"
-                     controls:Motion.ClickableText="True" Tag="{Binding}" Tapped="SongArtistText_Tapped"
-                     ToolTipService.ToolTip="Go to artist"/>
+          <Border Background="Transparent" Margin="0,2,0,0" HorizontalAlignment="Left" controls:Motion.ClickableText="True" Tag="{Binding}" Tapped="SongArtistText_Tapped" ToolTipService.ToolTip="Go to artist">
+            <TextBlock Text="{Binding ArtistName}" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis"/>
+          </Border>
         </StackPanel>
       </StackPanel>
     </DataTemplate>
@@ -217,14 +280,12 @@
                     </Grid>
 
                     <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="28,0,0,0">
-                      <TextBlock x:Name="HeroTitleText" FontSize="30" FontWeight="Bold" Foreground="White"
-                                 TextTrimming="CharacterEllipsis" HorizontalAlignment="Left"
-                                 controls:Motion.ClickableText="True" Tapped="HeroTitleText_Tapped"
-                                 ToolTipService.ToolTip="Go to album"/>
-                      <TextBlock x:Name="HeroArtistText" FontSize="16" Margin="0,6,0,0" Foreground="#DDFFFFFF"
-                                 TextTrimming="CharacterEllipsis" HorizontalAlignment="Left"
-                                 controls:Motion.ClickableText="True" Tapped="HeroArtistText_Tapped"
-                                 ToolTipService.ToolTip="Go to artist"/>
+                      <Border Background="Transparent" HorizontalAlignment="Left" controls:Motion.ClickableText="True" Tapped="HeroTitleText_Tapped" ToolTipService.ToolTip="Go to album">
+                        <TextBlock x:Name="HeroTitleText" FontSize="30" FontWeight="Bold" Foreground="White" TextTrimming="CharacterEllipsis"/>
+                      </Border>
+                      <Border Background="Transparent" Margin="0,6,0,0" HorizontalAlignment="Left" controls:Motion.ClickableText="True" Tapped="HeroArtistText_Tapped" ToolTipService.ToolTip="Go to artist">
+                        <TextBlock x:Name="HeroArtistText" FontSize="16" Foreground="#DDFFFFFF" TextTrimming="CharacterEllipsis"/>
+                      </Border>
                       <TextBlock x:Name="HeroMetaText" FontSize="13" Margin="0,10,0,0" Foreground="#AAFFFFFF"/>
                     </StackPanel>
                   </Grid>
@@ -367,119 +428,202 @@
                         SelectionChanged="ArtistsList_SelectionChanged"/>
             </Grid>
 
-            <!-- Artist detail -->
-            <Grid x:Name="ArtistDetailPage" Visibility="Collapsed">
-              <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="*"/>
-              </Grid.RowDefinitions>
+            <!-- Artist detail (Feishin's artist page): blurred-art header with the cover, an
+                 "ARTIST" eyebrow, big name, album/track counts, Play / Next / Last + favorite,
+                 then the "Album" grid. -->
+            <ScrollViewer x:Name="ArtistDetailPage" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
+              <StackPanel Margin="0,0,16,16">
+                <Grid Height="290" Margin="0,0,0,28">
+                  <Border CornerRadius="14" Background="{StaticResource RaisedBrush}"/>
+                  <Border CornerRadius="14">
+                    <Image x:Name="ArtistHeaderBackdrop" Stretch="UniformToFill" IsHitTestVisible="False"/>
+                  </Border>
+                  <Border CornerRadius="14">
+                    <Border.Background>
+                      <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                        <GradientStop Color="#40000000" Offset="0"/>
+                        <GradientStop Color="#E01A1B1E" Offset="1"/>
+                      </LinearGradientBrush>
+                    </Border.Background>
+                  </Border>
 
-              <Grid Grid.Row="0" Height="220" Margin="0,0,16,20">
-                <Border CornerRadius="14" Background="{StaticResource RaisedBrush}"/>
-                <Image x:Name="ArtistHeaderBackdrop" Stretch="Fill" Margin="-50" IsHitTestVisible="False"/>
-                <Border CornerRadius="14" Background="#B3141517"/>
-
-                <Grid Margin="28">
-                  <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="*"/>
-                  </Grid.ColumnDefinitions>
-
-                  <Grid Width="164" Height="164" VerticalAlignment="Center">
-                    <Ellipse Fill="{StaticResource RaisedBrush}"/>
-                    <Ellipse x:Name="ArtistHeaderArt"/>
-                  </Grid>
-
-                  <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="28,0,0,0">
-                    <TextBlock x:Name="ArtistHeaderNameText" FontSize="28" FontWeight="Bold" Foreground="White"
-                               TextTrimming="CharacterEllipsis"/>
-                    <TextBlock x:Name="ArtistHeaderStatsText" FontSize="13" Margin="0,8,0,0" Foreground="#AAFFFFFF"/>
-
-                    <StackPanel Orientation="Horizontal" Margin="0,18,0,0">
-                      <Button Width="40" Height="40" CornerRadius="20" Style="{StaticResource PrimaryButtonStyle}"
-                              Click="ArtistHeaderPlayButton_Click" ToolTipService.ToolTip="Play">
-                        <Polygon Points="1,0 13,7 1,14" Fill="{StaticResource OnAccentBrush}" Margin="3,0,0,0"/>
-                      </Button>
-                      <Button Width="40" Height="40" Margin="10,0,0,0" Background="#33FFFFFF"
-                              Click="ArtistHeaderShuffleButton_Click" ToolTipService.ToolTip="Shuffle">
-                        <Path Width="16" Height="14" Stretch="Uniform" Stroke="White" StrokeThickness="1.6"
-                              StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
-                              Data="M1,4 L6,4 L15,13 M11,13 L15,13 L15,9 M1,12 L6,12 L15,3 M11,3 L15,3 L15,7"/>
-                      </Button>
-                      <Button Width="40" Height="40" Margin="10,0,0,0" Background="#33FFFFFF"
-                              Click="ArtistFavoriteButton_Click" ToolTipService.ToolTip="Favorite">
-                        <Path x:Name="ArtistFavoriteIcon" Width="17" Height="16" Stretch="Uniform"
-                              Stroke="White" StrokeThickness="1.6" Fill="Transparent"
-                              Data="M8,15 C8,15 1,10.5 1,5.8 C1,3 3,1.3 5.4,1.3 C6.9,1.3 7.7,2.1 8,2.6 C8.3,2.1 9.1,1.3 10.6,1.3 C13,1.3 15,3 15,5.8 C15,10.5 8,15 8,15 Z"/>
-                      </Button>
-                    </StackPanel>
-                  </StackPanel>
-                </Grid>
-              </Grid>
-
-              <Grid Grid.Row="1">
-                <!-- Discography -->
-                <Grid x:Name="ArtistDiscographyView">
-                  <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="*"/>
-                  </Grid.RowDefinitions>
-                  <TextBlock Grid.Row="0" Text="DISCOGRAPHY" Style="{StaticResource SectionHeaderStyle}"/>
-                  <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
-                    <muxc:ItemsRepeater x:Name="ArtistAlbumsList" ItemTemplate="{StaticResource AlbumCardTemplate}">
-                      <muxc:ItemsRepeater.Layout>
-                        <muxc:UniformGridLayout MinItemWidth="116" MinItemHeight="152" ItemsStretch="None"
-                                                MinColumnSpacing="0" MinRowSpacing="0"/>
-                      </muxc:ItemsRepeater.Layout>
-                    </muxc:ItemsRepeater>
-                  </ScrollViewer>
-                </Grid>
-
-                <!-- One album's tracks -->
-                <Grid x:Name="ArtistAlbumTracksView" Visibility="Collapsed">
-                  <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="*"/>
-                  </Grid.RowDefinitions>
-                  <Grid Grid.Row="0" Margin="0,0,0,10">
+                  <Grid Margin="32,0,28,32" VerticalAlignment="Bottom">
                     <Grid.ColumnDefinitions>
                       <ColumnDefinition Width="Auto"/>
                       <ColumnDefinition Width="*"/>
-                      <ColumnDefinition Width="160"/>
+                      <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-                    <StackPanel Grid.Column="0" Orientation="Horizontal">
-                      <Button Width="30" Height="30" Margin="0,0,10,0" Click="BackToDiscographyButton_Click"
-                              ToolTipService.ToolTip="Back">
-                        <Canvas Width="12" Height="12">
-                          <Rectangle Canvas.Left="10" Width="2" Height="12" Fill="{StaticResource TextPrimaryBrush}"/>
-                          <Polygon Points="8,0 0,6 8,12" Fill="{StaticResource TextPrimaryBrush}"/>
-                        </Canvas>
-                      </Button>
-                      <Button Width="30" Height="30" Margin="0,0,10,0" Tag="AlbumTracks"
-                              Style="{StaticResource PrimaryButtonStyle}" Click="PlayMenuButton_Click" ToolTipService.ToolTip="Play">
-                        <Polygon Points="0,0 9,5.5 0,11" Fill="{StaticResource OnAccentBrush}" Margin="2,0,0,0"/>
-                      </Button>
-                      <TextBlock x:Name="ArtistAlbumTracksHeader" Text="TRACKS" Style="{StaticResource SectionHeaderStyle}"
-                                 Margin="0,0,10,0" VerticalAlignment="Center"/>
+                    <Grid Width="200" Height="200">
+                      <Border CornerRadius="6" Background="{StaticResource RaisedBrush}"/>
+                      <Border x:Name="ArtistHeaderArt" CornerRadius="6"/>
+                    </Grid>
+                    <StackPanel Grid.Column="1" VerticalAlignment="Bottom" Margin="20,0,0,0">
+                      <TextBlock Text="ARTIST" FontSize="13" FontWeight="Bold" Foreground="White"/>
+                      <TextBlock x:Name="ArtistHeaderNameText" FontSize="44" FontWeight="Bold" Foreground="White"
+                                 TextTrimming="CharacterEllipsis" Margin="0,2,0,0"/>
+                      <TextBlock x:Name="ArtistHeaderStatsText" FontSize="14" FontWeight="SemiBold" Foreground="#DDFFFFFF" Margin="0,4,0,0"/>
+                      <StackPanel Orientation="Horizontal" Margin="0,16,0,0" Spacing="12">
+                        <Button Style="{StaticResource PillButtonStyle}" Click="ArtistHeaderPlayButton_Click">
+                          <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Polygon Points="0,0 10,6.5 0,13" Fill="{StaticResource OnAccentBrush}" VerticalAlignment="Center"/>
+                            <TextBlock Text="Play" FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource OnAccentBrush}"/>
+                          </StackPanel>
+                        </Button>
+                        <Button Style="{StaticResource PillButtonStyle}" Click="ArtistHeaderNextButton_Click"
+                                ToolTipService.ToolTip="Play next">
+                          <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Path Width="14" Height="12" Stretch="Uniform" Stroke="{StaticResource OnAccentBrush}" StrokeThickness="1.7"
+                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" VerticalAlignment="Center"
+                                  Data="M2,13 L2,9 C2,6 4,4.5 7,4.5 L14,4.5 M10.5,1 L14,4.5 L10.5,8"/>
+                            <TextBlock Text="Next" FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource OnAccentBrush}"/>
+                          </StackPanel>
+                        </Button>
+                        <Button Style="{StaticResource PillButtonStyle}" Click="ArtistHeaderLastButton_Click"
+                                ToolTipService.ToolTip="Add to queue">
+                          <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Path Width="13" Height="11" Stretch="Uniform" Stroke="{StaticResource OnAccentBrush}" StrokeThickness="1.7"
+                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" VerticalAlignment="Center"
+                                  Data="M1,6 L9,6 M5.5,2.5 L9,6 L5.5,9.5 M13,1 L13,11"/>
+                            <TextBlock Text="Last" FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource OnAccentBrush}"/>
+                          </StackPanel>
+                        </Button>
+                      </StackPanel>
                     </StackPanel>
-                    <TextBox x:Name="AlbumTrackSearchBox" Grid.Column="2" PlaceholderText="Search" Tag="AlbumTracks"
-                             TextChanged="TrackSearchBox_TextChanged"/>
+                    <Button Grid.Column="2" Style="{StaticResource IconButtonStyle}" VerticalAlignment="Bottom" Margin="0,0,0,2"
+                            Click="ArtistFavoriteButton_Click" ToolTipService.ToolTip="Favorite">
+                      <Path x:Name="ArtistFavoriteIcon" Width="18" Height="17" Stretch="Uniform"
+                            Stroke="White" StrokeThickness="1.6" Fill="Transparent"
+                            Data="M8,15 C8,15 1,10.5 1,5.8 C1,3 3,1.3 5.4,1.3 C6.9,1.3 7.7,2.1 8,2.6 C8.3,2.1 9.1,1.3 10.6,1.3 C13,1.3 15,3 15,5.8 C15,10.5 8,15 8,15 Z"/>
+                    </Button>
                   </Grid>
-                  <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,8">
-                    <Button x:Name="AlbumTrackSortButton" Content="Sort ▾" Tag="AlbumTracks" Padding="14,6" Click="SortButton_Click"/>
-                    <Button x:Name="AlbumTrackSortDirectionButton" Content="↑" Tag="AlbumTracks" Width="34" Height="34"
-                            Margin="8,0,0,0" FontSize="13" Click="SortDirectionButton_Click"
-                            ToolTipService.ToolTip="Toggle ascending/descending"/>
-                  </StackPanel>
-                  <controls:TrackListHeader Grid.Row="2" Layout="{StaticResource TrackColumns}"/>
-                  <ListView Grid.Row="3" x:Name="SongsList" Tag="AlbumTracks" SelectionMode="Single"
-                            ItemTemplate="{StaticResource TrackRowTemplate}" ItemContainerStyle="{StaticResource SongItemStyle}"
-                            DoubleTapped="TrackList_DoubleTapped" RightTapped="TrackList_RightTapped"/>
                 </Grid>
-              </Grid>
-            </Grid>
+
+                <!-- "Album  [8] ─────────" section header -->
+                <Grid Margin="0,0,0,16">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                  </Grid.ColumnDefinitions>
+                  <TextBlock Grid.Column="0" Text="Album" FontSize="24" FontWeight="Bold" VerticalAlignment="Center"/>
+                  <Border Grid.Column="1" Margin="10,0,0,0" Padding="6,1" CornerRadius="4" VerticalAlignment="Center"
+                          BorderBrush="{StaticResource TextSecondaryBrush}" BorderThickness="1">
+                    <TextBlock x:Name="ArtistAlbumCountText" FontSize="11" FontWeight="SemiBold"/>
+                  </Border>
+                  <Rectangle Grid.Column="2" Height="1" Margin="14,0,0,0" Fill="{StaticResource BorderBrush2}" VerticalAlignment="Center"/>
+                </Grid>
+                <muxc:ItemsRepeater x:Name="ArtistAlbumsList" ItemTemplate="{StaticResource FeishinAlbumCardTemplate}">
+                  <muxc:ItemsRepeater.Layout>
+                    <muxc:UniformGridLayout MinItemWidth="184" MinItemHeight="252" ItemsStretch="None"
+                                            MinColumnSpacing="0" MinRowSpacing="0"/>
+                  </muxc:ItemsRepeater.Layout>
+                </muxc:ItemsRepeater>
+              </StackPanel>
+            </ScrollViewer>
+
+            <!-- Album page (Feishin): header tinted with the cover's average color, cover,
+                 "ALBUM" eyebrow, big title, meta line, artist link, Play / Next / Last, then a
+                 searchable # / TITLE / time / favorite track table. -->
+            <ScrollViewer x:Name="AlbumPage" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
+              <StackPanel Margin="0,0,16,16">
+                <Grid Height="290" Margin="0,0,0,24">
+                  <Border x:Name="AlbumHeaderTint" CornerRadius="14" Background="{StaticResource RaisedBrush}"/>
+                  <Border CornerRadius="14">
+                    <Border.Background>
+                      <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                        <GradientStop Color="#00000000" Offset="0"/>
+                        <GradientStop Color="#661A1B1E" Offset="1"/>
+                      </LinearGradientBrush>
+                    </Border.Background>
+                  </Border>
+
+                  <Grid Margin="32,0,28,32" VerticalAlignment="Bottom">
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="Auto"/>
+                      <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid Width="200" Height="200">
+                      <Border CornerRadius="6" Background="{StaticResource RaisedBrush}"/>
+                      <Border x:Name="AlbumHeaderArt" CornerRadius="6"/>
+                    </Grid>
+                    <StackPanel Grid.Column="1" VerticalAlignment="Bottom" Margin="20,0,0,0">
+                      <TextBlock Text="ALBUM" FontSize="13" FontWeight="Bold" Foreground="White"/>
+                      <TextBlock x:Name="AlbumHeaderTitleText" FontSize="44" FontWeight="Bold" Foreground="White"
+                                 TextTrimming="CharacterEllipsis" Margin="0,2,0,0"/>
+                      <TextBlock x:Name="AlbumHeaderMetaText" FontSize="14" FontWeight="SemiBold" Foreground="#DDFFFFFF" Margin="0,4,0,0"/>
+                      <Border Background="Transparent" Margin="0,6,0,0" HorizontalAlignment="Left" controls:Motion.ClickableText="True" Tapped="AlbumHeaderArtistText_Tapped">
+                        <TextBlock x:Name="AlbumHeaderArtistText" FontSize="14" FontWeight="SemiBold" Foreground="#DDFFFFFF"/>
+                      </Border>
+                      <StackPanel Orientation="Horizontal" Margin="0,16,0,0" Spacing="12">
+                        <Button Style="{StaticResource PillButtonStyle}" Click="AlbumPlayButton_Click">
+                          <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Polygon Points="0,0 10,6.5 0,13" Fill="{StaticResource OnAccentBrush}" VerticalAlignment="Center"/>
+                            <TextBlock Text="Play" FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource OnAccentBrush}"/>
+                          </StackPanel>
+                        </Button>
+                        <Button Style="{StaticResource PillButtonStyle}" Click="AlbumNextButton_Click"
+                                ToolTipService.ToolTip="Play next">
+                          <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Path Width="14" Height="12" Stretch="Uniform" Stroke="{StaticResource OnAccentBrush}" StrokeThickness="1.7"
+                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" VerticalAlignment="Center"
+                                  Data="M2,13 L2,9 C2,6 4,4.5 7,4.5 L14,4.5 M10.5,1 L14,4.5 L10.5,8"/>
+                            <TextBlock Text="Next" FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource OnAccentBrush}"/>
+                          </StackPanel>
+                        </Button>
+                        <Button Style="{StaticResource PillButtonStyle}" Click="AlbumLastButton_Click"
+                                ToolTipService.ToolTip="Add to queue">
+                          <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Path Width="13" Height="11" Stretch="Uniform" Stroke="{StaticResource OnAccentBrush}" StrokeThickness="1.7"
+                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" VerticalAlignment="Center"
+                                  Data="M1,6 L9,6 M5.5,2.5 L9,6 L5.5,9.5 M13,1 L13,11"/>
+                            <TextBlock Text="Last" FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource OnAccentBrush}"/>
+                          </StackPanel>
+                        </Button>
+                      </StackPanel>
+                    </StackPanel>
+                  </Grid>
+                </Grid>
+
+                <Grid Margin="0,0,0,12">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                  </Grid.ColumnDefinitions>
+                  <TextBox x:Name="AlbumTrackSearchBox" Grid.Column="0" PlaceholderText="Search" MinHeight="36"
+                           CornerRadius="18" Padding="16,8" TextChanged="AlbumTrackSearchBox_TextChanged"/>
+                  <StackPanel x:Name="AlbumGenrePanel" Grid.Column="1" Margin="24,0,0,0" VerticalAlignment="Center">
+                    <TextBlock Text="GENRE" FontSize="13" FontWeight="Bold"/>
+                    <Border Margin="0,4,0,0" Padding="10,3" CornerRadius="4" HorizontalAlignment="Left"
+                            BorderBrush="{StaticResource BorderBrush2}" BorderThickness="1">
+                      <TextBlock x:Name="AlbumGenreText" FontSize="13" FontWeight="SemiBold"/>
+                    </Border>
+                  </StackPanel>
+                </Grid>
+
+                <!-- Table header: note icon / TITLE / clock icon / heart -->
+                <Grid Height="36" BorderBrush="{StaticResource BorderBrush2}" BorderThickness="0,0,0,1" Margin="0,0,0,4">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="60"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="90"/>
+                    <ColumnDefinition Width="60"/>
+                  </Grid.ColumnDefinitions>
+                  <Path Grid.Column="0" Width="11" Height="13" Stretch="Uniform" Stroke="{StaticResource TextPrimaryBrush}" StrokeThickness="1.4"
+                        HorizontalAlignment="Center" VerticalAlignment="Center"
+                        Data="M5,12 A2,2 0 1 1 5,11.99 M7,12 L7,2 L13,1 L13,10 M13,10 A2,2 0 1 1 13,9.99"/>
+                  <TextBlock Grid.Column="1" Text="TITLE" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                  <Grid Grid.Column="2" Width="13" Height="13" HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <Ellipse Stroke="{StaticResource TextPrimaryBrush}" StrokeThickness="1.4"/>
+                    <Path Stroke="{StaticResource TextPrimaryBrush}" StrokeThickness="1.4" StrokeEndLineCap="Round"
+                          Data="M6.5,3.5 L6.5,6.8 L8.8,8.2"/>
+                  </Grid>
+                  <Path Grid.Column="3" Width="14" Height="13" Stretch="Uniform" Stroke="{StaticResource TextPrimaryBrush}" StrokeThickness="1.4"
+                        HorizontalAlignment="Center" VerticalAlignment="Center"
+                        Data="M8,15 C8,15 1,10.5 1,5.8 C1,3 3,1.3 5.4,1.3 C6.9,1.3 7.7,2.1 8,2.6 C8.3,2.1 9.1,1.3 10.6,1.3 C13,1.3 15,3 15,5.8 C15,10.5 8,15 8,15 Z"/>
+                </Grid>
+                <muxc:ItemsRepeater x:Name="AlbumSongsList" ItemTemplate="{StaticResource AlbumTrackRowTemplate}"/>
+              </StackPanel>
+            </ScrollViewer>
 
             <!-- Albums -->
             <Grid x:Name="AlbumsPage" Visibility="Collapsed">
@@ -619,9 +763,9 @@
               </Grid>
               <TextBlock x:Name="FullScreenTitleText" FontSize="24" FontWeight="Bold" Margin="0,28,0,0"
                          HorizontalAlignment="Center" TextAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="360"/>
-              <TextBlock x:Name="FullScreenArtistText" FontSize="16" Margin="0,8,0,0" Foreground="{StaticResource TextSecondaryBrush}"
-                         HorizontalAlignment="Center" TextAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="360"
-                         controls:Motion.ClickableText="True" Tapped="NowPlayingArtist_Tapped" ToolTipService.ToolTip="Go to artist"/>
+              <Border Background="Transparent" Margin="0,8,0,0" HorizontalAlignment="Center" controls:Motion.ClickableText="True" Tapped="NowPlayingArtist_Tapped" ToolTipService.ToolTip="Go to artist">
+                <TextBlock x:Name="FullScreenArtistText" FontSize="16" Foreground="{StaticResource TextSecondaryBrush}" TextAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="360"/>
+              </Border>
             </StackPanel>
 
             <Grid Grid.Column="2">
@@ -689,14 +833,12 @@
               <Border x:Name="NowPlayingArt" CornerRadius="6"/>
             </Grid>
             <StackPanel VerticalAlignment="Center" Margin="12,0,0,0" MaxWidth="220">
-              <TextBlock x:Name="NowPlayingText" FontWeight="SemiBold" Text="Nothing playing" FontSize="12"
-                         TextTrimming="CharacterEllipsis" HorizontalAlignment="Left"
-                         controls:Motion.ClickableText="True" Tapped="NowPlayingText_Tapped"
-                         ToolTipService.ToolTip="Show/hide Queue, Lyrics, Visualizer"/>
-              <TextBlock x:Name="NowPlayingSubText" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}"
-                         TextTrimming="CharacterEllipsis" Margin="0,2,0,0" HorizontalAlignment="Left"
-                         controls:Motion.ClickableText="True" Tapped="NowPlayingArtist_Tapped"
-                         ToolTipService.ToolTip="Go to artist"/>
+              <Border Background="Transparent" HorizontalAlignment="Left" controls:Motion.ClickableText="True" Tapped="NowPlayingText_Tapped" ToolTipService.ToolTip="Show/hide Queue, Lyrics, Visualizer">
+                <TextBlock x:Name="NowPlayingText" FontWeight="SemiBold" Text="Nothing playing" FontSize="12" TextTrimming="CharacterEllipsis"/>
+              </Border>
+              <Border Background="Transparent" Margin="0,2,0,0" HorizontalAlignment="Left" controls:Motion.ClickableText="True" Tapped="NowPlayingArtist_Tapped" ToolTipService.ToolTip="Go to artist">
+                <TextBlock x:Name="NowPlayingSubText" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis"/>
+              </Border>
             </StackPanel>
           </StackPanel>
 

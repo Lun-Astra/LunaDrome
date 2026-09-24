@@ -121,9 +121,21 @@ public static class Motion
     private static readonly DependencyProperty RestForegroundProperty =
         DependencyProperty.RegisterAttached("RestForeground", typeof(Brush), typeof(Motion), new PropertyMetadata(null));
 
+    // Set on a transparent-background Border wrapping the TextBlock, not on the TextBlock itself:
+    // on Uno's Skia host a bare TextBlock doesn't raise PointerEntered from plain mouse movement
+    // (only on press), so hover never showed. A Border with a (transparent) background is
+    // reliably hit-tested, so it detects the hover and restyles its child text.
+    private static TextBlock? ClickableTarget(object sender) => sender switch
+    {
+        Border { Child: TextBlock child } => child,
+        TextBlock text => text,
+        _ => null
+    };
+
     private static readonly PointerEventHandler ClickableEntered = (s, _) =>
     {
-        var text = (TextBlock)s;
+        if (ClickableTarget(s) is not { } text)
+            return;
         text.SetValue(RestForegroundProperty, text.Foreground);
         text.Foreground = (Brush)Application.Current.Resources["AccentBrush"];
         text.TextDecorations = Windows.UI.Text.TextDecorations.Underline;
@@ -131,7 +143,8 @@ public static class Motion
 
     private static readonly PointerEventHandler ClickableExited = (s, _) =>
     {
-        var text = (TextBlock)s;
+        if (ClickableTarget(s) is not { } text)
+            return;
         if (text.GetValue(RestForegroundProperty) is Brush rest)
             text.Foreground = rest;
         text.TextDecorations = Windows.UI.Text.TextDecorations.None;
@@ -139,16 +152,34 @@ public static class Motion
 
     private static void OnClickableTextChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
-        if (d is not TextBlock text)
+        if (d is not UIElement element)
             return;
 
-        text.PointerEntered -= ClickableEntered;
-        text.PointerExited -= ClickableExited;
+        element.PointerEntered -= ClickableEntered;
+        element.PointerExited -= ClickableExited;
         if ((bool)e.NewValue)
         {
-            text.PointerEntered += ClickableEntered;
-            text.PointerExited += ClickableExited;
+            element.PointerEntered += ClickableEntered;
+            element.PointerExited += ClickableExited;
+            SetHandCursor(element);
         }
+    }
+
+    // UIElement.ProtectedCursor is protected (only settable from a subclass), and TextBlock is
+    // sealed - reflection is the only way to give a plain TextBlock the hand cursor Feishin's
+    // links show. Best-effort: if a platform lacks it, the text is still clickable.
+    private static readonly System.Reflection.PropertyInfo? ProtectedCursorProperty =
+        typeof(UIElement).GetProperty("ProtectedCursor",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+
+    public static void SetHandCursor(UIElement element)
+    {
+        try
+        {
+            ProtectedCursorProperty?.SetValue(element,
+                Microsoft.UI.Input.InputSystemCursor.Create(Microsoft.UI.Input.InputSystemCursorShape.Hand));
+        }
+        catch { /* cursor is cosmetic */ }
     }
 
     // --- HoverBackground: swaps a Border's background while hovered (WPF genre tiles) ---

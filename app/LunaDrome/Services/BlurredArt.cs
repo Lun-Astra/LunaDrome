@@ -45,6 +45,39 @@ public static class BlurredArt
         }
     }
 
+    /// <summary>
+    /// Average color of the cover art, for the album page's tinted header (Feishin derives that
+    /// header color from the cover the same way - an average, via fast-average-color).
+    /// </summary>
+    public static async Task<Windows.UI.Color?> AverageColorAsync(string? url)
+    {
+        if (string.IsNullOrEmpty(url))
+            return null;
+
+        try
+        {
+            var bytes = await Http.GetByteArrayAsync(url);
+            return await Task.Run<Windows.UI.Color?>(() =>
+            {
+                using var source = SKImage.FromEncodedData(bytes);
+                if (source == null)
+                    return null;
+
+                // Downscale to 1x1 with mipmapped linear sampling = the average of all pixels.
+                using var surface = SKSurface.Create(new SKImageInfo(1, 1));
+                surface.Canvas.DrawImage(source, SKRect.Create(0, 0, 1, 1), new SKSamplingOptions(SKFilterMode.Linear, SKMipmapMode.Linear));
+                using var pixel = surface.Snapshot();
+                using var bitmap = SKBitmap.FromImage(pixel);
+                var c = bitmap.GetPixel(0, 0);
+                return Windows.UI.Color.FromArgb(255, c.Red, c.Green, c.Blue);
+            });
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     private static byte[]? Render(byte[] imageBytes)
     {
         using var source = SKImage.FromEncodedData(imageBytes);
