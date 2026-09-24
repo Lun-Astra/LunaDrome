@@ -38,7 +38,8 @@ Description: Music player for your Navidrome server
  LunaDrome is a desktop client for Navidrome (Subsonic API) with a
  Feishin-style interface, playlists, lyrics and an audio visualizer.
 EOF
-dpkg-deb --build --root-owner-group "$deb" "$out/lunadrome_${version}_amd64.deb"
+# xz, not dpkg-deb's Ubuntu default zstd: older Debian dpkg versions can't read zstd packages.
+dpkg-deb -Zxz --build --root-owner-group "$deb" "$out/lunadrome_${version}_amd64.deb"
 
 # ---- .tar.gz ----
 tgz="$work/LunaDrome-$version-linux-x64"
