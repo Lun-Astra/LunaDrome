@@ -55,9 +55,15 @@ internal class Program
         foreach (var candidate in candidates)
         {
             if (NativeLibrary.TryLoad(candidate, assembly, searchPath, out var handle))
+            {
+                if (Environment.GetEnvironmentVariable("LUNADROME_LOG") == "1")
+                    Console.Error.WriteLine($"[LunaDrome] loaded {name} as {candidate}");
                 return handle;
+            }
         }
 
+        if (candidates.Length > 0)
+            Console.Error.WriteLine($"[LunaDrome] could not load {name} (tried {string.Join(", ", candidates)}) - install VLC (libvlc5 / vlc-plugin-base)");
         return IntPtr.Zero; // fall back to .NET's default probing
     }
 }

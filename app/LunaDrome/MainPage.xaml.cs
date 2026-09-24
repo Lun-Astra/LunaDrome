@@ -105,6 +105,21 @@ public sealed partial class MainPage : Page
         _player.Volume = VolumeSlider.Value;
         _player.MediaEnded += (_, _) => DispatcherQueue.TryEnqueue(OnMediaEnded);
 
+        // Playback failures used to be silent (e.g. Linux: libvlc missing/unusable -> the play
+        // button just flipped to pause with no sound). Surface them in the now-playing line and
+        // on the terminal, and log state changes for troubleshooting (LUNADROME_LOG=1).
+        _player.MediaFailed += (_, e) =>
+        {
+            Console.Error.WriteLine($"[LunaDrome] playback failed: {e.Error} {e.ErrorMessage} (0x{e.ExtendedErrorCode?.HResult:X8} {e.ExtendedErrorCode?.Message})");
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                SetPlaying(false);
+                NowPlayingSubText.Text = $"Playback failed: {e.ErrorMessage}";
+            });
+        };
+        _player.MediaOpened += (_, _) => Log("media opened");
+        _player.PlaybackSession.PlaybackStateChanged += (s, _) => Log($"playback state: {s.PlaybackState}");
+
         // Slider marks its own pointer events handled, so listen with handledEventsToo to know
         // when the user is dragging (the progress timer mustn't fight the drag) and when to seek.
         ProgressSlider.AddHandler(PointerPressedEvent, new PointerEventHandler((_, _) => _isUserSeeking = true), true);
@@ -1442,8 +1457,20 @@ public sealed partial class MainPage : Page
         _queueIndex = index;
         var song = _queue[index];
 
-        _player.Source = MediaSource.CreateFromUri(new Uri(_client.GetStreamUrl(song.Id)));
-        _player.Play();
+        Log($"play '{song.Title}' ({song.Id})");
+        try
+        {
+            _player.Source = MediaSource.CreateFromUri(new Uri(_client.GetStreamUrl(song.Id)));
+            _player.Play();
+        }
+        catch (Exception ex)
+        {
+            // e.g. the native media engine failing to load on Linux
+            Console.Error.WriteLine($"[LunaDrome] playback start failed: {ex}");
+            NowPlayingSubText.Text = $"Playback failed: {ex.Message}";
+            SetPlaying(false);
+            return;
+        }
         SetPlaying(true);
 
         NowPlayingText.Text = song.Title;
@@ -1457,6 +1484,14 @@ public sealed partial class MainPage : Page
 
         if (LyricsPanelView.Visibility == Visibility.Visible)
             await LoadLyricsForCurrentSongAsync();
+    }
+
+    private static readonly bool DiagnosticsEnabled = Environment.GetEnvironmentVariable("LUNADROME_LOG") == "1";
+
+    private static void Log(string message)
+    {
+        if (DiagnosticsEnabled)
+            Console.Error.WriteLine($"[LunaDrome] {DateTime.Now:HH:mm:ss.fff} {message}");
     }
 
     private void SetPlaying(bool playing)

@@ -82,7 +82,12 @@ public partial class App : Application
     /// </summary>
     public static void InitializeLogging()
     {
-#if DEBUG
+#if !DEBUG
+        // Release builds log only on request: LUNADROME_LOG=1 lunadrome (troubleshooting, e.g.
+        // Linux playback). Media player / native library messages then go to the terminal.
+        if (Environment.GetEnvironmentVariable("LUNADROME_LOG") != "1")
+            return;
+#endif
         // Logging is disabled by default for release builds, as it incurs a significant
         // initialization cost from Microsoft.Extensions.Logging setup. If startup performance
         // is a concern for your application, keep this disabled. If you're running on the web or
@@ -105,6 +110,12 @@ public partial class App : Application
 
             // Exclude logs below this level
             builder.SetMinimumLevel(LogLevel.Information);
+
+            // Playback diagnostics (Linux libvlc issues): media player internals in detail.
+            builder.AddFilter("Uno.UI.MediaPlayer", LogLevel.Debug);
+            builder.AddFilter("Windows.Media", LogLevel.Debug);
+            builder.AddFilter("LibVLCSharp", LogLevel.Debug);
+            builder.AddFilter("LunaDrome", LogLevel.Debug);
 
             // Default filters for Uno Platform namespaces
             builder.AddFilter("Uno", LogLevel.Warning);
@@ -147,7 +158,6 @@ public partial class App : Application
 
 #if HAS_UNO
         global::Uno.UI.Adapter.Microsoft.Extensions.Logging.LoggingAdapter.Initialize();
-#endif
 #endif
     }
 }
