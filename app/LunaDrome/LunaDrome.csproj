@@ -40,4 +40,17 @@
     <PackageReference Include="NAudio.Wasapi" />
   </ItemGroup>
 
+  <!-- The LibVLC package drops native libs + plugins for every Windows architecture into
+       libvlc/win-x64, win-x86 and win-arm64 (~280MB). A published app only ever loads the one
+       matching its own runtime, and on Linux none of them (it uses the system's libvlc), so
+       delete the rest after publish: -180MB on Windows, -280MB on Linux. -->
+  <Target Name="TrimLibVlcForRuntime" AfterTargets="Publish" Condition="'$(RuntimeIdentifier)' != '' And Exists('$(PublishDir)libvlc')">
+    <ItemGroup>
+      <_LibVlcArchDir Include="$([System.IO.Directory]::GetDirectories('$(PublishDir)libvlc'))" />
+      <_LibVlcArchDirToRemove Include="@(_LibVlcArchDir)" Condition="'%(Filename)' != '$(RuntimeIdentifier)'" />
+    </ItemGroup>
+    <RemoveDir Directories="@(_LibVlcArchDirToRemove)" />
+    <Message Importance="high" Text="Trimmed LibVLC folders not needed for $(RuntimeIdentifier): @(_LibVlcArchDirToRemove->'%(Filename)')" />
+  </Target>
+
 </Project>
