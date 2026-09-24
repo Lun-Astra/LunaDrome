@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=LunaDrome
+GenericName=Music Player
+Comment=Music player for your Navidrome server
+Exec=lunadrome
+Icon=lunadrome
+Terminal=false
+Categories=AudioVideo;Audio;Player;Music;
+Keywords=music;navidrome;subsonic;player;
+StartupWMClass=LunaDrome
