@@ -1,0 +1,552 @@
+<Application x:Class="LunaDrome.App"
+       xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+       xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+       xmlns:us="using:Uno.Simple"
+       xmlns:controls="using:LunaDrome.Controls">
+
+  <!-- Every style here is a port of the WPF app's App.xaml (src/Musicplayer.App/App.xaml), so the
+       Uno app looks 1:1 like the live one. WinUI has no property triggers, so hover/press/checked
+       looks are VisualStateManager states in full ControlTemplates instead - and where WPF used two
+       triggers that both touched Background (hover + checked), these templates use two stacked
+       layers instead, since two VisualStateGroups setting the same property would fight. -->
+  <Application.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries>
+        <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
+        <us:SimpleTheme />
+      </ResourceDictionary.MergedDictionaries>
+
+      <!-- Palette: Feishin's dark surfaces, monochrome black/white accent -->
+      <SolidColorBrush x:Key="BackgroundBrush" Color="#FF1A1B1E"/>
+      <SolidColorBrush x:Key="PanelBrush" Color="#FF141517"/>
+      <SolidColorBrush x:Key="RaisedBrush" Color="#FF25262B"/>
+      <SolidColorBrush x:Key="HoverBrush" Color="#FF2C2E33"/>
+      <SolidColorBrush x:Key="BorderBrush2" Color="#FF373A40"/>
+      <SolidColorBrush x:Key="AccentBrush" Color="#FFFFFFFF"/>
+      <SolidColorBrush x:Key="AccentDimBrush" Color="#26FFFFFF"/>
+      <SolidColorBrush x:Key="OnAccentBrush" Color="#FF141517"/>
+      <SolidColorBrush x:Key="TextPrimaryBrush" Color="#FFECEDEE"/>
+      <SolidColorBrush x:Key="TextSecondaryBrush" Color="#FF909296"/>
+
+      <FontFamily x:Key="AppFont">Segoe UI</FontFamily>
+      <FontFamily x:Key="ContentControlThemeFontFamily">Segoe UI</FontFamily>
+
+      <Style TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+        <Setter Property="FontFamily" Value="{StaticResource AppFont}"/>
+        <Setter Property="FontSize" Value="12"/>
+      </Style>
+
+      <Style x:Key="SectionHeaderStyle" TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
+        <Setter Property="FontFamily" Value="{StaticResource AppFont}"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="FontSize" Value="12"/>
+        <Setter Property="Margin" Value="2,0,0,10"/>
+      </Style>
+
+      <!-- Home row scroller: no scrollbar and no wheel/drag scrolling - the ‹ › arrows in each
+           row's CarouselHeader page it (ChangeView still works with the mode disabled), so the
+           mouse wheel scrolls the page itself. -->
+      <Style x:Key="CarouselScrollViewerStyle" TargetType="ScrollViewer">
+        <Setter Property="HorizontalScrollMode" Value="Disabled"/>
+        <Setter Property="HorizontalScrollBarVisibility" Value="Hidden"/>
+        <Setter Property="VerticalScrollMode" Value="Disabled"/>
+        <Setter Property="VerticalScrollBarVisibility" Value="Disabled"/>
+      </Style>
+
+      <!-- ===== Buttons ===== -->
+
+      <Style x:Key="BaseButtonStyle" TargetType="Button">
+        <Setter Property="Background" Value="{StaticResource RaisedBrush}"/>
+        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="FontFamily" Value="{StaticResource AppFont}"/>
+        <Setter Property="FontSize" Value="12"/>
+        <Setter Property="Padding" Value="0"/>
+        <Setter Property="HorizontalContentAlignment" Value="Center"/>
+        <Setter Property="VerticalContentAlignment" Value="Center"/>
+        <Setter Property="UseSystemFocusVisuals" Value="False"/>
+        <Setter Property="controls:Motion.PressScale" Value="True"/>
+        <Setter Property="Template">
+          <Setter.Value>
+            <ControlTemplate TargetType="Button">
+              <Grid x:Name="Root">
+                <VisualStateManager.VisualStateGroups>
+                  <VisualStateGroup x:Name="CommonStates">
+                    <VisualState x:Name="Normal"/>
+                    <VisualState x:Name="PointerOver">
+                      <VisualState.Setters>
+                        <Setter Target="Bd.Background" Value="{StaticResource HoverBrush}"/>
+                      </VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="Pressed">
+                      <VisualState.Setters>
+                        <Setter Target="Bd.Background" Value="{StaticResource HoverBrush}"/>
+                        <Setter Target="Bd.Opacity" Value="0.8"/>
+                      </VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="Disabled">
+                      <VisualState.Setters>
+                        <Setter Target="Bd.Opacity" Value="0.4"/>
+                      </VisualState.Setters>
+                    </VisualState>
+                  </VisualStateGroup>
+                </VisualStateManager.VisualStateGroups>
+                <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="16">
+                  <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                    VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                    Margin="{TemplateBinding Padding}"
+                                    Foreground="{TemplateBinding Foreground}"/>
+                </Border>
+              </Grid>
+            </ControlTemplate>
+          </Setter.Value>
+        </Setter>
+      </Style>
+
+      <Style TargetType="Button" BasedOn="{StaticResource BaseButtonStyle}"/>
+
+      <!-- White accent button: dims on hover instead of swapping to the dark hover color, which
+           would make the dark icon on it invisible (same fix as the WPF PrimaryButtonStyle). -->
+      <Style x:Key="PrimaryButtonStyle" TargetType="Button" BasedOn="{StaticResource BaseButtonStyle}">
+        <Setter Property="Background" Value="{StaticResource AccentBrush}"/>
+        <Setter Property="Foreground" Value="{StaticResource OnAccentBrush}"/>
+        <Setter Property="FontWeight" Value="Bold"/>
+        <Setter Property="Template">
+          <Setter.Value>
+            <ControlTemplate TargetType="Button">
+              <Grid>
+                <VisualStateManager.VisualStateGroups>
+                  <VisualStateGroup x:Name="CommonStates">
+                    <VisualState x:Name="Normal"/>
+                    <VisualState x:Name="PointerOver">
+                      <VisualState.Setters>
+                        <Setter Target="Bd.Opacity" Value="0.85"/>
+                      </VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="Pressed">
+                      <VisualState.Setters>
+                        <Setter Target="Bd.Opacity" Value="0.7"/>
+                      </VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="Disabled">
+                      <VisualState.Setters>
+                        <Setter Target="Bd.Opacity" Value="0.4"/>
+                      </VisualState.Setters>
+                    </VisualState>
+                  </VisualStateGroup>
+                </VisualStateManager.VisualStateGroups>
+                <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="16">
+                  <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                    Margin="{TemplateBinding Padding}" Foreground="{TemplateBinding Foreground}"/>
+                </Border>
+              </Grid>
+            </ControlTemplate>
+          </Setter.Value>
+        </Setter>
+      </Style>
+
+      <!-- Feishin's white pill buttons (Play / Next / Last on album + artist pages). -->
+      <Style x:Key="PillButtonStyle" TargetType="Button" BasedOn="{StaticResource BaseButtonStyle}">
+        <Setter Property="Background" Value="{StaticResource AccentBrush}"/>
+        <Setter Property="Foreground" Value="{StaticResource OnAccentBrush}"/>
+        <Setter Property="Height" Value="36"/>
+        <Setter Property="Padding" Value="20,0"/>
+        <Setter Property="Template">
+          <Setter.Value>
+            <ControlTemplate TargetType="Button">
+              <Grid>
+                <VisualStateManager.VisualStateGroups>
+                  <VisualStateGroup x:Name="CommonStates">
+                    <VisualState x:Name="Normal"/>
+                    <VisualState x:Name="PointerOver">
+                      <VisualState.Setters>
+                        <Setter Target="Bd.Opacity" Value="0.85"/>
+                      </VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="Pressed">
+                      <VisualState.Setters>
+                        <Setter Target="Bd.Opacity" Value="0.7"/>
+                      </VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="Disabled">
+                      <VisualState.Setters>
+                        <Setter Target="Bd.Opacity" Value="0.4"/>
+                      </VisualState.Setters>
+                    </VisualState>
+                  </VisualStateGroup>
+                </VisualStateManager.VisualStateGroups>
+                <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="18">
+                  <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                    Margin="{TemplateBinding Padding}" Foreground="{TemplateBinding Foreground}"/>
+                </Border>
+              </Grid>
+            </ControlTemplate>
+          </Setter.Value>
+        </Setter>
+      </Style>
+
+      <!-- Flat icon button (transport row): transparent at rest, same hover/press as Button. -->
+      <Style x:Key="IconButtonStyle" TargetType="Button" BasedOn="{StaticResource BaseButtonStyle}">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="Width" Value="36"/>
+        <Setter Property="Height" Value="36"/>
+      </Style>
+
+      <!-- Plain text-link button ("More ›"). -->
+      <Style x:Key="LinkButtonStyle" TargetType="Button" BasedOn="{StaticResource BaseButtonStyle}">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
+        <Setter Property="Padding" Value="4,0"/>
+      </Style>
+
+      <!-- Small dark circular button for the hero carousel's prev/next arrows. -->
+      <Style x:Key="HeroNavButtonStyle" TargetType="Button">
+        <Setter Property="Foreground" Value="White"/>
+        <Setter Property="FontSize" Value="16"/>
+        <Setter Property="Width" Value="36"/>
+        <Setter Property="Height" Value="36"/>
+        <Setter Property="UseSystemFocusVisuals" Value="False"/>
+        <Setter Property="controls:Motion.HoverScale" Value="1.1"/>
+        <Setter Property="Template">
+          <Setter.Value>
+            <ControlTemplate TargetType="Button">
+              <Grid>
+                <VisualStateManager.VisualStateGroups>
+                  <VisualStateGroup x:Name="CommonStates">
+                    <VisualState x:Name="Normal"/>
+                    <VisualState x:Name="PointerOver">
+                      <VisualState.Setters>
+                        <Setter Target="Bd.Background" Value="#99000000"/>
+                      </VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="Pressed">
+                      <VisualState.Setters>
+                        <Setter Target="Bd.Background" Value="#99000000"/>
+                      </VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="Disabled"/>
+                  </VisualStateGroup>
+                </VisualStateManager.VisualStateGroups>
+                <Border x:Name="Bd" CornerRadius="18" Background="#66000000">
+                  <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                    Foreground="{TemplateBinding Foreground}" Margin="0,0,0,2"/>
+                </Border>
+              </Grid>
+            </ControlTemplate>
+          </Setter.Value>
+        </Setter>
+      </Style>
+
+      <!-- ===== Sidebar navigation (RadioButton) ===== -->
+
+      <Style x:Key="NavItemStyle" TargetType="RadioButton">
+        <Setter Property="Padding" Value="17,10,14,10"/>
+        <Setter Property="Margin" Value="0,2"/>
+        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+        <Setter Property="FontFamily" Value="{StaticResource AppFont}"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="FontSize" Value="13"/>
+        <Setter Property="HorizontalAlignment" Value="Stretch"/>
+        <Setter Property="HorizontalContentAlignment" Value="Left"/>
+        <Setter Property="UseSystemFocusVisuals" Value="False"/>
+        <Setter Property="Template">
+          <Setter.Value>
+            <ControlTemplate TargetType="RadioButton">
+              <Grid Background="Transparent">
+                <VisualStateManager.VisualStateGroups>
+                  <VisualStateGroup x:Name="CommonStates">
+                    <VisualState x:Name="Normal"/>
+                    <VisualState x:Name="PointerOver">
+                      <VisualState.Setters>
+                        <Setter Target="HoverLayer.Opacity" Value="1"/>
+                      </VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="Pressed">
+                      <VisualState.Setters>
+                        <Setter Target="HoverLayer.Opacity" Value="1"/>
+                      </VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="Disabled"/>
+                  </VisualStateGroup>
+                  <VisualStateGroup x:Name="CheckStates">
+                    <VisualState x:Name="Checked">
+                      <VisualState.Setters>
+                        <Setter Target="CheckedLayer.Opacity" Value="1"/>
+                      </VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="Unchecked"/>
+                    <VisualState x:Name="Indeterminate"/>
+                  </VisualStateGroup>
+                </VisualStateManager.VisualStateGroups>
+                <Border x:Name="HoverLayer" CornerRadius="6" Background="{StaticResource HoverBrush}" Opacity="0"/>
+                <Border x:Name="CheckedLayer" CornerRadius="6" Background="{StaticResource AccentDimBrush}"
+                        BorderBrush="{StaticResource AccentBrush}" BorderThickness="3,0,0,0" Opacity="0"/>
+                <ContentPresenter Margin="{TemplateBinding Padding}" HorizontalAlignment="Left" VerticalAlignment="Center"
+                                  Foreground="{TemplateBinding Foreground}"/>
+              </Grid>
+            </ControlTemplate>
+          </Setter.Value>
+        </Setter>
+      </Style>
+
+      <!-- Segmented tab bar: Queue / Lyrics / Visualizer -->
+      <Style x:Key="SidePanelTabStyle" TargetType="RadioButton">
+        <Setter Property="Padding" Value="0,8"/>
+        <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
+        <Setter Property="FontFamily" Value="{StaticResource AppFont}"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="FontSize" Value="12"/>
+        <Setter Property="HorizontalAlignment" Value="Stretch"/>
+        <Setter Property="UseSystemFocusVisuals" Value="False"/>
+        <Setter Property="Template">
+          <Setter.Value>
+            <ControlTemplate TargetType="RadioButton">
+              <Grid Background="Transparent" Margin="2,0">
+                <VisualStateManager.VisualStateGroups>
+                  <VisualStateGroup x:Name="CommonStates">
+                    <VisualState x:Name="Normal"/>
+                    <VisualState x:Name="PointerOver">
+                      <VisualState.Setters>
+                        <Setter Target="HoverLayer.Opacity" Value="1"/>
+                      </VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="Pressed">
+                      <VisualState.Setters>
+                        <Setter Target="HoverLayer.Opacity" Value="1"/>
+                      </VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="Disabled"/>
+                  </VisualStateGroup>
+                  <VisualStateGroup x:Name="CheckStates">
+                    <VisualState x:Name="Checked">
+                      <VisualState.Setters>
+                        <Setter Target="CheckedLayer.Opacity" Value="1"/>
+                        <Setter Target="Label.Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+                      </VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="Unchecked"/>
+                    <VisualState x:Name="Indeterminate"/>
+                  </VisualStateGroup>
+                </VisualStateManager.VisualStateGroups>
+                <Border x:Name="HoverLayer" CornerRadius="6" Background="{StaticResource HoverBrush}" Opacity="0"/>
+                <Border x:Name="CheckedLayer" CornerRadius="6" Background="{StaticResource RaisedBrush}" Opacity="0"/>
+                <ContentPresenter x:Name="Label" Margin="{TemplateBinding Padding}" HorizontalAlignment="Center"
+                                  VerticalAlignment="Center" Foreground="{TemplateBinding Foreground}"/>
+              </Grid>
+            </ControlTemplate>
+          </Setter.Value>
+        </Setter>
+      </Style>
+
+      <!-- ===== List rows (ListView = WPF's ListBox/ListView rows) ===== -->
+
+      <Style x:Key="RowItemStyle" TargetType="ListViewItem">
+        <Setter Property="Padding" Value="13,8,10,8"/>
+        <Setter Property="Margin" Value="0,1"/>
+        <Setter Property="MinHeight" Value="0"/>
+        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+        <Setter Property="FontFamily" Value="{StaticResource AppFont}"/>
+        <Setter Property="FontSize" Value="12"/>
+        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+        <Setter Property="UseSystemFocusVisuals" Value="False"/>
+        <Setter Property="Template">
+          <Setter.Value>
+            <ControlTemplate TargetType="ListViewItem">
+              <Grid Background="Transparent">
+                <VisualStateManager.VisualStateGroups>
+                  <VisualStateGroup x:Name="CommonStates">
+                    <VisualState x:Name="Normal"/>
+                    <VisualState x:Name="PointerOver">
+                      <VisualState.Setters>
+                        <Setter Target="HoverLayer.Opacity" Value="1"/>
+                      </VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="Pressed">
+                      <VisualState.Setters>
+                        <Setter Target="HoverLayer.Opacity" Value="1"/>
+                      </VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="Selected">
+                      <VisualState.Setters>
+                        <Setter Target="SelectedLayer.Opacity" Value="1"/>
+                      </VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="PointerOverSelected">
+                      <VisualState.Setters>
+                        <Setter Target="HoverLayer.Opacity" Value="1"/>
+                        <Setter Target="SelectedLayer.Opacity" Value="1"/>
+                      </VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="PressedSelected">
+                      <VisualState.Setters>
+                        <Setter Target="HoverLayer.Opacity" Value="1"/>
+                        <Setter Target="SelectedLayer.Opacity" Value="1"/>
+                      </VisualState.Setters>
+                    </VisualState>
+                  </VisualStateGroup>
+                </VisualStateManager.VisualStateGroups>
+                <Border x:Name="HoverLayer" CornerRadius="6" Background="{StaticResource HoverBrush}" Opacity="0"/>
+                <Border x:Name="SelectedLayer" CornerRadius="6" Background="{StaticResource AccentDimBrush}"
+                        BorderBrush="{StaticResource AccentBrush}" BorderThickness="3,0,0,0" Opacity="0"/>
+                <ContentPresenter Margin="{TemplateBinding Padding}"
+                                  HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                  HorizontalAlignment="Stretch" VerticalAlignment="Center"
+                                  Foreground="{TemplateBinding Foreground}"/>
+              </Grid>
+            </ControlTemplate>
+          </Setter.Value>
+        </Setter>
+      </Style>
+
+      <!-- Track rows: same look, tighter padding (WPF SongListViewItemStyle). -->
+      <Style x:Key="SongItemStyle" TargetType="ListViewItem" BasedOn="{StaticResource RowItemStyle}">
+        <Setter Property="Padding" Value="11,7,8,7"/>
+      </Style>
+
+      <Style TargetType="ListView">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="Padding" Value="0"/>
+        <Setter Property="ItemContainerStyle" Value="{StaticResource RowItemStyle}"/>
+        <Setter Property="controls:WheelScroll.Enabled" Value="True"/>
+      </Style>
+
+      <!-- ===== Slider (progress / volume): 4px track, white fill, 12px white thumb ===== -->
+
+      <Style TargetType="Slider">
+        <Setter Property="Height" Value="20"/>
+        <Setter Property="MinHeight" Value="20"/>
+        <Setter Property="IsThumbToolTipEnabled" Value="False"/>
+        <Setter Property="UseSystemFocusVisuals" Value="False"/>
+        <Setter Property="Template">
+          <Setter.Value>
+            <ControlTemplate TargetType="Slider">
+              <Grid x:Name="SliderContainer" Background="Transparent">
+                <Grid x:Name="HorizontalTemplate" VerticalAlignment="Center">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                  </Grid.ColumnDefinitions>
+                  <Rectangle x:Name="HorizontalTrackRect" Grid.ColumnSpan="3" Height="4" RadiusX="2" RadiusY="2"
+                             Fill="{StaticResource BorderBrush2}" VerticalAlignment="Center"/>
+                  <Rectangle x:Name="HorizontalDecreaseRect" Grid.Column="0" Height="4" RadiusX="2" RadiusY="2"
+                             Fill="{StaticResource AccentBrush}" VerticalAlignment="Center"/>
+                  <Thumb x:Name="HorizontalThumb" Grid.Column="1" Width="12" Height="12"
+                         DataContext="{TemplateBinding Value}" VerticalAlignment="Center">
+                    <Thumb.Template>
+                      <ControlTemplate TargetType="Thumb">
+                        <Ellipse Width="12" Height="12" Fill="{StaticResource AccentBrush}"/>
+                      </ControlTemplate>
+                    </Thumb.Template>
+                  </Thumb>
+                </Grid>
+                <Grid x:Name="VerticalTemplate" Visibility="Collapsed">
+                  <Grid.RowDefinitions>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                  </Grid.RowDefinitions>
+                  <Rectangle x:Name="VerticalTrackRect" Grid.RowSpan="3" Width="4" Fill="{StaticResource BorderBrush2}"/>
+                  <Rectangle x:Name="VerticalDecreaseRect" Grid.Row="2" Width="4" Fill="{StaticResource AccentBrush}"/>
+                  <Thumb x:Name="VerticalThumb" Grid.Row="1" Width="12" Height="12" DataContext="{TemplateBinding Value}">
+                    <Thumb.Template>
+                      <ControlTemplate TargetType="Thumb">
+                        <Ellipse Width="12" Height="12" Fill="{StaticResource AccentBrush}"/>
+                      </ControlTemplate>
+                    </Thumb.Template>
+                  </Thumb>
+                </Grid>
+              </Grid>
+            </ControlTemplate>
+          </Setter.Value>
+        </Setter>
+      </Style>
+
+      <!-- ===== Text input: WinUI reads its state colors from these named keys ===== -->
+
+      <SolidColorBrush x:Key="TextControlBackground" Color="#FF25262B"/>
+      <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="#FF25262B"/>
+      <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="#FF2C2E33"/>
+      <SolidColorBrush x:Key="TextControlForeground" Color="#FFECEDEE"/>
+      <SolidColorBrush x:Key="TextControlForegroundPointerOver" Color="#FFECEDEE"/>
+      <SolidColorBrush x:Key="TextControlForegroundFocused" Color="#FFECEDEE"/>
+      <SolidColorBrush x:Key="TextControlPlaceholderForeground" Color="#FF909296"/>
+      <SolidColorBrush x:Key="TextControlPlaceholderForegroundPointerOver" Color="#FF909296"/>
+      <SolidColorBrush x:Key="TextControlPlaceholderForegroundFocused" Color="#FF909296"/>
+      <SolidColorBrush x:Key="TextControlBorderBrush" Color="Transparent"/>
+      <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="Transparent"/>
+      <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="Transparent"/>
+      <Thickness x:Key="TextControlBorderThemeThickness">0</Thickness>
+      <Thickness x:Key="TextControlBorderThemeThicknessFocused">0</Thickness>
+
+      <Style TargetType="TextBox">
+        <Setter Property="Background" Value="{StaticResource RaisedBrush}"/>
+        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="CornerRadius" Value="6"/>
+        <Setter Property="Padding" Value="8,7"/>
+        <Setter Property="MinHeight" Value="43"/>
+        <Setter Property="FontFamily" Value="{StaticResource AppFont}"/>
+        <Setter Property="FontSize" Value="12"/>
+      </Style>
+
+      <Style TargetType="PasswordBox">
+        <Setter Property="Background" Value="{StaticResource RaisedBrush}"/>
+        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="CornerRadius" Value="6"/>
+        <Setter Property="Padding" Value="8,7"/>
+        <Setter Property="MinHeight" Value="0"/>
+        <Setter Property="FontFamily" Value="{StaticResource AppFont}"/>
+        <Setter Property="FontSize" Value="12"/>
+      </Style>
+
+      <!-- ===== Menus (context menus / sort popouts) ===== -->
+
+      <SolidColorBrush x:Key="MenuFlyoutPresenterBackground" Color="#FF25262B"/>
+      <SolidColorBrush x:Key="MenuFlyoutPresenterBorderBrush" Color="Transparent"/>
+      <SolidColorBrush x:Key="MenuFlyoutItemBackground" Color="Transparent"/>
+      <SolidColorBrush x:Key="MenuFlyoutItemBackgroundPointerOver" Color="#26FFFFFF"/>
+      <SolidColorBrush x:Key="MenuFlyoutItemBackgroundPressed" Color="#26FFFFFF"/>
+      <SolidColorBrush x:Key="MenuFlyoutItemForeground" Color="#FFECEDEE"/>
+      <SolidColorBrush x:Key="MenuFlyoutItemForegroundPointerOver" Color="#FFECEDEE"/>
+      <SolidColorBrush x:Key="MenuFlyoutItemForegroundPressed" Color="#FFECEDEE"/>
+      <SolidColorBrush x:Key="MenuFlyoutSubItemBackgroundPointerOver" Color="#26FFFFFF"/>
+      <SolidColorBrush x:Key="MenuFlyoutSubItemBackgroundSubMenuOpened" Color="#26FFFFFF"/>
+      <SolidColorBrush x:Key="MenuFlyoutSubItemForeground" Color="#FFECEDEE"/>
+      <SolidColorBrush x:Key="MenuFlyoutSubItemForegroundPointerOver" Color="#FFECEDEE"/>
+      <SolidColorBrush x:Key="MenuFlyoutSubItemForegroundSubMenuOpened" Color="#FFECEDEE"/>
+      <SolidColorBrush x:Key="MenuFlyoutSeparatorBackground" Color="#FF373A40"/>
+      <SolidColorBrush x:Key="ToggleMenuFlyoutItemForeground" Color="#FFECEDEE"/>
+      <SolidColorBrush x:Key="ToggleMenuFlyoutItemForegroundPointerOver" Color="#FFECEDEE"/>
+      <SolidColorBrush x:Key="ToggleMenuFlyoutItemBackgroundPointerOver" Color="#26FFFFFF"/>
+      <SolidColorBrush x:Key="ToggleMenuFlyoutItemCheckGlyphForeground" Color="#FFECEDEE"/>
+      <CornerRadius x:Key="OverlayCornerRadius">8</CornerRadius>
+
+      <!-- ContentDialog (new playlist / delete confirm) -->
+      <SolidColorBrush x:Key="ContentDialogBackground" Color="#FF1A1B1E"/>
+      <SolidColorBrush x:Key="ContentDialogForeground" Color="#FFECEDEE"/>
+      <SolidColorBrush x:Key="ContentDialogBorderBrush" Color="#FF373A40"/>
+
+      <!-- ToolTip -->
+      <SolidColorBrush x:Key="ToolTipBackground" Color="#FF25262B"/>
+      <SolidColorBrush x:Key="ToolTipForeground" Color="#FFECEDEE"/>
+      <SolidColorBrush x:Key="ToolTipBorderBrush" Color="Transparent"/>
+
+      <!-- CheckBox (login "Remember me") -->
+      <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillChecked" Color="#FFFFFFFF"/>
+      <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPointerOver" Color="#FFFFFFFF"/>
+      <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPressed" Color="#FFFFFFFF"/>
+      <SolidColorBrush x:Key="CheckBoxCheckGlyphForegroundChecked" Color="#FF141517"/>
+      <SolidColorBrush x:Key="CheckBoxCheckGlyphForegroundCheckedPointerOver" Color="#FF141517"/>
+      <SolidColorBrush x:Key="CheckBoxCheckGlyphForegroundCheckedPressed" Color="#FF141517"/>
+      <SolidColorBrush x:Key="CheckBoxForegroundUnchecked" Color="#FFECEDEE"/>
+      <SolidColorBrush x:Key="CheckBoxForegroundChecked" Color="#FFECEDEE"/>
+
+    </ResourceDictionary>
+  </Application.Resources>
+
+</Application>
