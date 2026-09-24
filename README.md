@@ -36,6 +36,19 @@ src/
                              SpectrumAnalyzer
 ```
 
+## Installing
+
+Grab the latest build from the [Releases](https://github.com/Keviiin02/LunaDrome/releases) page:
+
+- **Windows:** `LunaDrome-Setup-<version>.exe` - per-user install (no admin), Start menu +
+  optional desktop shortcut, uninstall from Apps & features.
+- **Debian / Ubuntu:** `sudo apt install ./lunadrome_<version>_amd64.deb` (pulls in VLC libraries).
+- **Other Linux (x64):** extract `LunaDrome-<version>-linux-x64.tar.gz`, run `./install.sh`
+  (or `sudo ./install.sh --system`); needs libvlc, and `parec` for the visualizer.
+
+Releases are built by GitHub Actions (`.github/workflows/release.yml`) when a version tag is
+pushed: `git tag v2.1.0 && git push origin v2.1.0`. Installer sources are in `installer/`.
+
 ## Running (development)
 
 ```

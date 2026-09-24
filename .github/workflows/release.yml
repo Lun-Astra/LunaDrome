@@ -1,0 +1,87 @@
+# Builds installers and publishes a GitHub Release whenever a version tag is pushed:
+#   git tag v2.1.0 && git push origin v2.1.0
+# Artifacts: LunaDrome-Setup-<v>.exe (Windows installer + uninstaller),
+#            lunadrome_<v>_amd64.deb (Debian/Ubuntu), LunaDrome-<v>-linux-x64.tar.gz (any distro).
+# Can also be run by hand from the Actions tab (workflow_dispatch) to build without releasing.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  PROJECT: app/LunaDrome/LunaDrome.csproj
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Version from tag
+        id: v
+        shell: bash
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          [[ "$GITHUB_REF_TYPE" == "tag" ]] || v="0.0.0-dev"
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+      - name: Publish (self-contained win-x64)
+        run: dotnet publish ${{ env.PROJECT }} -f net10.0-desktop -c Release -r win-x64 --self-contained true -o publish/win-x64
+      - name: Build installer
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress -y | Out-Null
+          $iscc = @("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe", "$env:ProgramFiles\Inno Setup 6\ISCC.exe") | Where-Object { Test-Path $_ } | Select-Object -First 1
+          & $iscc /Q "/DAppVersion=${{ steps.v.outputs.version }}" "/DSourceDir=$env:GITHUB_WORKSPACE\publish\win-x64" installer\windows\LunaDrome.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: installer/output/*.exe
+
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Version from tag
+        id: v
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          [[ "$GITHUB_REF_TYPE" == "tag" ]] || v="0.0.0-dev"
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+      - name: Publish (self-contained linux-x64)
+        run: dotnet publish ${{ env.PROJECT }} -f net10.0-desktop -c Release -r linux-x64 --self-contained true -o publish/linux-x64
+      - name: Build .deb and .tar.gz
+        run: bash installer/linux/build-packages.sh publish/linux-x64 "${{ steps.v.outputs.version }}" dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: dist/*
+
+  release:
+    if: github.ref_type == 'tag'
+    needs: [windows, linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: LunaDrome ${{ github.ref_name }}
+          generate_release_notes: true
+          files: dist/*
+          body: |
+            **Windows:** download `LunaDrome-Setup-*.exe` and run it (per-user install, no admin needed; uninstall via Apps & features).
+            **Debian/Ubuntu:** `sudo apt install ./lunadrome_*_amd64.deb`
+            **Other Linux:** extract `LunaDrome-*-linux-x64.tar.gz` and run `./install.sh` (needs libvlc; the script tells you if it's missing).

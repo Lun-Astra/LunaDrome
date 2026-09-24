@@ -1,0 +1,4 @@
+# Linux scripts and desktop entries must keep LF endings or they break on Linux.
+*.sh      text eol=lf
+*.desktop text eol=lf
+*.yml     text eol=lf
