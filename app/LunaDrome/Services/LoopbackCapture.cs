@@ -16,8 +16,8 @@ namespace LunaDrome.Services;
 /// whole-system loopback (every app's audio) if that isn't available.
 /// Linux: `parec --monitor-stream` on LunaDrome's own PulseAudio/PipeWire stream (found via
 /// `pactl` by our PID), so here too only LunaDrome's audio drives it; system-mix fallback only
-/// if the sound server can't monitor single streams. Levels are auto-gained on Linux (captured
-/// post-volume). Needs pulseaudio-utils (parec/pactl). Anything else just leaves it flat.
+/// if the sound server can't monitor single streams. Levels are auto-gained (SpectrumAnalyzer.AutoGain)
+/// because every capture path here is post-volume. Needs pulseaudio-utils (parec/pactl). Anything else just leaves it flat.
 /// </summary>
 public sealed class LoopbackCapture : IDisposable
 {
@@ -221,8 +221,6 @@ public sealed class LoopbackCapture : IDisposable
 
     private void StartLinux(int generation)
     {
-        // Captured after volume is applied -> normalize levels (issue #1: barely moved below ~90%).
-        _analyzer.AutoGain = true;
         _analyzer.SampleRate = ParecRate;
         _ = Task.Run(() => WatchOwnStreamAsync(generation));
     }

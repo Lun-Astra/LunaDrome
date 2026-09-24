@@ -32,11 +32,11 @@ public sealed class SpectrumAnalyzer
 
     /// <summary>
     /// Automatic gain: scale so the recent loudest band sits near full height, making the
-    /// visualizer independent of playback volume (GitHub issue #1: on Linux it barely moved below
-    /// ~90% volume, because the captured signal is taken after the volume is applied).
-    /// Off by default - the Windows capture was tuned without it.
+    /// visualizer independent of playback volume (GitHub issue #1: on both Windows and Linux it
+    /// barely moved below ~90% volume, because the captured signal is taken after LunaDrome's
+    /// volume is applied). On by default.
     /// </summary>
-    public bool AutoGain { get; set; }
+    public bool AutoGain { get; set; } = true;
 
     // Peak-follower for AutoGain: jumps up to a louder peak immediately, decays slowly so quiet
     // passages in a song stay quieter than loud ones instead of all being pumped to full height.
