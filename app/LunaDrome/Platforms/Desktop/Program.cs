@@ -1,3 +1,5 @@
+using System.Reflection;
+using System.Runtime.InteropServices;
 using Uno.UI.Hosting;
 
 namespace LunaDrome;
@@ -9,6 +11,9 @@ internal class Program
     {
         App.InitializeLogging();
 
+        if (OperatingSystem.IsLinux())
+            UseSystemLibVlcOnLinux();
+
         var host = UnoPlatformHostBuilder.Create()
             .App(() => new App())
             .UseX11()
@@ -18,5 +23,41 @@ internal class Program
             .Build();
 
         host.Run();
+    }
+
+    // Playback on Linux uses the distro's libvlc (Uno's X11 MediaPlayer -> LibVLCSharp). LibVLCSharp
+    // P/Invokes a library named plain "libvlc", which .NET resolves to the file "libvlc.so" - but
+    // Debian/Ubuntu/Kubuntu's runtime package (libvlc5) only ships "libvlc.so.5"; the unversioned
+    // symlink is in libvlc-dev, which normal users don't have. Result: every feature works except
+    // playback (reported by Luna's Kubuntu tester). Map the names to the versioned sonames too.
+    private static void UseSystemLibVlcOnLinux()
+    {
+        try
+        {
+            NativeLibrary.SetDllImportResolver(typeof(LibVLCSharp.Shared.Core).Assembly, ResolveLibVlc);
+        }
+        catch (InvalidOperationException)
+        {
+            // A resolver is already registered for LibVLCSharp - leave it alone; the packages also
+            // drop a libvlc.so symlink next to the app as a fallback.
+        }
+    }
+
+    private static IntPtr ResolveLibVlc(string name, Assembly assembly, DllImportSearchPath? searchPath)
+    {
+        string[] candidates = name switch
+        {
+            "libvlc" => ["libvlc.so", "libvlc.so.5"],
+            "libvlccore" => ["libvlccore.so", "libvlccore.so.9"],
+            _ => []
+        };
+
+        foreach (var candidate in candidates)
+        {
+            if (NativeLibrary.TryLoad(candidate, assembly, searchPath, out var handle))
+                return handle;
+        }
+
+        return IntPtr.Zero; // fall back to .NET's default probing
     }
 }

@@ -38,6 +38,32 @@ Description: Music player for your Navidrome server
  LunaDrome is a desktop client for Navidrome (Subsonic API) with a
  Feishin-style interface, playlists, lyrics and an audio visualizer.
 EOF
+
+# Fallback for the libvlc name problem (the app also maps it at runtime, see Program.cs):
+# LibVLCSharp asks for plain "libvlc", i.e. libvlc.so, but libvlc5 only ships libvlc.so.5.
+# Link the system's versioned libs next to the app, where .NET probes first.
+cat > "$deb/DEBIAN/postinst" <<'EOF'
+#!/bin/sh
+set -e
+link_lib() {
+  target=$(ldconfig -p 2>/dev/null | awk -v n="$1" '$1 == n { print $NF; exit }')
+  [ -n "$target" ] && ln -sf "$target" "/opt/lunadrome/$2" || true
+}
+link_lib libvlc.so.5 libvlc.so
+link_lib libvlccore.so.9 libvlccore.so
+exit 0
+EOF
+cat > "$deb/DEBIAN/postrm" <<'EOF'
+#!/bin/sh
+set -e
+if [ "$1" = "remove" ] || [ "$1" = "purge" ]; then
+  rm -f /opt/lunadrome/libvlc.so /opt/lunadrome/libvlccore.so
+  rmdir /opt/lunadrome 2>/dev/null || true
+fi
+exit 0
+EOF
+chmod 755 "$deb/DEBIAN/postinst" "$deb/DEBIAN/postrm"
+
 # xz, not dpkg-deb's Ubuntu default zstd: older Debian dpkg versions can't read zstd packages.
 dpkg-deb -Zxz --build --root-owner-group "$deb" "$out/lunadrome_${version}_amd64.deb"
 
