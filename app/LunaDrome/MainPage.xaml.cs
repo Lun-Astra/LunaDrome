@@ -283,6 +283,10 @@ public sealed partial class MainPage : Page
     private void BuildSettingsChoices()
     {
         ThemeOptions.Children.Clear();
+        var darkRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        var lightRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        ThemeOptions.Children.Add(darkRow);
+        ThemeOptions.Children.Add(lightRow);
         foreach (var theme in Themes.ThemeNames)
         {
             var chip = new Border
@@ -294,7 +298,7 @@ public sealed partial class MainPage : Page
                 Background = (Brush)Application.Current.Resources["RaisedBrush"],
                 Child = new TextBlock { Text = theme },
             };
-            ThemeOptions.Children.Add(ChoiceButton(chip, theme, () => _prefs.Theme = theme));
+            (Themes.IsLight(theme) ? lightRow : darkRow).Children.Add(ChoiceButton(chip, theme, () => _prefs.Theme = theme));
         }
 
         AccentOptions.Children.Clear();
@@ -831,6 +835,8 @@ public sealed partial class MainPage : Page
     }
 
     private void HomeMoreAlbumsButton_Click(object sender, RoutedEventArgs e) => NavAlbums.IsChecked = true;
+
+    private void HomeMoreGenresButton_Click(object sender, RoutedEventArgs e) => NavGenres.IsChecked = true;
 
     private void HomePlaylistCard_Tapped(object sender, TappedRoutedEventArgs e)
     {
