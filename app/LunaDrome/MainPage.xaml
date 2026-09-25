@@ -27,6 +27,7 @@
       <Setter Property="Margin" Value="28,0,0,0"/>
     </Style>
     <controls:TrackColumnLayout x:Key="TrackColumns"/>
+    <controls:BoolToVisibilityConverter x:Key="BoolToVisibility"/>
     <controls:FormatConverter x:Key="Format"/>
 
     <controls:FavoriteFillConverter x:Key="FavoriteFill"/>
@@ -147,6 +148,7 @@
           <ColumnDefinition Width="*"/>
           <ColumnDefinition Width="Auto"/>
           <ColumnDefinition Width="Auto"/>
+          <ColumnDefinition Width="Auto"/>
         </Grid.ColumnDefinitions>
         <Border Grid.Column="0" Width="64" Height="36" CornerRadius="4" Margin="0,0,12,0" Background="{StaticResource RaisedBrush}">
           <Image Source="{Binding Thumbnail}" Stretch="UniformToFill" HorizontalAlignment="Center" VerticalAlignment="Center"/>
@@ -155,9 +157,20 @@
           <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis"/>
           <TextBlock Text="{Binding Subtitle}" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" Margin="0,2,0,0"/>
         </StackPanel>
-        <TextBlock Grid.Column="2" Text="{Binding DurationDisplay}" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}"
+        <!-- Already in the Navidrome library (MarkLibraryMatchesAsync). -->
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="12,0,0,0"
+                    Visibility="{Binding InLibrary, Converter={StaticResource BoolToVisibility}}"
+                    ToolTipService.ToolTip="Already in your library">
+          <Grid Width="18" Height="18">
+            <Ellipse Fill="{StaticResource AccentBrush}"/>
+            <Path Stroke="{StaticResource OnAccentBrush}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                  Data="M5,9.2 L8,12 L13,6.2"/>
+          </Grid>
+          <TextBlock Text="In library" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center"/>
+        </StackPanel>
+        <TextBlock Grid.Column="3" Text="{Binding DurationDisplay}" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}"
                    VerticalAlignment="Center" Margin="12,0"/>
-        <Button Grid.Column="3" Content="Download" Style="{StaticResource TextButtonStyle}" Tag="{Binding}" Click="YtTrackDownload_Click" VerticalAlignment="Center"
+        <Button Grid.Column="4" Content="Download" Style="{StaticResource TextButtonStyle}" Tag="{Binding}" Click="YtTrackDownload_Click" VerticalAlignment="Center"
                 ToolTipService.ToolTip="Download this song into your library via SpotiDrome"/>
       </Grid>
     </DataTemplate>
@@ -169,9 +182,19 @@
               HorizontalContentAlignment="Left" VerticalContentAlignment="Top"
               Tag="{Binding}" Click="YtAlbum_Click" AutomationProperties.Name="{Binding Title}" controls:Motion.HoverScale="1.035">
         <StackPanel>
-          <Border Width="140" Height="140" CornerRadius="9" Background="{StaticResource RaisedBrush}" HorizontalAlignment="Left">
-            <Image Source="{Binding Thumbnail}" Stretch="UniformToFill" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-          </Border>
+          <Grid Width="140" Height="140" HorizontalAlignment="Left">
+            <Border CornerRadius="9" Background="{StaticResource RaisedBrush}">
+              <Image Source="{Binding Thumbnail}" Stretch="UniformToFill" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <!-- Already in the library: check badge on the cover. -->
+            <Grid Width="26" Height="26" Margin="0,8,8,0" HorizontalAlignment="Right" VerticalAlignment="Top"
+                  Visibility="{Binding InLibrary, Converter={StaticResource BoolToVisibility}}"
+                  ToolTipService.ToolTip="Already in your library">
+              <Ellipse Fill="{StaticResource AccentBrush}" Stroke="{StaticResource PanelBrush}" StrokeThickness="2"/>
+              <Path Stroke="{StaticResource OnAccentBrush}" StrokeThickness="2.2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                    Data="M7.5,13.3 L11.2,16.8 L18.5,9.2"/>
+            </Grid>
+          </Grid>
           <TextBlock Text="{Binding Title}" FontSize="12" FontWeight="SemiBold" Margin="2,8,0,0" TextTrimming="CharacterEllipsis" MaxWidth="140" HorizontalAlignment="Left"/>
           <TextBlock Text="{Binding Subtitle}" FontSize="11" Margin="2,2,0,0" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" MaxWidth="140" HorizontalAlignment="Left"/>
         </StackPanel>
@@ -185,13 +208,25 @@
           <ColumnDefinition Width="36"/>
           <ColumnDefinition Width="*"/>
           <ColumnDefinition Width="Auto"/>
+          <ColumnDefinition Width="Auto"/>
         </Grid.ColumnDefinitions>
         <TextBlock Text="{Binding TrackNumber}" Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" VerticalAlignment="Center"/>
         <StackPanel Grid.Column="1">
           <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis"/>
           <TextBlock Text="{Binding Artist}" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis"/>
         </StackPanel>
-        <TextBlock Grid.Column="2" Text="{Binding DurationDisplay}" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}"
+        <!-- You already have this song (somewhere in the library). -->
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="12,0,0,0"
+                    Visibility="{Binding InLibrary, Converter={StaticResource BoolToVisibility}}"
+                    ToolTipService.ToolTip="Already in your library">
+          <Grid Width="16" Height="16">
+            <Ellipse Fill="{StaticResource AccentBrush}"/>
+            <Path Stroke="{StaticResource OnAccentBrush}" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                  Data="M4.4,8.2 L7,10.6 L11.6,5.5"/>
+          </Grid>
+          <TextBlock Text="In library" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center"/>
+        </StackPanel>
+        <TextBlock Grid.Column="3" Text="{Binding DurationDisplay}" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}"
                    VerticalAlignment="Center" Margin="12,0,4,0"/>
       </Grid>
     </DataTemplate>

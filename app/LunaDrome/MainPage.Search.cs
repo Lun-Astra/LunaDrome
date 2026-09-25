@@ -66,6 +66,7 @@ public sealed partial class MainPage
 
         // SpotiDrome part: reset, collapsed until the library has been checked.
         _ytSearchedFor = null;
+        _libraryLookups.Clear(); // the library may have changed since the last search
         _ytAlbum = null;
         SpotiDromeSection.Visibility = _spotiDrome.IsConfigured ? Visibility.Visible : Visibility.Collapsed;
         SetSpotiDromeExpanded(false);
@@ -176,6 +177,9 @@ public sealed partial class MainPage
 
             // Songs first, unless there are only albums.
             SelectYtTab(songCount == 0 && result.Albums.Count > 0 ? YtAlbumsTab : YtSongsTab);
+
+            // Check marks on what the library already has (fills in a moment later).
+            _ = MarkLibraryMatchesAsync(result.Songs.Concat(result.Videos), result.Albums);
         }
         catch (Exception ex)
         {
@@ -233,6 +237,8 @@ public sealed partial class MainPage
             _ytAlbum = detail;
             YtAlbumMeta.Text = $"{detail.Subtitle}  •  {detail.Tracks.Count} track{(detail.Tracks.Count == 1 ? "" : "s")}";
             YtAlbumTracksList.ItemsSource = detail.Tracks;
+            // Which of the album's songs you already have.
+            _ = MarkLibraryMatchesAsync(detail.Tracks, Array.Empty<SpotiDromeAlbum>());
             YtAlbumDownloadButton.Content = "Download album";
             YtAlbumDownloadButton.IsEnabled = !string.IsNullOrEmpty(detail.Url);
         }
@@ -380,9 +386,18 @@ public sealed partial class MainPage
 
         ShowToast($"{item.Label} is now in your library", item.ActionText, () => PlayOrOpenDownload(item));
 
-        // Still looking at the search it came from: show it under the library results now.
+        // Still looking at the search it came from: show it under the library results now, and
+        // re-check the download suggestions so the new song gets its check mark.
+        _libraryLookups.Clear();
         if (SearchPage.Visibility == Visibility.Visible && _searchQuery.Length > 0)
+        {
             await RunLibrarySearchAsync(_searchQuery, _searchToken);
+            var shownTracks = (YtSongsList.ItemsSource as IEnumerable<SpotiDromeTrack> ?? [])
+                .Concat(YtVideosList.ItemsSource as IEnumerable<SpotiDromeTrack> ?? [])
+                .Concat(YtAlbumTracksList.ItemsSource as IEnumerable<SpotiDromeTrack> ?? []);
+            await MarkLibraryMatchesAsync(shownTracks.ToList(),
+                (YtAlbumsList.ItemsSource as IEnumerable<SpotiDromeAlbum> ?? []).ToList());
+        }
     }
 
     private void UpdateDownloadsButton()
@@ -473,11 +488,130 @@ public sealed partial class MainPage
         }
     }
 
+    // Artist names overlap by at least one real word ("Pierce The Veil, Kellin Quinn" vs "Pierce
+    // The Veil"). Filler words don't count, or "The Smile" would match "The Veil".
     private static bool SharesWord(string a, string b)
     {
         static HashSet<string> Words(string s) =>
-            s.ToLowerInvariant().Split(new[] { ' ', ',', '&', '-', '/' }, StringSplitOptions.RemoveEmptyEntries).ToHashSet();
-        return Words(a).Overlaps(Words(b));
+            s.ToLowerInvariant().Split(new[] { ' ', ',', '&', '-', '/', '.' }, StringSplitOptions.RemoveEmptyEntries)
+                .Where(w => w.Length > 2 && w is not ("the" or "and" or "feat" or "with"))
+                .ToHashSet();
+        return Words(a ?? "").Overlaps(Words(b ?? ""));
+    }
+
+    // ================= "In library" check marks =================
+
+    // One library lookup per distinct title per search (the album preview reuses them).
+    private readonly Dictionary<string, Task<(List<Album> Albums, List<Song> Songs)>> _libraryLookups = new();
+
+    private Task<(List<Album> Albums, List<Song> Songs)> LookUpLibraryAsync(string query)
+    {
+        if (!_libraryLookups.TryGetValue(query, out var lookup))
+        {
+            lookup = LookUpAsync();
+            _libraryLookups[query] = lookup;
+        }
+        return lookup;
+
+        async Task<(List<Album>, List<Song>)> LookUpAsync()
+        {
+            var (_, albums, songs) = await _client.SearchAsync(query, artistCount: 0, albumCount: 10, songCount: 20);
+            return (albums, songs);
+        }
+    }
+
+    /// <summary>Checks each YouTube result against the library and sets InLibrary (the check mark).
+    /// Runs after the results are shown; best-effort - a failed lookup just shows no check.</summary>
+    private async Task MarkLibraryMatchesAsync(IEnumerable<SpotiDromeTrack> tracks, IEnumerable<SpotiDromeAlbum> albums)
+    {
+        var trackChecks = tracks.Select(async track =>
+        {
+            foreach (var (title, artist) in TitleCandidates(track))
+            {
+                var (_, songs) = await LookUpLibraryAsync(title);
+                if (songs.Any(s => NormalizeTitle(s.Title, s.ArtistName) == title
+                                   && (SharesWord(s.ArtistName, artist) || SharesWord(s.AlbumArtistName, artist))))
+                {
+                    track.InLibrary = true;
+                    return;
+                }
+            }
+        });
+        var albumChecks = albums.Select(async album =>
+        {
+            var title = NormalizeTitle(album.Title);
+            if (title.Length == 0)
+                return;
+            var (libraryAlbums, _) = await LookUpLibraryAsync(title);
+            album.InLibrary = libraryAlbums.Any(a => NormalizeTitle(a.Name) == title && SharesWord(a.ArtistName, album.Artist));
+        });
+
+        try
+        {
+            await Task.WhenAll(trackChecks.Concat(albumChecks));
+        }
+        catch
+        {
+            // Navidrome unreachable for a moment - no check marks this time.
+        }
+    }
+
+    // Brackets that are packaging, not part of the song: "(Official Music Video)", "[4K]",
+    // "(feat. X)", "(Remastered 2011)". Live / remix / acoustic labels are kept on purpose -
+    // those are different recordings.
+    private static readonly System.Text.RegularExpressions.Regex NoiseBrackets = new(
+        @"[\(\[][^\)\]]*\b(official|video|audio|lyrics?|visuali[sz]er|hd|4k|remaster(ed)?|feat|ft|explicit|clean)\b[^\)\]]*[\)\]]",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+    private static readonly System.Text.RegularExpressions.Regex TrailingFeat = new(
+        @"\s+(feat|ft)\.?\s.*$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+    private static readonly System.Text.RegularExpressions.Regex NonWord = new(@"[^\p{L}\p{N}]+");
+
+    /// <summary>(normalized title, artist) readings of a result: as given, and - for YouTube
+    /// uploads titled "Artist - Title" / "Title - Artist" by some other channel - both halves.</summary>
+    private static IEnumerable<(string Title, string Artist)> TitleCandidates(SpotiDromeTrack track)
+    {
+        var seen = new HashSet<string>();
+        var direct = NormalizeTitle(track.Title, track.Artist);
+        if (direct.Length > 0 && seen.Add(direct))
+            yield return (direct, track.Artist);
+
+        var cleaned = NoiseBrackets.Replace(track.Title ?? "", " ");
+        var dash = cleaned.IndexOf(" - ", StringComparison.Ordinal);
+        if (dash <= 0)
+            yield break;
+        var left = cleaned[..dash].Trim();
+        var right = cleaned[(dash + 3)..].Trim();
+
+        var rightAsTitle = NormalizeTitle(right);
+        if (rightAsTitle.Length > 0 && seen.Add(rightAsTitle))
+            yield return (rightAsTitle, left);
+        var leftAsTitle = NormalizeTitle(left);
+        if (leftAsTitle.Length > 0 && seen.Add(leftAsTitle))
+            yield return (leftAsTitle, right);
+    }
+
+    /// <summary>Comparable form of a title: "Linkin Park - Faint (Official Music Video)" -> "faint".</summary>
+    private static string NormalizeTitle(string title, string? artist = null)
+    {
+        var t = title ?? "";
+        // Plain YouTube uploads are often titled "Artist - Title".
+        if (!string.IsNullOrEmpty(artist))
+        {
+            foreach (var name in artist.Split(new[] { ',', '&' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                var prefix = name.Trim() + " - ";
+                if (prefix.Length > 3 && t.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                {
+                    t = t[prefix.Length..];
+                    break;
+                }
+            }
+        }
+        t = NoiseBrackets.Replace(t, " ");
+        t = TrailingFeat.Replace(t, "");
+        return NonWord.Replace(t.ToLowerInvariant(), " ").Trim();
     }
 
     // ================= Toast =================

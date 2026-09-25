@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -5,8 +6,30 @@ using System.Text.Json.Serialization;
 
 namespace LunaDrome.Core.Services;
 
+/// <summary>A search result that LunaDrome marks with a check when the library already has it.
+/// Set after the results are shown (the library lookup takes a moment), hence the notification.</summary>
+public abstract class LibraryMatchable : INotifyPropertyChanged
+{
+    private bool _inLibrary;
+
+    [JsonIgnore]
+    public bool InLibrary
+    {
+        get => _inLibrary;
+        set
+        {
+            if (_inLibrary == value)
+                return;
+            _inLibrary = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(InLibrary)));
+        }
+    }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+}
+
 /// <summary>A YouTube Music song, or a plain YouTube video (covers, live versions).</summary>
-public class SpotiDromeTrack
+public class SpotiDromeTrack : LibraryMatchable
 {
     [JsonPropertyName("video_id")] public string VideoId { get; set; } = "";
     public string Title { get; set; } = "";
@@ -23,7 +46,7 @@ public class SpotiDromeTrack
     public string Subtitle => string.IsNullOrEmpty(Album) ? Artist : $"{Artist} • {Album}";
 }
 
-public class SpotiDromeAlbum
+public class SpotiDromeAlbum : LibraryMatchable
 {
     [JsonPropertyName("browse_id")] public string BrowseId { get; set; } = "";
     public string Title { get; set; } = "";
