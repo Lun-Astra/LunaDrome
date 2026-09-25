@@ -127,6 +127,7 @@ public sealed partial class MainPage : Page
         _progressTimer.Start();
 
         Themes.Apply(_prefs.Theme, _prefs.Accent);
+        InitSearch();
         VolumeSlider.Value = Math.Clamp(_prefs.Volume, 0, 1);
         _player.Volume = VolumeSlider.Value;
         _player.MediaEnded += (_, _) => DispatcherQueue.TryEnqueue(OnMediaEnded);
@@ -264,6 +265,7 @@ public sealed partial class MainPage : Page
         ResumeQueueCheck.IsChecked = _prefs.ResumeQueueOnStartup;
         OnlineLyricsCheck.IsChecked = _prefs.OnlineLyrics;
         AutoUpdateCheck.IsChecked = _prefs.CheckForUpdates;
+        RefreshSpotiDromeSettings();
         UpdateCacheSizeText();
         AccountUserText.Text = $"Signed in as {_client.Username}";
         AccountServerText.Text = _client.ServerUrl;
@@ -529,6 +531,8 @@ public sealed partial class MainPage : Page
         GenreAlbumsPage.Visibility = Visibility.Collapsed;
         PlaylistsPage.Visibility = Visibility.Collapsed;
         SettingsPage.Visibility = Visibility.Collapsed;
+        SearchPage.Visibility = Visibility.Collapsed;
+        DownloadsPage.Visibility = Visibility.Collapsed;
     }
 
     private static void ShowPage(UIElement page)

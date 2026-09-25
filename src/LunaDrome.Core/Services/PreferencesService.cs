@@ -15,6 +15,9 @@ public class Preferences
     public bool CheckForUpdates { get; set; } = true;
 
     public double Volume { get; set; } = 0.8;
+
+    /// <summary>SpotiDrome web address (http://host:8080); empty = "Download via SpotiDrome" hidden.</summary>
+    public string SpotiDromeUrl { get; set; } = "";
 }
 
 /// <summary>Reads/writes preferences.json in the LunaDrome-Uno settings folder.</summary>

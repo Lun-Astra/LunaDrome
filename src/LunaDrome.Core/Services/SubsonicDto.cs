@@ -96,6 +96,8 @@ internal class Search3Response : SubsonicResponseBase
 internal class Search3Payload
 {
     public List<SongDto> Song { get; set; } = new();
+    public List<AlbumDto> Album { get; set; } = new();
+    public List<ArtistDto> Artist { get; set; } = new();
 }
 
 internal class AlbumDetailResponse : SubsonicResponseBase
@@ -108,6 +110,8 @@ internal class AlbumDetailDto
     public string Id { get; set; } = "";
     public string Name { get; set; } = "";
     public List<SongDto> Song { get; set; } = new();
+    public List<AlbumDto> Album { get; set; } = new();
+    public List<ArtistDto> Artist { get; set; } = new();
 }
 
 internal class SongDto
