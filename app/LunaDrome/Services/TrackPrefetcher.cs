@@ -26,6 +26,29 @@ internal sealed class TrackPrefetcher : IDisposable
         catch { /* a file still open elsewhere - harmless */ }
     }
 
+    /// <summary>Bytes currently on disk (Settings page).</summary>
+    public static long CacheSizeBytes()
+    {
+        try
+        {
+            return Directory.Exists(CacheDir)
+                ? new DirectoryInfo(CacheDir).EnumerateFiles().Sum(f => f.Length)
+                : 0;
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    /// <summary>Deletes everything but the playing track's file (Settings > Clear cache).</summary>
+    public void Clear(string? keepSongId)
+    {
+        _cts?.Cancel();
+        TargetSongId = null;
+        DeleteAllExcept(keepSongId);
+    }
+
     /// <summary>Song ID currently downloading or downloaded.</summary>
     public string? TargetSongId { get; private set; }
 

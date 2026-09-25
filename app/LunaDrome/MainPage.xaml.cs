@@ -56,6 +56,10 @@ public sealed partial class MainPage : Page
     // Where to seek once the loaded media opens (resuming a restored queue, stall recovery).
     private TimeSpan _pendingSeek;
     private readonly TrackPrefetcher _prefetcher;
+    // Settings page choices (preferences.json).
+    private readonly Preferences _prefs = PreferencesService.Load();
+    // Signed in to a server; false again after Sign out (so the emptied queue isn't saved).
+    private bool _signedIn;
     // Windows media flyout / Linux MPRIS: OS media widgets + keyboard media keys (#3, #13).
     private IMediaControls? _mediaControls;
     private bool _isShuffled;
@@ -122,6 +126,8 @@ public sealed partial class MainPage : Page
         _progressTimer.Tick += ProgressTimer_Tick;
         _progressTimer.Start();
 
+        Themes.Apply(_prefs.Theme, _prefs.Accent);
+        VolumeSlider.Value = Math.Clamp(_prefs.Volume, 0, 1);
         _player.Volume = VolumeSlider.Value;
         _player.MediaEnded += (_, _) => DispatcherQueue.TryEnqueue(OnMediaEnded);
 
@@ -223,7 +229,9 @@ public sealed partial class MainPage : Page
         _ = LoadPlaylistsAsync();
         EnsureMediaControls();
         RestoreQueueState();
-        _ = CheckForUpdateAsync();
+        _signedIn = true;
+        if (_prefs.CheckForUpdates)
+            _ = CheckForUpdateAsync();
 
         try
         {
@@ -236,6 +244,202 @@ public sealed partial class MainPage : Page
         }
     }
 
+    // ================= Settings (#15) =================
+
+    private void SettingsButton_Click(object sender, RoutedEventArgs e)
+    {
+        FullScreenPlayerOverlay.Visibility = Visibility.Collapsed;
+        UpdateVisualizerCaptureState();
+        ClearSidebarSelection();
+        HideAllPages();
+        RefreshSettingsPage();
+        ShowPage(SettingsPage);
+        SettingsPage.ChangeView(null, 0, null, true);
+    }
+
+    private void RefreshSettingsPage()
+    {
+        BuildSettingsChoices();
+        PrefetchCheck.IsChecked = _prefs.PrefetchNextTrack;
+        ResumeQueueCheck.IsChecked = _prefs.ResumeQueueOnStartup;
+        OnlineLyricsCheck.IsChecked = _prefs.OnlineLyrics;
+        AutoUpdateCheck.IsChecked = _prefs.CheckForUpdates;
+        UpdateCacheSizeText();
+        AccountUserText.Text = $"Signed in as {_client.Username}";
+        AccountServerText.Text = _client.ServerUrl;
+        AboutVersionText.Text = $"LunaDrome v{UpdateChecker.CurrentVersion}";
+        if (string.IsNullOrEmpty(UpdateStatusText.Text))
+            UpdateStatusText.Text = _update != null ? $"v{_update.Version} is available." : "";
+    }
+
+    // Theme chips + accent swatches; rebuilt after every pick so the selection ring (and the
+    // neutral swatch, which follows the theme) stay right.
+    private void BuildSettingsChoices()
+    {
+        ThemeOptions.Children.Clear();
+        foreach (var theme in Themes.ThemeNames)
+        {
+            var chip = new Border
+            {
+                Padding = new Thickness(16, 7, 16, 7),
+                CornerRadius = new CornerRadius(6),
+                BorderThickness = new Thickness(_prefs.Theme == theme ? 2 : 1),
+                BorderBrush = (Brush)Application.Current.Resources[_prefs.Theme == theme ? "AccentBrush" : "BorderBrush2"],
+                Background = (Brush)Application.Current.Resources["RaisedBrush"],
+                Child = new TextBlock { Text = theme },
+            };
+            ThemeOptions.Children.Add(ChoiceButton(chip, theme, () => _prefs.Theme = theme));
+        }
+
+        AccentOptions.Children.Clear();
+        foreach (var accent in Themes.AccentNames)
+        {
+            var ring = new Border
+            {
+                Width = 34,
+                Height = 34,
+                CornerRadius = new CornerRadius(17),
+                BorderThickness = new Thickness(2),
+                BorderBrush = _prefs.Accent == accent
+                    ? (Brush)Application.Current.Resources["TextPrimaryBrush"]
+                    : new SolidColorBrush(Microsoft.UI.Colors.Transparent),
+                Child = new Microsoft.UI.Xaml.Shapes.Ellipse
+                {
+                    Width = 24,
+                    Height = 24,
+                    Fill = new SolidColorBrush(Themes.AccentSwatch(accent, _prefs.Theme)),
+                    Stroke = (Brush)Application.Current.Resources["BorderBrush2"],
+                    StrokeThickness = 1,
+                },
+            };
+            AccentOptions.Children.Add(ChoiceButton(ring, accent, () => _prefs.Accent = accent));
+        }
+    }
+
+    private Button ChoiceButton(UIElement content, string name, Action choose)
+    {
+        var button = new Button
+        {
+            Content = content,
+            Padding = new Thickness(0),
+            Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
+            BorderThickness = new Thickness(0),
+        };
+        ToolTipService.SetToolTip(button, name);
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, name);
+        button.Click += (_, _) =>
+        {
+            choose();
+            Themes.Apply(_prefs.Theme, _prefs.Accent);
+            PreferencesService.Save(_prefs);
+            BuildSettingsChoices();
+        };
+        return button;
+    }
+
+    private async void PreferenceCheck_Click(object sender, RoutedEventArgs e)
+    {
+        var onlineLyricsBefore = _prefs.OnlineLyrics;
+        _prefs.PrefetchNextTrack = PrefetchCheck.IsChecked == true;
+        _prefs.ResumeQueueOnStartup = ResumeQueueCheck.IsChecked == true;
+        _prefs.OnlineLyrics = OnlineLyricsCheck.IsChecked == true;
+        _prefs.CheckForUpdates = AutoUpdateCheck.IsChecked == true;
+        PreferencesService.Save(_prefs);
+
+        if (!_prefs.PrefetchNextTrack)
+        {
+            _prefetcher.Clear(_loadedEntry?.Song.Id);
+            UpdateCacheSizeText();
+        }
+
+        // Re-fetch the current song's lyrics with/without the online lookup.
+        if (onlineLyricsBefore != _prefs.OnlineLyrics)
+        {
+            _lyricsSongId = null;
+            if (LyricsPanelView.Visibility == Visibility.Visible || QueueSidePanel.Visibility == Visibility.Visible)
+                await LoadLyricsForCurrentSongAsync();
+        }
+    }
+
+    private void UpdateCacheSizeText()
+    {
+        var mb = TrackPrefetcher.CacheSizeBytes() / (1024.0 * 1024.0);
+        CacheSizeText.Text = $"Pre-buffered songs: {mb:0.#} MB";
+    }
+
+    private void ClearCache_Click(object sender, RoutedEventArgs e)
+    {
+        _prefetcher.Clear(_loadedEntry?.Song.Id);
+        UpdateCacheSizeText();
+    }
+
+    private async void CheckUpdates_Click(object sender, RoutedEventArgs e)
+    {
+        CheckUpdatesButton.IsEnabled = false;
+        UpdateStatusText.Text = "Checking...";
+        var (update, error) = await UpdateChecker.CheckWithErrorAsync();
+        CheckUpdatesButton.IsEnabled = true;
+
+        if (update != null)
+        {
+            ShowUpdateButton(update);
+            UpdateStatusText.Text = $"v{update.Version} is available - use the Update button at the bottom of the sidebar.";
+        }
+        else
+        {
+            UpdateStatusText.Text = error == null ? "You're on the latest version." : $"Couldn't check for updates: {error}.";
+        }
+    }
+
+    private void OpenGitHub_Click(object sender, RoutedEventArgs e) =>
+        UpdateChecker.OpenUrl("https://github.com/Lun-Astra/LunaDrome");
+
+    private void ReportProblem_Click(object sender, RoutedEventArgs e) =>
+        UpdateChecker.OpenUrl("https://github.com/Lun-Astra/LunaDrome/issues/new");
+
+    // Back to the login screen: forgets the saved password (server + username stay filled in),
+    // stops playback. The queue is saved first, so signing back in resumes it.
+    private async void SignOut_Click(object sender, RoutedEventArgs e)
+    {
+        var confirm = new ContentDialog
+        {
+            Title = "Sign out",
+            Content = "Sign out of this server? Playback stops; your queue is kept for next time.",
+            PrimaryButtonText = "Sign out",
+            CloseButtonText = "Cancel",
+            XamlRoot = this.XamlRoot
+        };
+        if (await confirm.ShowAsync() != ContentDialogResult.Primary)
+            return;
+
+        SaveQueueState();
+        _signedIn = false;
+        SettingsService.Save(new AppSettings { ServerUrl = _client.ServerUrl, Username = _client.Username });
+
+        _player.Pause();
+        SetPlaying(false);
+        _loadedEntry = null;
+        _pendingSeek = TimeSpan.Zero;
+        _unshuffledOrder = null;
+        _queue.Clear();
+        SetCurrent(null);
+        QueueSidePanel.Visibility = Visibility.Collapsed;
+        FullScreenPlayerOverlay.Visibility = Visibility.Collapsed;
+        UpdateVisualizerCaptureState();
+
+        // Everything reloads for whichever server is signed into next.
+        _homeLoaded = false;
+        _albumsPageLoaded = false;
+        _songsPageLoaded = false;
+        _lyricsSongId = null;
+
+        PasswordBox.Password = "";
+        StatusText.Text = "";
+        LoginButton.IsEnabled = true;
+        LibraryPanel.Visibility = Visibility.Collapsed;
+        LoginPanel.Visibility = Visibility.Visible;
+    }
+
     // ================= Updates =================
 
     private UpdateInfo? _update;
@@ -243,9 +447,12 @@ public sealed partial class MainPage : Page
 
     private async Task CheckForUpdateAsync()
     {
-        if (_update != null || await UpdateChecker.CheckAsync() is not { } update)
-            return;
+        if (_update == null && await UpdateChecker.CheckAsync() is { } update)
+            ShowUpdateButton(update);
+    }
 
+    private void ShowUpdateButton(UpdateInfo update)
+    {
         _update = update;
         UpdateButton.Content = $"Update to v{update.Version}";
         ToolTipService.SetToolTip(UpdateButton, UpdateChecker.CanInstallInPlace
@@ -321,6 +528,7 @@ public sealed partial class MainPage : Page
         SongsPage.Visibility = Visibility.Collapsed;
         GenreAlbumsPage.Visibility = Visibility.Collapsed;
         PlaylistsPage.Visibility = Visibility.Collapsed;
+        SettingsPage.Visibility = Visibility.Collapsed;
     }
 
     private static void ShowPage(UIElement page)
@@ -1570,7 +1778,7 @@ public sealed partial class MainPage : Page
             bool synced;
             try
             {
-                (lines, synced) = await _client.GetLyricsAsync(song);
+                (lines, synced) = await _client.GetLyricsAsync(song, _prefs.OnlineLyrics);
             }
             catch
             {
@@ -2053,6 +2261,9 @@ public sealed partial class MainPage : Page
     private void VolumeSlider_ValueChanged(object sender, RangeBaseValueChangedEventArgs e)
     {
         _player.Volume = e.NewValue;
+        // Not while the XAML default is being applied at startup (that would overwrite the saved volume).
+        if (_initialized)
+            _prefs.Volume = e.NewValue;
     }
 
     private void CommitSeek()
@@ -2117,7 +2328,7 @@ public sealed partial class MainPage : Page
     // Starts buffering whatever will play next (follows queue edits, shuffle, repeat).
     private void PrefetchNext()
     {
-        if (_loadedEntry == null || !_isPlaying)
+        if (_loadedEntry == null || !_isPlaying || !_prefs.PrefetchNextTrack)
             return;
 
         if (GetNextEntry() is { } next && next.Song.Id != _loadedEntry.Song.Id)
@@ -2183,9 +2394,11 @@ public sealed partial class MainPage : Page
 
     // ----- Queue persistence (#12) -----
 
+    // Also saves preferences (the volume changes without a Settings click).
     public void SaveQueueState()
     {
-        if (!_client.IsAuthenticated)
+        PreferencesService.Save(_prefs);
+        if (!_signedIn)
             return;
 
         try
@@ -2218,6 +2431,8 @@ public sealed partial class MainPage : Page
     // loaded until Play (so the app doesn't start making noise on launch).
     private void RestoreQueueState()
     {
+        if (!_prefs.ResumeQueueOnStartup)
+            return;
         var state = QueueStateService.Load();
         if (_current != null || state == null || state.Songs.Count == 0
             || !string.Equals(state.ServerUrl, _client.ServerUrl, StringComparison.OrdinalIgnoreCase)
