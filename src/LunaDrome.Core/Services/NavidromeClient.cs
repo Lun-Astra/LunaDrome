@@ -184,15 +184,48 @@ public class NavidromeClient
             .ToList();
     }
 
+    /// <summary>The search bar: artists, albums and songs in the library matching the query.</summary>
+    public async Task<(List<Artist> Artists, List<Album> Albums, List<Song> Songs)> SearchAsync(string query,
+        int artistCount = 8, int albumCount = 18, int songCount = 30)
+    {
+        var url = BuildUrl("search3.view", ("query", query), ("artistCount", artistCount.ToString()),
+            ("albumCount", albumCount.ToString()), ("songCount", songCount.ToString()));
+        var json = await _http.GetStringAsync(url);
+        var result = JsonSerializer.Deserialize<SubsonicEnvelope<Search3Response>>(json, JsonOptions)?.Response?.SearchResult3;
+        if (result == null)
+            return (new(), new(), new());
+
+        var artists = result.Artist.Select(a => new Artist
+        {
+            Id = a.Id,
+            Name = a.Name,
+            AlbumCount = a.AlbumCount,
+            CoverArtUrl = GetCoverArtUrl(string.IsNullOrEmpty(a.CoverArt) ? a.Id : a.CoverArt, 300),
+            IsFavorited = !string.IsNullOrEmpty(a.Starred),
+        }).ToList();
+        return (artists, MapAlbums(result.Album), result.Song.Select(MapSong).ToList());
+    }
+
     // Library-wide song search. An empty query matches everything on Navidrome; if a
     // different Subsonic-compatible server requires a non-empty pattern, this will need
     // to fall back to iterating albums instead.
-    public async Task<List<Song>> GetAllSongsAsync(int limit = 500)
+    public async Task<List<Song>> GetAllSongsAsync(int pageSize = 500, int max = 20000)
     {
-        var url = BuildUrl("search3.view", ("query", ""), ("songCount", limit.ToString()), ("albumCount", "0"), ("artistCount", "0"));
-        var json = await _http.GetStringAsync(url);
-        var envelope = JsonSerializer.Deserialize<SubsonicEnvelope<Search3Response>>(json, JsonOptions);
-        var songs = envelope?.Response?.SearchResult3?.Song ?? new List<SongDto>();
+        // Paged: one request used to stop at 500 songs, so most of a bigger library (Luna's has
+        // ~3300 tracks) - including anything newly downloaded - never showed on the Tracks page.
+        var songs = new List<SongDto>();
+        while (songs.Count < max)
+        {
+            var url = BuildUrl("search3.view", ("query", ""), ("songCount", pageSize.ToString()),
+                ("songOffset", songs.Count.ToString()), ("albumCount", "0"), ("artistCount", "0"));
+            var json = await _http.GetStringAsync(url);
+            var page = JsonSerializer.Deserialize<SubsonicEnvelope<Search3Response>>(json, JsonOptions)?.Response?.SearchResult3?.Song;
+            if (page == null || page.Count == 0)
+                break;
+            songs.AddRange(page);
+            if (page.Count < pageSize)
+                break;
+        }
 
         return songs
             .OrderBy(s => s.Artist)

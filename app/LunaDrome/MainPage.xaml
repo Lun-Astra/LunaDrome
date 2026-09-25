@@ -27,6 +27,7 @@
       <Setter Property="Margin" Value="28,0,0,0"/>
     </Style>
     <controls:TrackColumnLayout x:Key="TrackColumns"/>
+    <controls:BoolToVisibilityConverter x:Key="BoolToVisibility"/>
     <controls:FormatConverter x:Key="Format"/>
 
     <controls:FavoriteFillConverter x:Key="FavoriteFill"/>
@@ -125,6 +126,132 @@
         </Border>
         <TextBlock Text="{Binding Year}" FontSize="11" Margin="2,2,0,0" Foreground="{StaticResource TextSecondaryBrush}"/>
       </StackPanel>
+    </DataTemplate>
+
+    <!-- Search results: artist as a round photo + name. -->
+    <DataTemplate x:Key="SearchArtistTemplate">
+      <StackPanel Width="120" Margin="5,8" Background="Transparent" Tag="{Binding}" Tapped="SearchArtist_Tapped"
+                  controls:Motion.HoverScale="1.035">
+        <Border Width="100" Height="100" CornerRadius="50" Background="{StaticResource RaisedBrush}" HorizontalAlignment="Center">
+          <Image Source="{Binding CoverArtUrl}" Stretch="UniformToFill" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+        </Border>
+        <TextBlock Text="{Binding Name}" FontSize="12" FontWeight="SemiBold" Margin="0,8,0,0" HorizontalAlignment="Center"
+                   TextTrimming="CharacterEllipsis" MaxWidth="116"/>
+      </StackPanel>
+    </DataTemplate>
+
+    <!-- "Download via SpotiDrome": a YouTube Music song / YouTube video with a Download button. -->
+    <DataTemplate x:Key="YtTrackTemplate">
+      <Grid Margin="0,4" Padding="8,6" CornerRadius="6" Background="Transparent">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto"/>
+          <ColumnDefinition Width="*"/>
+          <ColumnDefinition Width="Auto"/>
+          <ColumnDefinition Width="Auto"/>
+          <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+        <Border Grid.Column="0" Width="64" Height="36" CornerRadius="4" Margin="0,0,12,0" Background="{StaticResource RaisedBrush}">
+          <Image Source="{Binding Thumbnail}" Stretch="UniformToFill" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+        </Border>
+        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+          <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis"/>
+          <TextBlock Text="{Binding Subtitle}" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" Margin="0,2,0,0"/>
+        </StackPanel>
+        <!-- Already in the Navidrome library (MarkLibraryMatchesAsync). -->
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="12,0,0,0"
+                    Visibility="{Binding InLibrary, Converter={StaticResource BoolToVisibility}}"
+                    ToolTipService.ToolTip="Already in your library">
+          <Grid Width="18" Height="18">
+            <Ellipse Fill="{StaticResource AccentBrush}"/>
+            <Path Stroke="{StaticResource OnAccentBrush}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                  Data="M5,9.2 L8,12 L13,6.2"/>
+          </Grid>
+          <TextBlock Text="In library" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center"/>
+        </StackPanel>
+        <TextBlock Grid.Column="3" Text="{Binding DurationDisplay}" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}"
+                   VerticalAlignment="Center" Margin="12,0"/>
+        <Button Grid.Column="4" Content="Download" Style="{StaticResource TextButtonStyle}" Tag="{Binding}" Click="YtTrackDownload_Click" VerticalAlignment="Center"
+                ToolTipService.ToolTip="Download this song into your library via SpotiDrome"/>
+      </Grid>
+    </DataTemplate>
+
+    <!-- "Download via SpotiDrome": a YouTube Music album card (click to see its tracks). -->
+    <!-- A Button (not a Tapped panel) so it also works from the keyboard / screen readers. -->
+    <DataTemplate x:Key="YtAlbumCardTemplate">
+      <Button Width="152" Margin="5,8" Padding="0,0,0,6" Background="Transparent" BorderThickness="0"
+              HorizontalContentAlignment="Left" VerticalContentAlignment="Top"
+              Tag="{Binding}" Click="YtAlbum_Click" AutomationProperties.Name="{Binding Title}" controls:Motion.HoverScale="1.035">
+        <StackPanel>
+          <Grid Width="140" Height="140" HorizontalAlignment="Left">
+            <Border CornerRadius="9" Background="{StaticResource RaisedBrush}">
+              <Image Source="{Binding Thumbnail}" Stretch="UniformToFill" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <!-- Already in the library: check badge on the cover. -->
+            <Grid Width="26" Height="26" Margin="0,8,8,0" HorizontalAlignment="Right" VerticalAlignment="Top"
+                  Visibility="{Binding InLibrary, Converter={StaticResource BoolToVisibility}}"
+                  ToolTipService.ToolTip="Already in your library">
+              <Ellipse Fill="{StaticResource AccentBrush}" Stroke="{StaticResource PanelBrush}" StrokeThickness="2"/>
+              <Path Stroke="{StaticResource OnAccentBrush}" StrokeThickness="2.2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                    Data="M7.5,13.3 L11.2,16.8 L18.5,9.2"/>
+            </Grid>
+          </Grid>
+          <TextBlock Text="{Binding Title}" FontSize="12" FontWeight="SemiBold" Margin="2,8,0,0" TextTrimming="CharacterEllipsis" MaxWidth="140" HorizontalAlignment="Left"/>
+          <TextBlock Text="{Binding Subtitle}" FontSize="11" Margin="2,2,0,0" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" MaxWidth="140" HorizontalAlignment="Left"/>
+        </StackPanel>
+      </Button>
+    </DataTemplate>
+
+    <!-- Track of a YouTube Music album being previewed before download. -->
+    <DataTemplate x:Key="YtAlbumTrackTemplate">
+      <Grid Margin="0,3">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="36"/>
+          <ColumnDefinition Width="*"/>
+          <ColumnDefinition Width="Auto"/>
+          <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+        <TextBlock Text="{Binding TrackNumber}" Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" VerticalAlignment="Center"/>
+        <StackPanel Grid.Column="1">
+          <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis"/>
+          <TextBlock Text="{Binding Artist}" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis"/>
+        </StackPanel>
+        <!-- You already have this song (somewhere in the library). -->
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="12,0,0,0"
+                    Visibility="{Binding InLibrary, Converter={StaticResource BoolToVisibility}}"
+                    ToolTipService.ToolTip="Already in your library">
+          <Grid Width="16" Height="16">
+            <Ellipse Fill="{StaticResource AccentBrush}"/>
+            <Path Stroke="{StaticResource OnAccentBrush}" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                  Data="M4.4,8.2 L7,10.6 L11.6,5.5"/>
+          </Grid>
+          <TextBlock Text="In library" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center"/>
+        </StackPanel>
+        <TextBlock Grid.Column="3" Text="{Binding DurationDisplay}" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}"
+                   VerticalAlignment="Center" Margin="12,0,4,0"/>
+      </Grid>
+    </DataTemplate>
+
+    <!-- Downloads page row: label, status line, progress. -->
+    <DataTemplate x:Key="DownloadRowTemplate">
+      <Border Margin="0,0,0,10" Padding="16,12" CornerRadius="8" Background="{StaticResource PanelBrush}"
+              BorderBrush="{StaticResource BorderBrush2}" BorderThickness="1">
+        <Grid>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="Auto"/>
+          </Grid.ColumnDefinitions>
+          <StackPanel Spacing="4">
+            <TextBlock Text="{Binding Label}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+            <TextBlock Text="{Binding StatusText}" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis"/>
+            <ProgressBar Value="{Binding Progress}" Maximum="1" IsIndeterminate="{Binding IsIndeterminate}" Margin="0,4,0,0"
+                         Visibility="{Binding ProgressVisibility}"/>
+          </StackPanel>
+          <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" Margin="12,0,0,0">
+            <Button Content="{Binding ActionText}" Style="{StaticResource TextButtonStyle}" Tag="{Binding}" Click="DownloadAction_Click" Visibility="{Binding ActionVisibility}"/>
+            <Button Content="Cancel" Style="{StaticResource TextButtonStyle}" Tag="{Binding}" Click="DownloadCancel_Click" Visibility="{Binding CancelVisibility}"/>
+          </StackPanel>
+        </Grid>
+      </Border>
     </DataTemplate>
 
     <!-- Artist page album card, Feishin's size: 172px square art, 14/13px text. -->
@@ -322,6 +449,19 @@
                   </Grid>
                 </Button>
               </Grid>
+              <!-- Library search (3.0); with SpotiDrome set up, also offers downloads. Enter searches. -->
+              <Grid Margin="0,0,0,12">
+                <TextBox x:Name="GlobalSearchBox" PlaceholderText="Search" Padding="10,6,34,6" KeyDown="GlobalSearchBox_KeyDown"
+                         AutomationProperties.Name="Search"/>
+                <!-- Magnifier: same as pressing Enter. -->
+                <Button Width="30" Height="30" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,2,0"
+                        Style="{StaticResource IconButtonStyle}" Click="GlobalSearchButton_Click"
+                        AutomationProperties.Name="Run search" ToolTipService.ToolTip="Search">
+                  <Path Width="13" Height="13" Stretch="Uniform" Stroke="{StaticResource TextSecondaryBrush}" StrokeThickness="1.8"
+                        StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                        Data="M6,1 A5,5 0 1 1 5.99,1 M9.6,9.6 L13,13"/>
+                </Button>
+              </Grid>
               <RadioButton x:Name="NavHome" Content="Home" Tag="Home" GroupName="MainNav"
                            Style="{StaticResource NavItemStyle}" Checked="Nav_Checked"/>
               <RadioButton x:Name="NavArtists" Content="Artists" Tag="Artists" GroupName="MainNav"
@@ -354,13 +494,162 @@
                 </DataTemplate>
               </ListView.ItemTemplate>
             </ListView>
-            <!-- Shown only when GitHub has a newer release (UpdateChecker). -->
-            <Button Grid.Row="2" x:Name="UpdateButton" Visibility="Collapsed" HorizontalAlignment="Stretch" Height="34"
-                    Margin="0,10,0,0" Style="{StaticResource PrimaryButtonStyle}" Click="UpdateButton_Click"/>
+            <StackPanel Grid.Row="2">
+              <!-- SpotiDrome downloads: shown once something was sent this session. -->
+              <Button x:Name="DownloadsButton" Visibility="Collapsed" HorizontalAlignment="Stretch" Height="34"
+                      Margin="0,10,0,0" Click="DownloadsButton_Click" AutomationProperties.Name="Downloads"/>
+              <!-- Shown only when GitHub has a newer release (UpdateChecker). -->
+              <Button x:Name="UpdateButton" Visibility="Collapsed" HorizontalAlignment="Stretch" Height="34"
+                      Margin="0,10,0,0" Style="{StaticResource PrimaryButtonStyle}" Click="UpdateButton_Click"/>
+            </StackPanel>
           </Grid>
 
           <!-- ===== Page host ===== -->
           <Grid Grid.Column="2">
+
+            <!-- Search (3.0): the library first; with SpotiDrome configured, "Download via
+                 SpotiDrome" below it (opened automatically when the library has nothing). -->
+            <ScrollViewer x:Name="SearchPage" Visibility="Collapsed" controls:WheelScroll.Enabled="True" VerticalScrollBarVisibility="Auto">
+              <StackPanel Margin="0,0,16,24" Spacing="6">
+                <TextBlock x:Name="SearchHeaderText" FontSize="28" FontWeight="Bold" TextTrimming="CharacterEllipsis"/>
+                <TextBlock x:Name="SearchLibraryStatusText" Foreground="{StaticResource TextSecondaryBrush}" Visibility="Collapsed"/>
+
+                <StackPanel x:Name="SearchArtistsSection" Visibility="Collapsed">
+                  <TextBlock Text="Artists" FontSize="20" FontWeight="Bold" Margin="0,12,0,0"/>
+                  <muxc:ItemsRepeater x:Name="SearchArtistsList" ItemTemplate="{StaticResource SearchArtistTemplate}">
+                    <muxc:ItemsRepeater.Layout>
+                      <muxc:UniformGridLayout MinItemWidth="130" MinItemHeight="140" ItemsStretch="None" MinColumnSpacing="0" MinRowSpacing="0"/>
+                    </muxc:ItemsRepeater.Layout>
+                  </muxc:ItemsRepeater>
+                </StackPanel>
+
+                <StackPanel x:Name="SearchAlbumsSection" Visibility="Collapsed">
+                  <TextBlock Text="Albums" FontSize="20" FontWeight="Bold" Margin="0,12,0,0"/>
+                  <muxc:ItemsRepeater x:Name="SearchAlbumsList" ItemTemplate="{StaticResource LargeAlbumCardTemplate}">
+                    <muxc:ItemsRepeater.Layout>
+                      <muxc:UniformGridLayout MinItemWidth="162" MinItemHeight="200" ItemsStretch="None" MinColumnSpacing="0" MinRowSpacing="0"/>
+                    </muxc:ItemsRepeater.Layout>
+                  </muxc:ItemsRepeater>
+                </StackPanel>
+
+                <StackPanel x:Name="SearchSongsSection" Visibility="Collapsed">
+                  <TextBlock Text="Songs" FontSize="20" FontWeight="Bold" Margin="0,12,0,6"/>
+                  <controls:TrackListHeader Layout="{StaticResource TrackColumns}"/>
+                  <!-- Same row template + handlers as the Tracks page (double-click plays, right-click menu). -->
+                  <ListView x:Name="SearchSongsList" Tag="SearchSongs" SelectionMode="Single"
+                            ScrollViewer.VerticalScrollMode="Disabled" ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                            ItemTemplate="{StaticResource TrackRowTemplate}" ItemContainerStyle="{StaticResource SongItemStyle}"
+                            DoubleTapped="TrackList_DoubleTapped" RightTapped="TrackList_RightTapped"/>
+                </StackPanel>
+
+                <!-- ===== Download via SpotiDrome ===== -->
+                <Border x:Name="SpotiDromeSection" Visibility="Collapsed" Margin="0,20,0,0" Padding="20,16" CornerRadius="8"
+                        Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush2}" BorderThickness="1">
+                  <StackPanel Spacing="8">
+                    <Button x:Name="SpotiDromeToggle" Click="SpotiDromeToggle_Click" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                            Background="Transparent" BorderThickness="0" Padding="0" AutomationProperties.Name="Download via SpotiDrome">
+                      <Grid>
+                        <Grid.ColumnDefinitions>
+                          <ColumnDefinition Width="Auto"/>
+                          <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <!-- Chevron: pointing right when collapsed, down when open. -->
+                        <Path x:Name="SpotiDromeChevron" Width="10" Height="10" Stretch="Uniform" Margin="0,0,10,0"
+                              Stroke="{StaticResource TextPrimaryBrush}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                              Data="M2,0 L7,5 L2,10" RenderTransformOrigin="0.5,0.5">
+                          <Path.RenderTransform>
+                            <RotateTransform x:Name="SpotiDromeChevronRotation" Angle="0"/>
+                          </Path.RenderTransform>
+                        </Path>
+                        <StackPanel Grid.Column="1">
+                          <TextBlock Text="Download via SpotiDrome" FontSize="18" FontWeight="Bold"/>
+                          <TextBlock x:Name="SpotiDromeSubtitle" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}"
+                                     Text="Not what you're looking for? Search YouTube Music and download it into your library."/>
+                        </StackPanel>
+                      </Grid>
+                    </Button>
+
+                    <StackPanel x:Name="SpotiDromeContent" Visibility="Collapsed" Spacing="6" Margin="0,8,0,0">
+                      <TextBlock x:Name="SpotiDromeStatusText" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap"/>
+
+                      <!-- Results, split into Songs / Albums tabs (same tab look as the full-screen
+                           player's Queue / Lyrics / Visualizer). -->
+                      <StackPanel x:Name="SpotiDromeResults" Spacing="6">
+                        <Grid x:Name="YtTabs" Visibility="Collapsed" Margin="0,4,0,8" MaxWidth="420" HorizontalAlignment="Left">
+                          <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                          </Grid.ColumnDefinitions>
+                          <RadioButton x:Name="YtSongsTab" Grid.Column="0" Content="Songs" GroupName="YtResultTabs"
+                                       Style="{StaticResource SidePanelTabStyle}" Checked="YtTab_Checked"/>
+                          <RadioButton x:Name="YtAlbumsTab" Grid.Column="1" Content="Albums" GroupName="YtResultTabs"
+                                       Style="{StaticResource SidePanelTabStyle}" Checked="YtTab_Checked"/>
+                        </Grid>
+
+                        <!-- Songs tab: YouTube Music songs, then other versions from plain YouTube. -->
+                        <StackPanel x:Name="YtSongsPanel" Spacing="6">
+                          <StackPanel x:Name="YtSongsSection" Visibility="Collapsed">
+                            <ItemsControl x:Name="YtSongsList" ItemTemplate="{StaticResource YtTrackTemplate}"/>
+                          </StackPanel>
+                          <StackPanel x:Name="YtVideosSection" Visibility="Collapsed">
+                            <TextBlock Text="OTHER VERSIONS ON YOUTUBE" Style="{StaticResource SectionHeaderStyle}" Margin="0,12,0,2"/>
+                            <ItemsControl x:Name="YtVideosList" ItemTemplate="{StaticResource YtTrackTemplate}"/>
+                          </StackPanel>
+                          <TextBlock x:Name="YtNoSongsText" Text="No songs found - try the Albums tab." Visibility="Collapsed"
+                                     Foreground="{StaticResource TextSecondaryBrush}"/>
+                        </StackPanel>
+
+                        <!-- Albums tab -->
+                        <StackPanel x:Name="YtAlbumsPanel" Visibility="Collapsed">
+                          <StackPanel x:Name="YtAlbumsSection" Visibility="Collapsed">
+                            <muxc:ItemsRepeater x:Name="YtAlbumsList" ItemTemplate="{StaticResource YtAlbumCardTemplate}">
+                              <muxc:ItemsRepeater.Layout>
+                                <muxc:UniformGridLayout MinItemWidth="162" MinItemHeight="218" ItemsStretch="None" MinColumnSpacing="0" MinRowSpacing="0"/>
+                              </muxc:ItemsRepeater.Layout>
+                            </muxc:ItemsRepeater>
+                          </StackPanel>
+                          <TextBlock x:Name="YtNoAlbumsText" Text="No albums found - try the Songs tab." Visibility="Collapsed"
+                                     Foreground="{StaticResource TextSecondaryBrush}"/>
+                        </StackPanel>
+                      </StackPanel>
+
+                      <!-- One YouTube Music album: its tracks + Download album. -->
+                      <StackPanel x:Name="YtAlbumDetail" Visibility="Collapsed" Spacing="10">
+                        <Button Content="‹  Back to results" Click="YtAlbumBack_Click" Style="{StaticResource LinkButtonStyle}" Padding="0"/>
+                        <Grid>
+                          <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                          </Grid.ColumnDefinitions>
+                          <Border Width="140" Height="140" CornerRadius="9" Background="{StaticResource RaisedBrush}" Margin="0,0,20,0">
+                            <Image x:Name="YtAlbumArt" Stretch="UniformToFill" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                          </Border>
+                          <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="4">
+                            <TextBlock x:Name="YtAlbumTitle" FontSize="24" FontWeight="Bold" TextWrapping="Wrap"/>
+                            <TextBlock x:Name="YtAlbumMeta" Foreground="{StaticResource TextSecondaryBrush}"/>
+                            <Button x:Name="YtAlbumDownloadButton" Content="Download album" Style="{StaticResource PrimaryButtonStyle}"
+                                    Click="YtAlbumDownload_Click" Margin="0,10,0,0" Padding="18,8"/>
+                          </StackPanel>
+                        </Grid>
+                        <ItemsControl x:Name="YtAlbumTracksList" ItemTemplate="{StaticResource YtAlbumTrackTemplate}"/>
+                      </StackPanel>
+                    </StackPanel>
+                  </StackPanel>
+                </Border>
+              </StackPanel>
+            </ScrollViewer>
+
+            <!-- Downloads sent to SpotiDrome this session, with live progress. -->
+            <Grid x:Name="DownloadsPage" Visibility="Collapsed">
+              <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+              </Grid.RowDefinitions>
+              <TextBlock Text="Downloads" FontSize="28" FontWeight="Bold" Margin="0,0,0,14"/>
+              <ScrollViewer Grid.Row="1" controls:WheelScroll.Enabled="True" VerticalScrollBarVisibility="Auto">
+                <ItemsControl x:Name="DownloadsList" ItemTemplate="{StaticResource DownloadRowTemplate}" Margin="0,0,16,16"/>
+              </ScrollViewer>
+            </Grid>
 
             <!-- Settings (#15): appearance, playback, storage, account, about. Theme / accent
                  buttons are built in code (BuildSettingsChoices). -->
@@ -398,10 +687,27 @@
 
                 <Border Style="{StaticResource SettingsCardStyle}">
                   <StackPanel Spacing="10">
+                    <TextBlock Text="SPOTIDROME" Style="{StaticResource SectionHeaderStyle}" Margin="0"/>
+                    <TextBlock Style="{StaticResource SettingsHintStyle}" Margin="0"
+                               Text="Connect your SpotiDrome downloader to get &quot;Download via SpotiDrome&quot; in search: songs and albums from YouTube Music go straight into your library. Leave it empty to turn it off."/>
+                    <Grid ColumnSpacing="8">
+                      <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                      </Grid.ColumnDefinitions>
+                      <TextBox x:Name="SpotiDromeUrlBox" PlaceholderText="http://192.168.1.20:8080" AutomationProperties.Name="SpotiDrome address"/>
+                      <Button Grid.Column="1" x:Name="SpotiDromeSaveButton" Style="{StaticResource TextButtonStyle}" Content="Save &amp; test" Click="SpotiDromeSave_Click"/>
+                    </Grid>
+                    <TextBlock x:Name="SpotiDromeTestText" Style="{StaticResource SettingsHintStyle}" Margin="0"/>
+                  </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource SettingsCardStyle}">
+                  <StackPanel Spacing="10">
                     <TextBlock Text="STORAGE" Style="{StaticResource SectionHeaderStyle}" Margin="0"/>
                     <Grid>
                       <TextBlock x:Name="CacheSizeText" VerticalAlignment="Center"/>
-                      <Button Content="Clear" HorizontalAlignment="Right" Click="ClearCache_Click"/>
+                      <Button Content="Clear" Style="{StaticResource TextButtonStyle}" HorizontalAlignment="Right" Click="ClearCache_Click"/>
                     </Grid>
                   </StackPanel>
                 </Border>
@@ -414,7 +720,7 @@
                         <TextBlock x:Name="AccountUserText" FontWeight="SemiBold"/>
                         <TextBlock x:Name="AccountServerText" Style="{StaticResource SettingsHintStyle}" Margin="0,2,0,0"/>
                       </StackPanel>
-                      <Button Content="Sign out" HorizontalAlignment="Right" VerticalAlignment="Center" Click="SignOut_Click"/>
+                      <Button Content="Sign out" Style="{StaticResource TextButtonStyle}" HorizontalAlignment="Right" VerticalAlignment="Center" Click="SignOut_Click"/>
                     </Grid>
                   </StackPanel>
                 </Border>
@@ -427,13 +733,13 @@
                         <TextBlock x:Name="AboutVersionText" FontWeight="SemiBold"/>
                         <TextBlock x:Name="UpdateStatusText" Style="{StaticResource SettingsHintStyle}" Margin="0,2,0,0"/>
                       </StackPanel>
-                      <Button x:Name="CheckUpdatesButton" Content="Check for updates" HorizontalAlignment="Right" VerticalAlignment="Center"
+                      <Button x:Name="CheckUpdatesButton" Style="{StaticResource TextButtonStyle}" Content="Check for updates" HorizontalAlignment="Right" VerticalAlignment="Center"
                               Click="CheckUpdates_Click"/>
                     </Grid>
                     <CheckBox x:Name="AutoUpdateCheck" Content="Check for updates when signing in" Click="PreferenceCheck_Click"/>
                     <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
-                      <Button Content="GitHub page" Click="OpenGitHub_Click"/>
-                      <Button Content="Report a problem" Click="ReportProblem_Click"/>
+                      <Button Content="GitHub page" Style="{StaticResource TextButtonStyle}" Click="OpenGitHub_Click"/>
+                      <Button Content="Report a problem" Style="{StaticResource TextButtonStyle}" Click="ReportProblem_Click"/>
                     </StackPanel>
                   </StackPanel>
                 </Border>
@@ -769,7 +1075,7 @@
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                   </Grid.ColumnDefinitions>
-                  <TextBox x:Name="AlbumTrackSearchBox" Grid.Column="0" PlaceholderText="Search" MinHeight="36"
+                  <TextBox x:Name="AlbumTrackSearchBox" Grid.Column="0" PlaceholderText="Search" MinHeight="34"
                            CornerRadius="18" Padding="16,8" TextChanged="AlbumTrackSearchBox_TextChanged"/>
                   <StackPanel x:Name="AlbumGenrePanel" Grid.Column="1" Margin="24,0,0,0" VerticalAlignment="Center">
                     <TextBlock Text="GENRE" FontSize="13" FontWeight="Bold"/>
@@ -924,6 +1230,17 @@
                         ItemTemplate="{StaticResource TrackRowTemplate}" ItemContainerStyle="{StaticResource SongItemStyle}"
                         DoubleTapped="TrackList_DoubleTapped" RightTapped="TrackList_RightTapped"/>
             </Grid>
+
+            <!-- Short notice over the pages (a download finished, ...), with an optional action. -->
+            <Border x:Name="ToastBar" Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,12"
+                    Padding="18,10" CornerRadius="8" Background="{StaticResource RaisedBrush}"
+                    BorderBrush="{StaticResource BorderBrush2}" BorderThickness="1" MaxWidth="560">
+              <StackPanel Orientation="Horizontal" Spacing="14">
+                <TextBlock x:Name="ToastText" VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="400"/>
+                <Button x:Name="ToastActionButton" Visibility="Collapsed" Style="{StaticResource PrimaryButtonStyle}" Padding="14,6" MinHeight="30"
+                        VerticalAlignment="Center" Click="ToastAction_Click"/>
+              </StackPanel>
+            </Border>
           </Grid>
 
           <!-- ===== Queue side panel (the Queue button; Feishin's right sidebar) =====

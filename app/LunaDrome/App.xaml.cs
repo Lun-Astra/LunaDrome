@@ -17,11 +17,22 @@ public partial class App : Application
 
     protected Window? MainWindow { get; private set; }
 
+    // Debug (the test build run from bin\Debug) looks different from the installed app, so it's
+    // obvious in the taskbar whether the test build is the one that's open: orange moon icon
+    // and "(test)" in the title.
+#if DEBUG
+    private const string WindowTitle = "LunaDrome (test)";
+    private const string IconFile = "lunadrome-test.ico";
+#else
+    private const string WindowTitle = "LunaDrome";
+    private const string IconFile = "lunadrome.ico";
+#endif
+
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
         // No UseStudio() here: in Debug it overlays Uno's Hot Design toolbar on the top-left of the
         // window, right over the sidebar logo, which made debug builds look unlike the live app.
-        MainWindow = new Window { Title = "LunaDrome" };
+        MainWindow = new Window { Title = WindowTitle };
 
         // Same default size as the WPF app's MainWindow (1200x720).
         try { MainWindow.AppWindow.Resize(new Windows.Graphics.SizeInt32 { Width = 1200, Height = 720 }); }
@@ -53,7 +64,7 @@ public partial class App : Application
         }
 
         // LunaDrome's moon icon for the window/taskbar (instead of the template's Uno logo).
-        var icon = System.IO.Path.Combine(AppContext.BaseDirectory, "Assets", "lunadrome.ico");
+        var icon = System.IO.Path.Combine(AppContext.BaseDirectory, "Assets", IconFile);
         try
         {
             if (System.IO.File.Exists(icon))

@@ -10,7 +10,7 @@
     <!-- App Identifier -->
     <ApplicationId>com.companyname.lunadrome</ApplicationId>
     <!-- Versions -->
-    <ApplicationDisplayVersion>2.1.0</ApplicationDisplayVersion>
+    <ApplicationDisplayVersion>3.0.0</ApplicationDisplayVersion>
     <ApplicationVersion>2</ApplicationVersion>
     <!-- Package Publisher -->
     <ApplicationPublisher>LunaDrome</ApplicationPublisher>
@@ -20,6 +20,8 @@
          so Explorer / the desktop shortcut show it. The window/taskbar icon is set at startup
          in App.xaml.cs from the same file. -->
     <ApplicationIcon>Assets\lunadrome.ico</ApplicationIcon>
+    <!-- The Debug (test) build gets the orange variant, so it can't be mistaken for the installed app. -->
+    <ApplicationIcon Condition="'$(Configuration)' == 'Debug'">Assets\lunadrome-test.ico</ApplicationIcon>
 
     <!-- Services/SmtcMediaControls.cs calls the WinRT media-flyout COM interfaces through raw vtables. -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>

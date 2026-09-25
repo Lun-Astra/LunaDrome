@@ -127,6 +127,7 @@ public sealed partial class MainPage : Page
         _progressTimer.Start();
 
         Themes.Apply(_prefs.Theme, _prefs.Accent);
+        InitSearch();
         VolumeSlider.Value = Math.Clamp(_prefs.Volume, 0, 1);
         _player.Volume = VolumeSlider.Value;
         _player.MediaEnded += (_, _) => DispatcherQueue.TryEnqueue(OnMediaEnded);
@@ -264,6 +265,7 @@ public sealed partial class MainPage : Page
         ResumeQueueCheck.IsChecked = _prefs.ResumeQueueOnStartup;
         OnlineLyricsCheck.IsChecked = _prefs.OnlineLyrics;
         AutoUpdateCheck.IsChecked = _prefs.CheckForUpdates;
+        RefreshSpotiDromeSettings();
         UpdateCacheSizeText();
         AccountUserText.Text = $"Signed in as {_client.Username}";
         AccountServerText.Text = _client.ServerUrl;
@@ -529,6 +531,8 @@ public sealed partial class MainPage : Page
         GenreAlbumsPage.Visibility = Visibility.Collapsed;
         PlaylistsPage.Visibility = Visibility.Collapsed;
         SettingsPage.Visibility = Visibility.Collapsed;
+        SearchPage.Visibility = Visibility.Collapsed;
+        DownloadsPage.Visibility = Visibility.Collapsed;
     }
 
     private static void ShowPage(UIElement page)
@@ -971,12 +975,52 @@ public sealed partial class MainPage : Page
             return;
         }
 
-        var entries = songs.Select(s => new QueueEntry(s)).ToList();
+        var entries = songs.Select(s => new QueueEntry(s) { IsUserQueued = true }).ToList();
         InsertIntoQueue(QueueIndex + 1, entries);
         // Keep them "next" in the pre-shuffle order too, so un-shuffling doesn't bury them.
         _unshuffledOrder?.InsertRange(_unshuffledOrder.IndexOf(_current) + 1, entries);
     }
 
+    // "Add to queue" (#16), like Spotify: after the playing song AND after anything queued
+    // before (Play next / Add to queue), but ahead of the rest of the list that was started.
+    // It used to append to the very end - after a whole album or the Tracks page, so it
+    // effectively never came up.
+    private void AddToQueue(List<Song> songs)
+    {
+        if (songs.Count == 0)
+            return;
+
+        if (_current == null)
+        {
+            PlayQueueFrom(songs, 0);
+            return;
+        }
+
+        var entries = songs.Select(s => new QueueEntry(s) { IsUserQueued = true }).ToList();
+        InsertIntoQueue(AfterUserQueued(_queue, _current), entries);
+        if (_unshuffledOrder != null)
+            _unshuffledOrder.InsertRange(AfterUserQueued(_unshuffledOrder, _current), entries);
+    }
+
+    // Position right after the playing entry and the queued-by-you entries that follow it.
+    private static int AfterUserQueued(IList<QueueEntry> list, QueueEntry current)
+    {
+        var index = list.IndexOf(current) + 1;
+        while (index < list.Count && list[index].IsUserQueued)
+            index++;
+        return index;
+    }
+
+    // Shuffle what's still to come - except songs you queued yourself, which stay up front
+    // in the order you added them.
+    private List<QueueEntry> WithUpcomingShuffled(int index)
+    {
+        var upcoming = _queue.Skip(index + 1).ToList();
+        var queuedByYou = upcoming.TakeWhile(q => q.IsUserQueued).ToList();
+        return _queue.Take(index + 1).Concat(queuedByYou).Concat(Shuffled(upcoming.Skip(queuedByYou.Count))).ToList();
+    }
+
+    // "Last" (album / artist header buttons): the very end of the queue, like Feishin.
     private void QueueSongsLast(List<Song> songs)
     {
         if (songs.Count == 0)
@@ -1123,7 +1167,7 @@ public sealed partial class MainPage : Page
 
         var flyout = BuildSongMenu(song, shown);
         flyout.Items.Add(new MenuFlyoutSeparator());
-        AddMenuItem(flyout, "Add album to queue", () => QueueSongsLast(_albumSongsRaw));
+        AddMenuItem(flyout, "Add album to queue", () => AddToQueue(_albumSongsRaw));
         flyout.ShowAt(row, e.GetPosition(row));
         e.Handled = true;
     }
@@ -1161,7 +1205,7 @@ public sealed partial class MainPage : Page
     {
         try
         {
-            var songs = await _client.GetAllSongsAsync(500);
+            var songs = await _client.GetAllSongsAsync();
             PopulateSongArt(songs);
             _trackViews["AllTracks"].Raw = songs;
             RefreshTrackView("AllTracks");
@@ -1325,7 +1369,7 @@ public sealed partial class MainPage : Page
                 PlayQueueFrom(source, i);
         });
         AddMenuItem(flyout, "Play next", () => QueueSongsNext(new() { song }));
-        AddMenuItem(flyout, "Add to queue", () => QueueSongsLast(new() { song }));
+        AddMenuItem(flyout, "Add to queue", () => AddToQueue(new() { song }));
         flyout.Items.Add(new MenuFlyoutSeparator());
         flyout.Items.Add(BuildAddToPlaylistSubmenu(new() { song }));
         AddFavoriteToggle(flyout, song);
@@ -1566,7 +1610,7 @@ public sealed partial class MainPage : Page
     private void SideQueueShuffle_Click(object sender, RoutedEventArgs e)
     {
         var index = QueueIndex;
-        ReplaceQueue(_queue.Take(index + 1).Concat(Shuffled(_queue.Skip(index + 1))).ToList());
+        ReplaceQueue(WithUpcomingShuffled(index));
         if (_current != null)
             SideQueueList.ScrollIntoView(_current);
     }
@@ -2070,7 +2114,7 @@ public sealed partial class MainPage : Page
         {
             _unshuffledOrder = _queue.ToList();
             var index = QueueIndex;
-            ReplaceQueue(_queue.Take(index + 1).Concat(Shuffled(_queue.Skip(index + 1))).ToList());
+            ReplaceQueue(WithUpcomingShuffled(index));
         }
         else if (_unshuffledOrder != null)
         {

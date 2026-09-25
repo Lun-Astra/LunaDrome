@@ -14,6 +14,10 @@ public sealed class QueueEntry : INotifyPropertyChanged
 
     public Song Song { get; }
 
+    /// <summary>Added by Play next / Add to queue (not part of the list that was started) - later
+    /// "Add to queue"s go after these, and shuffle leaves them in front.</summary>
+    public bool IsUserQueued { get; init; }
+
     private bool _isCurrent;
 
     public bool IsCurrent
