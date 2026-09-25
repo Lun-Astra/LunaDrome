@@ -148,7 +148,8 @@ public sealed partial class MainPage
         ShowYtResults();
         SpotiDromeStatusText.Text = "Searching YouTube Music…";
         SpotiDromeStatusText.Visibility = Visibility.Visible;
-        YtSongsSection.Visibility = YtAlbumsSection.Visibility = YtVideosSection.Visibility = Visibility.Collapsed;
+        YtTabs.Visibility = Visibility.Collapsed;
+        YtSongsPanel.Visibility = YtAlbumsPanel.Visibility = Visibility.Collapsed;
 
         try
         {
@@ -156,16 +157,25 @@ public sealed partial class MainPage
             if (token != _searchToken)
                 return;
 
+            var songCount = result.Songs.Count + result.Videos.Count;
             YtSongsList.ItemsSource = result.Songs;
             YtAlbumsList.ItemsSource = result.Albums;
             YtVideosList.ItemsSource = result.Videos;
             YtSongsSection.Visibility = result.Songs.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
             YtAlbumsSection.Visibility = result.Albums.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
             YtVideosSection.Visibility = result.Videos.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+            YtNoSongsText.Visibility = songCount == 0 ? Visibility.Visible : Visibility.Collapsed;
+            YtNoAlbumsText.Visibility = result.Albums.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+            YtSongsTab.Content = $"Songs ({songCount})";
+            YtAlbumsTab.Content = $"Albums ({result.Albums.Count})";
 
-            var any = result.Songs.Count + result.Albums.Count + result.Videos.Count > 0;
+            var any = songCount + result.Albums.Count > 0;
             SpotiDromeStatusText.Text = any ? "" : "YouTube Music has nothing for this either.";
             SpotiDromeStatusText.Visibility = any ? Visibility.Collapsed : Visibility.Visible;
+            YtTabs.Visibility = any ? Visibility.Visible : Visibility.Collapsed;
+
+            // Songs first, unless there are only albums.
+            SelectYtTab(songCount == 0 && result.Albums.Count > 0 ? YtAlbumsTab : YtSongsTab);
         }
         catch (Exception ex)
         {
@@ -174,6 +184,23 @@ public sealed partial class MainPage
             _ytSearchedFor = null; // allow a retry by collapsing/expanding
             SpotiDromeStatusText.Text = $"SpotiDrome search failed: {ex.Message}";
         }
+    }
+
+    private void SelectYtTab(RadioButton tab)
+    {
+        if (tab.IsChecked == true)
+            YtTab_Checked(tab, new RoutedEventArgs()); // already selected: just refresh the panels
+        else
+            tab.IsChecked = true;
+    }
+
+    private void YtTab_Checked(object sender, RoutedEventArgs e)
+    {
+        if (YtSongsPanel == null)
+            return;
+        var songs = sender == YtSongsTab;
+        YtSongsPanel.Visibility = songs ? Visibility.Visible : Visibility.Collapsed;
+        YtAlbumsPanel.Visibility = songs ? Visibility.Collapsed : Visibility.Visible;
     }
 
     private void ShowYtResults()
@@ -248,7 +275,8 @@ public sealed partial class MainPage
     {
         try
         {
-            var jobId = await _spotiDrome.DownloadAsync(url, isAlbum, label, albumName);
+            // For an album the artist doubles as its album artist (keeps every track in one album).
+            var jobId = await _spotiDrome.DownloadAsync(url, isAlbum, label, albumName, isAlbum ? artist : null);
             _downloads.Insert(0, new DownloadItem
             {
                 JobId = jobId, Label = label, IsAlbum = isAlbum, Title = title, Artist = artist, Url = url, AlbumName = albumName,

@@ -165,7 +165,7 @@
     <!-- "Download via SpotiDrome": a YouTube Music album card (click to see its tracks). -->
     <!-- A Button (not a Tapped panel) so it also works from the keyboard / screen readers. -->
     <DataTemplate x:Key="YtAlbumCardTemplate">
-      <Button Width="152" Margin="5,8" Padding="0" Background="Transparent" BorderThickness="0"
+      <Button Width="152" Margin="5,8" Padding="0,0,0,6" Background="Transparent" BorderThickness="0"
               HorizontalContentAlignment="Left" VerticalContentAlignment="Top"
               Tag="{Binding}" Click="YtAlbum_Click" AutomationProperties.Name="{Binding Title}" controls:Motion.HoverScale="1.035">
         <StackPanel>
@@ -537,23 +537,44 @@
                     <StackPanel x:Name="SpotiDromeContent" Visibility="Collapsed" Spacing="6" Margin="0,8,0,0">
                       <TextBlock x:Name="SpotiDromeStatusText" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap"/>
 
-                      <!-- Results -->
+                      <!-- Results, split into Songs / Albums tabs (same tab look as the full-screen
+                           player's Queue / Lyrics / Visualizer). -->
                       <StackPanel x:Name="SpotiDromeResults" Spacing="6">
-                        <StackPanel x:Name="YtSongsSection" Visibility="Collapsed">
-                          <TextBlock Text="SONGS" Style="{StaticResource SectionHeaderStyle}" Margin="0,4,0,2"/>
-                          <ItemsControl x:Name="YtSongsList" ItemTemplate="{StaticResource YtTrackTemplate}"/>
+                        <Grid x:Name="YtTabs" Visibility="Collapsed" Margin="0,4,0,8" MaxWidth="420" HorizontalAlignment="Left">
+                          <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                          </Grid.ColumnDefinitions>
+                          <RadioButton x:Name="YtSongsTab" Grid.Column="0" Content="Songs" GroupName="YtResultTabs"
+                                       Style="{StaticResource SidePanelTabStyle}" Checked="YtTab_Checked"/>
+                          <RadioButton x:Name="YtAlbumsTab" Grid.Column="1" Content="Albums" GroupName="YtResultTabs"
+                                       Style="{StaticResource SidePanelTabStyle}" Checked="YtTab_Checked"/>
+                        </Grid>
+
+                        <!-- Songs tab: YouTube Music songs, then other versions from plain YouTube. -->
+                        <StackPanel x:Name="YtSongsPanel" Spacing="6">
+                          <StackPanel x:Name="YtSongsSection" Visibility="Collapsed">
+                            <ItemsControl x:Name="YtSongsList" ItemTemplate="{StaticResource YtTrackTemplate}"/>
+                          </StackPanel>
+                          <StackPanel x:Name="YtVideosSection" Visibility="Collapsed">
+                            <TextBlock Text="OTHER VERSIONS ON YOUTUBE" Style="{StaticResource SectionHeaderStyle}" Margin="0,12,0,2"/>
+                            <ItemsControl x:Name="YtVideosList" ItemTemplate="{StaticResource YtTrackTemplate}"/>
+                          </StackPanel>
+                          <TextBlock x:Name="YtNoSongsText" Text="No songs found - try the Albums tab." Visibility="Collapsed"
+                                     Foreground="{StaticResource TextSecondaryBrush}"/>
                         </StackPanel>
-                        <StackPanel x:Name="YtAlbumsSection" Visibility="Collapsed">
-                          <TextBlock Text="ALBUMS" Style="{StaticResource SectionHeaderStyle}" Margin="0,12,0,2"/>
-                          <muxc:ItemsRepeater x:Name="YtAlbumsList" ItemTemplate="{StaticResource YtAlbumCardTemplate}">
-                            <muxc:ItemsRepeater.Layout>
-                              <muxc:UniformGridLayout MinItemWidth="162" MinItemHeight="200" ItemsStretch="None" MinColumnSpacing="0" MinRowSpacing="0"/>
-                            </muxc:ItemsRepeater.Layout>
-                          </muxc:ItemsRepeater>
-                        </StackPanel>
-                        <StackPanel x:Name="YtVideosSection" Visibility="Collapsed">
-                          <TextBlock Text="OTHER VERSIONS ON YOUTUBE" Style="{StaticResource SectionHeaderStyle}" Margin="0,12,0,2"/>
-                          <ItemsControl x:Name="YtVideosList" ItemTemplate="{StaticResource YtTrackTemplate}"/>
+
+                        <!-- Albums tab -->
+                        <StackPanel x:Name="YtAlbumsPanel" Visibility="Collapsed">
+                          <StackPanel x:Name="YtAlbumsSection" Visibility="Collapsed">
+                            <muxc:ItemsRepeater x:Name="YtAlbumsList" ItemTemplate="{StaticResource YtAlbumCardTemplate}">
+                              <muxc:ItemsRepeater.Layout>
+                                <muxc:UniformGridLayout MinItemWidth="162" MinItemHeight="218" ItemsStretch="None" MinColumnSpacing="0" MinRowSpacing="0"/>
+                              </muxc:ItemsRepeater.Layout>
+                            </muxc:ItemsRepeater>
+                          </StackPanel>
+                          <TextBlock x:Name="YtNoAlbumsText" Text="No albums found - try the Songs tab." Visibility="Collapsed"
+                                     Foreground="{StaticResource TextSecondaryBrush}"/>
                         </StackPanel>
                       </StackPanel>
 

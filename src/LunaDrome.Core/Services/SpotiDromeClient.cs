@@ -133,8 +133,10 @@ public class SpotiDromeClient
 
     /// <summary>Starts a library-only download (no Navidrome playlist, no auto-sync); returns the job id.
     /// Files land in album-named folders at the top of the music library ("LunaDrome" is only the
-    /// job/staging label).</summary>
-    public async Task<string> DownloadAsync(string url, bool isAlbum, string label, string? albumName)
+    /// job/staging label). An album (isAlbum) is downloaded whole into its own album folder:
+    /// tracks you already have elsewhere (e.g. as a single) are still added to it, all tagged
+    /// with <paramref name="albumArtist"/> and track numbers.</summary>
+    public async Task<string> DownloadAsync(string url, bool isAlbum, string label, string? albumName, string? albumArtist = null)
     {
         using var response = await _http.PostAsJsonAsync($"{BaseUrl}/ytmusic/download", new Dictionary<string, object?>
         {
@@ -144,6 +146,8 @@ public class SpotiDromeClient
             ["sync_playlist"] = false,
             ["track_for_sync"] = false,
             ["album"] = albumName,
+            ["complete_album"] = isAlbum,
+            ["album_artist"] = isAlbum ? albumArtist : null,
             ["job_label"] = $"[LunaDrome] {label}",
         });
         var body = await response.Content.ReadAsStringAsync();
