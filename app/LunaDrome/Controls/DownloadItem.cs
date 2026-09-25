@@ -13,6 +13,10 @@ public sealed class DownloadItem : INotifyPropertyChanged
     public required string Label { get; init; }
     public required bool IsAlbum { get; init; }
 
+    // What was sent, so a failed/interrupted download can be sent again (Retry).
+    public required string Url { get; init; }
+    public string? AlbumName { get; init; }
+
     // What to look for in the library once it's done (Play / Open).
     public required string Title { get; init; }
     public required string Artist { get; init; }
@@ -29,6 +33,8 @@ public sealed class DownloadItem : INotifyPropertyChanged
         {
             if (Error != null)
                 return Error;
+            if (Unreachable)
+                return "SpotiDrome isn't responding - still trying…";
             if (Job == null)
                 return "Sent to SpotiDrome…";
             return Job.Status switch
@@ -38,6 +44,7 @@ public sealed class DownloadItem : INotifyPropertyChanged
                 "running" => $"Downloading: {Job.CurrentTrack ?? Label}",
                 "uploading" => "Copying to your Navidrome library…",
                 "scanning" => "Waiting for Navidrome to pick it up…",
+                "done" when Job.Downloaded == 0 && WasInterrupted => "Interrupted by a SpotiDrome restart.",
                 "done" when Job.Downloaded == 0 && Job.Failed == 0 => "Already in your library.",
                 "done" when Job.Downloaded == 0 => $"Failed - {LastLogLine()}",
                 "done" when Job.Failed > 0 => $"Done: {Job.Downloaded} downloaded, {Job.Failed} failed.",
@@ -53,17 +60,32 @@ public sealed class DownloadItem : INotifyPropertyChanged
     public bool IsIndeterminate => !IsFinished && (Job == null || Job.Total == 0 || Job.Status is "uploading" or "scanning" or "pending");
     public Visibility ProgressVisibility => IsFinished ? Visibility.Collapsed : Visibility.Visible;
 
-    // Play (song) / Open (album) once it's in the library.
-    public string ActionText => IsAlbum ? "Open" : "Play";
-    public Visibility ActionVisibility => IsFinished && Job?.IsDone == true && Job.Failed < Math.Max(1, Job.Total) ? Visibility.Visible : Visibility.Collapsed;
+    /// <summary>The last status check failed (SpotiDrome down/overloaded); the download itself may be fine.</summary>
+    public bool Unreachable { get; private set; }
+
+    // Play (song) / Open (album) once it's in the library; Retry when nothing came of it
+    // (failed, or cut off by a SpotiDrome restart - its log then says "Interrupted").
+    public bool CanRetry => IsFinished && !Succeeded && !(Job is { IsDone: true, Downloaded: 0, Failed: 0 } && !WasInterrupted);
+    private bool WasInterrupted => Job?.Log.Any(l => l.Contains("Interrupted", StringComparison.OrdinalIgnoreCase)) == true;
+    public string ActionText => CanRetry ? "Retry" : IsAlbum ? "Open" : "Play";
+    public Visibility ActionVisibility => IsFinished && (CanRetry || Job?.IsDone == true) ? Visibility.Visible : Visibility.Collapsed;
     public Visibility CancelVisibility => IsFinished ? Visibility.Collapsed : Visibility.Visible;
+
+    public void SetUnreachable(bool unreachable)
+    {
+        if (Unreachable == unreachable)
+            return;
+        Unreachable = unreachable;
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(StatusText)));
+    }
 
     public void Update(SpotiDromeJob? job, string? error = null)
     {
         Job = job ?? Job;
         Error = error;
+        Unreachable = false;
         foreach (var name in new[] { nameof(StatusText), nameof(Progress), nameof(IsIndeterminate), nameof(ProgressVisibility),
-                                     nameof(ActionVisibility), nameof(CancelVisibility) })
+                                     nameof(ActionText), nameof(ActionVisibility), nameof(CancelVisibility) })
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
     }
 

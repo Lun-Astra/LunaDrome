@@ -154,7 +154,9 @@ public class SpotiDromeClient
 
     public async Task<SpotiDromeJob?> GetJobAsync(string jobId)
     {
-        using var response = await _http.GetAsync($"{BaseUrl}/jobs/{Uri.EscapeDataString(jobId)}");
+        // Polled every few seconds - a stalled server should count as "not responding" quickly.
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var response = await _http.GetAsync($"{BaseUrl}/jobs/{Uri.EscapeDataString(jobId)}", cts.Token);
         if (!response.IsSuccessStatusCode)
             return null;
         return JsonSerializer.Deserialize<SpotiDromeJob>(await response.Content.ReadAsStringAsync(), JsonOptions);

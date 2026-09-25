@@ -249,8 +249,13 @@ public sealed partial class MainPage
         try
         {
             var jobId = await _spotiDrome.DownloadAsync(url, isAlbum, label, albumName);
-            _downloads.Insert(0, new DownloadItem { JobId = jobId, Label = label, IsAlbum = isAlbum, Title = title, Artist = artist });
+            _downloads.Insert(0, new DownloadItem
+            {
+                JobId = jobId, Label = label, IsAlbum = isAlbum, Title = title, Artist = artist, Url = url, AlbumName = albumName,
+            });
             UpdateDownloadsButton();
+            _pollFailures = 0;
+            _downloadPollTimer.Interval = PollInterval;
             _downloadPollTimer.Start();
             ShowToast($"Downloading {label}", "View", ShowDownloadsPage);
             return true;
@@ -263,6 +268,8 @@ public sealed partial class MainPage
     }
 
     private bool _polling;
+    private int _pollFailures;
+    private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(2);
 
     private async Task PollDownloadsAsync()
     {
@@ -271,6 +278,7 @@ public sealed partial class MainPage
         _polling = true;
         try
         {
+            var reachable = true;
             foreach (var item in _downloads.Where(d => !d.IsFinished).ToList())
             {
                 try
@@ -288,9 +296,23 @@ public sealed partial class MainPage
                 }
                 catch
                 {
-                    // SpotiDrome briefly unreachable - try again on the next tick.
+                    // SpotiDrome down or overloaded: say so, and stop asking the others this round.
+                    reachable = false;
+                    foreach (var waiting in _downloads.Where(d => !d.IsFinished))
+                        waiting.SetUnreachable(true);
+                    break;
                 }
             }
+
+            // Back off while it doesn't answer (2s -> 10s -> 30s) instead of piling requests
+            // onto a struggling server; back to 2s as soon as it responds again.
+            _pollFailures = reachable ? 0 : _pollFailures + 1;
+            _downloadPollTimer.Interval = _pollFailures switch
+            {
+                0 => PollInterval,
+                < 3 => TimeSpan.FromSeconds(10),
+                _ => TimeSpan.FromSeconds(30),
+            };
 
             UpdateDownloadsButton();
             if (_downloads.All(d => d.IsFinished))
@@ -345,10 +367,21 @@ public sealed partial class MainPage
         ShowPage(DownloadsPage);
     }
 
-    private void DownloadAction_Click(object sender, RoutedEventArgs e)
+    private async void DownloadAction_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is FrameworkElement { Tag: DownloadItem item })
-            PlayOrOpenDownload(item);
+        if (sender is not FrameworkElement { Tag: DownloadItem item })
+            return;
+
+        if (item.CanRetry)
+        {
+            // Send it again as a new download; the failed row is replaced by the new one.
+            if (await StartDownloadAsync(item.Url, item.IsAlbum, item.Label, item.Title, item.Artist, item.AlbumName))
+                _downloads.Remove(item);
+            UpdateDownloadsButton();
+            return;
+        }
+
+        PlayOrOpenDownload(item);
     }
 
     private async void DownloadCancel_Click(object sender, RoutedEventArgs e)
