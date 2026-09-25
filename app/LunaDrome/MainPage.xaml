@@ -157,7 +157,7 @@
         </StackPanel>
         <TextBlock Grid.Column="2" Text="{Binding DurationDisplay}" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}"
                    VerticalAlignment="Center" Margin="12,0"/>
-        <Button Grid.Column="3" Content="Download" Tag="{Binding}" Click="YtTrackDownload_Click" VerticalAlignment="Center"
+        <Button Grid.Column="3" Content="Download" Style="{StaticResource TextButtonStyle}" Tag="{Binding}" Click="YtTrackDownload_Click" VerticalAlignment="Center"
                 ToolTipService.ToolTip="Download this song into your library via SpotiDrome"/>
       </Grid>
     </DataTemplate>
@@ -212,8 +212,8 @@
                          Visibility="{Binding ProgressVisibility}"/>
           </StackPanel>
           <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" Margin="12,0,0,0">
-            <Button Content="{Binding ActionText}" Tag="{Binding}" Click="DownloadAction_Click" Visibility="{Binding ActionVisibility}"/>
-            <Button Content="Cancel" Tag="{Binding}" Click="DownloadCancel_Click" Visibility="{Binding CancelVisibility}"/>
+            <Button Content="{Binding ActionText}" Style="{StaticResource TextButtonStyle}" Tag="{Binding}" Click="DownloadAction_Click" Visibility="{Binding ActionVisibility}"/>
+            <Button Content="Cancel" Style="{StaticResource TextButtonStyle}" Tag="{Binding}" Click="DownloadCancel_Click" Visibility="{Binding CancelVisibility}"/>
           </StackPanel>
         </Grid>
       </Border>
@@ -640,7 +640,7 @@
                         <ColumnDefinition Width="Auto"/>
                       </Grid.ColumnDefinitions>
                       <TextBox x:Name="SpotiDromeUrlBox" PlaceholderText="http://192.168.1.20:8080" AutomationProperties.Name="SpotiDrome address"/>
-                      <Button Grid.Column="1" x:Name="SpotiDromeSaveButton" Content="Save &amp; test" Click="SpotiDromeSave_Click"/>
+                      <Button Grid.Column="1" x:Name="SpotiDromeSaveButton" Style="{StaticResource TextButtonStyle}" Content="Save &amp; test" Click="SpotiDromeSave_Click"/>
                     </Grid>
                     <TextBlock x:Name="SpotiDromeTestText" Style="{StaticResource SettingsHintStyle}" Margin="0"/>
                   </StackPanel>
@@ -651,7 +651,7 @@
                     <TextBlock Text="STORAGE" Style="{StaticResource SectionHeaderStyle}" Margin="0"/>
                     <Grid>
                       <TextBlock x:Name="CacheSizeText" VerticalAlignment="Center"/>
-                      <Button Content="Clear" HorizontalAlignment="Right" Click="ClearCache_Click"/>
+                      <Button Content="Clear" Style="{StaticResource TextButtonStyle}" HorizontalAlignment="Right" Click="ClearCache_Click"/>
                     </Grid>
                   </StackPanel>
                 </Border>
@@ -664,7 +664,7 @@
                         <TextBlock x:Name="AccountUserText" FontWeight="SemiBold"/>
                         <TextBlock x:Name="AccountServerText" Style="{StaticResource SettingsHintStyle}" Margin="0,2,0,0"/>
                       </StackPanel>
-                      <Button Content="Sign out" HorizontalAlignment="Right" VerticalAlignment="Center" Click="SignOut_Click"/>
+                      <Button Content="Sign out" Style="{StaticResource TextButtonStyle}" HorizontalAlignment="Right" VerticalAlignment="Center" Click="SignOut_Click"/>
                     </Grid>
                   </StackPanel>
                 </Border>
@@ -677,13 +677,13 @@
                         <TextBlock x:Name="AboutVersionText" FontWeight="SemiBold"/>
                         <TextBlock x:Name="UpdateStatusText" Style="{StaticResource SettingsHintStyle}" Margin="0,2,0,0"/>
                       </StackPanel>
-                      <Button x:Name="CheckUpdatesButton" Content="Check for updates" HorizontalAlignment="Right" VerticalAlignment="Center"
+                      <Button x:Name="CheckUpdatesButton" Style="{StaticResource TextButtonStyle}" Content="Check for updates" HorizontalAlignment="Right" VerticalAlignment="Center"
                               Click="CheckUpdates_Click"/>
                     </Grid>
                     <CheckBox x:Name="AutoUpdateCheck" Content="Check for updates when signing in" Click="PreferenceCheck_Click"/>
                     <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
-                      <Button Content="GitHub page" Click="OpenGitHub_Click"/>
-                      <Button Content="Report a problem" Click="ReportProblem_Click"/>
+                      <Button Content="GitHub page" Style="{StaticResource TextButtonStyle}" Click="OpenGitHub_Click"/>
+                      <Button Content="Report a problem" Style="{StaticResource TextButtonStyle}" Click="ReportProblem_Click"/>
                     </StackPanel>
                   </StackPanel>
                 </Border>
@@ -1019,7 +1019,7 @@
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                   </Grid.ColumnDefinitions>
-                  <TextBox x:Name="AlbumTrackSearchBox" Grid.Column="0" PlaceholderText="Search" MinHeight="36"
+                  <TextBox x:Name="AlbumTrackSearchBox" Grid.Column="0" PlaceholderText="Search" MinHeight="34"
                            CornerRadius="18" Padding="16,8" TextChanged="AlbumTrackSearchBox_TextChanged"/>
                   <StackPanel x:Name="AlbumGenrePanel" Grid.Column="1" Margin="24,0,0,0" VerticalAlignment="Center">
                     <TextBlock Text="GENRE" FontSize="13" FontWeight="Bold"/>

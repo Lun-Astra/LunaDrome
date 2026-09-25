@@ -107,6 +107,13 @@
 
       <Style TargetType="Button" BasedOn="{StaticResource BaseButtonStyle}"/>
 
+      <!-- Plain text buttons (Settings, Downloads, "Download"): the base style has no padding
+           (made for fixed-size icon buttons), which clipped their labels. -->
+      <Style x:Key="TextButtonStyle" TargetType="Button" BasedOn="{StaticResource BaseButtonStyle}">
+        <Setter Property="Padding" Value="14,7"/>
+        <Setter Property="MinHeight" Value="32"/>
+      </Style>
+
       <!-- White accent button: dims on hover instead of swapping to the dark hover color, which
            would make the dark icon on it invisible (same fix as the WPF PrimaryButtonStyle). -->
       <Style x:Key="PrimaryButtonStyle" TargetType="Button" BasedOn="{StaticResource BaseButtonStyle}">
@@ -487,8 +494,8 @@
         <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
         <Setter Property="BorderThickness" Value="0"/>
         <Setter Property="CornerRadius" Value="6"/>
-        <Setter Property="Padding" Value="8,7"/>
-        <Setter Property="MinHeight" Value="43"/>
+        <Setter Property="Padding" Value="10,6"/>
+        <Setter Property="MinHeight" Value="34"/>
         <Setter Property="FontFamily" Value="{StaticResource AppFont}"/>
         <Setter Property="FontSize" Value="12"/>
       </Style>
