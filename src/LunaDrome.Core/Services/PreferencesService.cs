@@ -8,6 +8,8 @@ public class Preferences
 {
     public string Theme { get; set; } = "Dark";
     public string Accent { get; set; } = "White";
+    /// <summary>The color-wheel pick ("#RRGGBB"), kept while a preset accent is in use.</summary>
+    public string CustomAccent { get; set; } = "";
 
     public bool PrefetchNextTrack { get; set; } = true;
     public bool ResumeQueueOnStartup { get; set; } = true;

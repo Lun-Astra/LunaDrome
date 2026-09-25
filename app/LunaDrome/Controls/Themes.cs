@@ -44,7 +44,26 @@ public static class Themes
 
     /// <summary>Swatch color for the accent picker (on the current theme).</summary>
     public static Color AccentSwatch(string accent, string theme) =>
-        Accents.TryGetValue(accent, out var color) ? color : PaletteFor(theme).NeutralAccent;
+        TryAccentColor(accent, out var color) ? color : PaletteFor(theme).NeutralAccent;
+
+    /// <summary>A named colored accent, or a custom "#RRGGBB" one from the color wheel.</summary>
+    public static bool TryAccentColor(string accent, out Color color)
+    {
+        if (Accents.TryGetValue(accent, out color))
+            return true;
+        if (accent.Length == 7 && accent[0] == '#' && uint.TryParse(accent.AsSpan(1), System.Globalization.NumberStyles.HexNumber, null, out var rgb))
+        {
+            color = C(0xFF000000 | rgb);
+            return true;
+        }
+        return false;
+    }
+
+    public static string ToHex(Color color) => $"#{color.R:X2}{color.G:X2}{color.B:X2}";
+
+    // Dark content on light accents, white on dark ones (custom colors can be anything).
+    private static Color OnColor(Color c) =>
+        0.2126 * c.R + 0.7152 * c.G + 0.0722 * c.B > 150 ? C(0xFF141517) : C(0xFFFFFFFF);
 
     private static Palette PaletteFor(string theme) => Palettes.TryGetValue(theme, out var p) ? p : Palettes["Dark"];
 
@@ -56,9 +75,12 @@ public static class Themes
         s_brushes ??= CaptureBrushes();
 
         var palette = PaletteFor(theme);
-        var accentColor = Accents.TryGetValue(accent, out var a) ? a : palette.NeutralAccent;
-        // Colored accents are all bright, so dark content on them reads best.
-        var onAccent = Accents.ContainsKey(accent) ? C(0xFF141517) : palette.OnNeutralAccent;
+        var colored = TryAccentColor(accent, out var accentColor);
+        if (!colored)
+            accentColor = palette.NeutralAccent;
+        // The preset colors are all bright, so dark content on them reads best.
+        var onAccent = !colored ? palette.OnNeutralAccent
+            : Accents.ContainsKey(accent) ? C(0xFF141517) : OnColor(accentColor);
 
         foreach (var (brush, role) in s_brushes)
         {

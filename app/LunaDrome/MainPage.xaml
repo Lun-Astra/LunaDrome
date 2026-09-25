@@ -39,7 +39,7 @@
          HomeLayout), 14px semibold album link, 13px gray artist link and year. -->
     <DataTemplate x:Key="HomeAlbumCardTemplate">
       <StackPanel Width="{Binding CardWidth, Source={StaticResource HomeLayout}}" Background="Transparent"
-                  Tag="{Binding}" Tapped="AlbumCard_Tapped">
+                  Tag="{Binding}" Tapped="AlbumCard_Tapped" RightTapped="AlbumCard_RightTapped">
         <Grid Width="{Binding CardWidth, Source={StaticResource HomeLayout}}"
               Height="{Binding CardWidth, Source={StaticResource HomeLayout}}">
           <Border CornerRadius="6" Background="{StaticResource RaisedBrush}">
@@ -76,7 +76,7 @@
          overlay plays it. Sizes stay the WPF app's (small: 112/104, large: 152/140). -->
     <DataTemplate x:Key="AlbumCardTemplate">
       <StackPanel Width="112" Margin="2,4" Background="Transparent" Tag="{Binding}"
-                  Tapped="AlbumCard_Tapped" controls:Motion.HoverScale="1.035">
+                  Tapped="AlbumCard_Tapped" RightTapped="AlbumCard_RightTapped" controls:Motion.HoverScale="1.035">
         <Grid Width="104" Height="104" HorizontalAlignment="Left">
           <Border CornerRadius="8" Background="{StaticResource RaisedBrush}">
             <Image Source="{Binding CoverArtUrl}" Stretch="UniformToFill" HorizontalAlignment="Center" VerticalAlignment="Center"/>
@@ -103,7 +103,7 @@
 
     <DataTemplate x:Key="LargeAlbumCardTemplate">
       <StackPanel Width="152" Margin="5,8" Background="Transparent" Tag="{Binding}"
-                  Tapped="AlbumCard_Tapped" controls:Motion.HoverScale="1.035">
+                  Tapped="AlbumCard_Tapped" RightTapped="AlbumCard_RightTapped" controls:Motion.HoverScale="1.035">
         <Grid Width="140" Height="140" HorizontalAlignment="Left">
           <Border CornerRadius="9" Background="{StaticResource RaisedBrush}">
             <Image Source="{Binding CoverArtUrl}" Stretch="UniformToFill" HorizontalAlignment="Center" VerticalAlignment="Center"/>
@@ -257,7 +257,7 @@
     <!-- Artist page album card, Feishin's size: 172px square art, 14/13px text. -->
     <DataTemplate x:Key="FeishinAlbumCardTemplate">
       <StackPanel Width="172" Margin="0,0,12,20" Background="Transparent" Tag="{Binding}"
-                  Tapped="AlbumCard_Tapped">
+                  Tapped="AlbumCard_Tapped" RightTapped="AlbumCard_RightTapped">
         <Grid Width="172" Height="172">
           <Border CornerRadius="6" Background="{StaticResource RaisedBrush}">
             <Image Source="{Binding CoverArtUrl}" Stretch="UniformToFill" HorizontalAlignment="Center" VerticalAlignment="Center"/>
@@ -470,6 +470,8 @@
                            Style="{StaticResource NavItemStyle}" Checked="Nav_Checked"/>
               <RadioButton x:Name="NavSongs" Content="Tracks" Tag="Songs" GroupName="MainNav"
                            Style="{StaticResource NavItemStyle}" Checked="Nav_Checked"/>
+              <RadioButton x:Name="NavGenres" Content="Genres" Tag="Genres" GroupName="MainNav"
+                           Style="{StaticResource NavItemStyle}" Checked="Nav_Checked"/>
               <Grid Margin="8,24,0,8">
                 <Grid.ColumnDefinitions>
                   <ColumnDefinition Width="*"/>
@@ -664,6 +666,11 @@
                     <StackPanel x:Name="ThemeOptions" Orientation="Horizontal" Spacing="8"/>
                     <TextBlock Text="Accent color" FontWeight="SemiBold" Margin="0,8,0,0"/>
                     <StackPanel x:Name="AccentOptions" Orientation="Horizontal" Spacing="8"/>
+                    <!-- Custom accent: color wheel, shown after picking the last ("Custom") swatch. -->
+                    <muxc:ColorPicker x:Name="AccentColorPicker" Visibility="Collapsed" HorizontalAlignment="Left" Margin="0,6,0,0"
+                                      ColorSpectrumShape="Ring" IsAlphaEnabled="False" IsMoreButtonVisible="False"
+                                      IsColorChannelTextInputVisible="False" IsHexInputVisible="True" IsColorPreviewVisible="True"
+                                      ColorChanged="AccentColorPicker_ColorChanged"/>
                   </StackPanel>
                 </Border>
 
@@ -1170,6 +1177,51 @@
               <ListView Grid.Row="3" x:Name="AllSongsList" Tag="AllTracks" SelectionMode="Single"
                         ItemTemplate="{StaticResource TrackRowTemplate}" ItemContainerStyle="{StaticResource SongItemStyle}"
                         DoubleTapped="TrackList_DoubleTapped" RightTapped="TrackList_RightTapped"/>
+            </Grid>
+
+            <!-- Genres (all): the Home genre tiles, plus album/song counts; click opens the genre. -->
+            <Grid x:Name="GenresPage" Visibility="Collapsed">
+              <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+              </Grid.RowDefinitions>
+              <Grid Grid.Row="0" Margin="0,0,0,10">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="Auto"/>
+                  <ColumnDefinition Width="Auto"/>
+                  <ColumnDefinition Width="*"/>
+                  <ColumnDefinition Width="220"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="ALL GENRES" Style="{StaticResource SectionHeaderStyle}" Margin="2,0,10,0"
+                           VerticalAlignment="Center"/>
+                <Button x:Name="GenresSortButton" Grid.Column="1" Content="Sort: Most albums" Padding="14,6" Click="GenresSortButton_Click"/>
+                <TextBox x:Name="AllGenresSearchBox" Grid.Column="3" PlaceholderText="Search" TextChanged="AllGenresSearchBox_TextChanged"/>
+              </Grid>
+              <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" controls:WheelScroll.Enabled="True">
+                <muxc:ItemsRepeater x:Name="AllGenresList" Margin="0,0,16,16">
+                  <muxc:ItemsRepeater.Layout>
+                    <muxc:UniformGridLayout MinColumnSpacing="16" MinRowSpacing="12" ItemsStretch="Fill"
+                                            MinItemWidth="220" MinItemHeight="60"/>
+                  </muxc:ItemsRepeater.Layout>
+                  <muxc:ItemsRepeater.ItemTemplate>
+                    <DataTemplate>
+                      <Border Height="60" CornerRadius="4" Background="{StaticResource PanelBrush}"
+                              Tag="{Binding}" Tapped="GenreCard_Tapped"
+                              controls:Motion.HoverBackground="{StaticResource RaisedBrush}">
+                        <Grid>
+                          <Border Width="5" HorizontalAlignment="Left" CornerRadius="4,0,0,4"
+                                  Background="{Binding Name, Converter={StaticResource GenreColor}}"/>
+                          <StackPanel Margin="22,0,12,0" VerticalAlignment="Center" Spacing="2">
+                            <TextBlock Text="{Binding Name}" FontSize="14" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                            <TextBlock Text="{Binding Summary}" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}"
+                                       TextTrimming="CharacterEllipsis"/>
+                          </StackPanel>
+                        </Grid>
+                      </Border>
+                    </DataTemplate>
+                  </muxc:ItemsRepeater.ItemTemplate>
+                </muxc:ItemsRepeater>
+              </ScrollViewer>
             </Grid>
 
             <!-- Genre detail -->
