@@ -332,9 +332,23 @@ public sealed partial class MainPage
             return;
         }
 
-        // Library pages were loaded once - make them reload with the new songs.
+        // Library pages load once per session - make them reload with the new songs: right now
+        // for the page that's showing, on the next visit for the others.
+        _homeLoaded = false;
         _albumsPageLoaded = false;
         _songsPageLoaded = false;
+        if (HomePage.Visibility == Visibility.Visible)
+            _ = LoadHomeAsync();
+        else if (AlbumsPage.Visibility == Visibility.Visible)
+        {
+            _albumsPageLoaded = true;
+            _ = LoadAllAlbumsAsync();
+        }
+        else if (SongsPage.Visibility == Visibility.Visible)
+        {
+            _songsPageLoaded = true;
+            _ = LoadAllSongsAsync();
+        }
 
         ShowToast($"{item.Label} is now in your library", item.ActionText, () => PlayOrOpenDownload(item));
 

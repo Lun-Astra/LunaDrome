@@ -1165,7 +1165,7 @@ public sealed partial class MainPage : Page
     {
         try
         {
-            var songs = await _client.GetAllSongsAsync(500);
+            var songs = await _client.GetAllSongsAsync();
             PopulateSongArt(songs);
             _trackViews["AllTracks"].Raw = songs;
             RefreshTrackView("AllTracks");
