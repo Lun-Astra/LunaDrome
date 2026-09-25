@@ -9,6 +9,13 @@ internal class Program
     [STAThread]
     public static void Main(string[] args)
     {
+        // Already running (#14)? Bring that window up instead of opening a second player.
+        if (!LunaDrome.Services.SingleInstance.TryClaim())
+        {
+            LunaDrome.Services.SingleInstance.ActivateExisting();
+            return;
+        }
+
         App.InitializeLogging();
 
         if (OperatingSystem.IsLinux())

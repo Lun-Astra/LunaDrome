@@ -68,6 +68,22 @@ public partial class App : Application
 
         // Ensure the current window is active
         MainWindow.Activate();
+
+        // Launching LunaDrome again while it runs brings this window up instead (#14).
+        var window = MainWindow;
+        LunaDrome.Services.SingleInstance.ActivationRequested += () => window.DispatcherQueue.TryEnqueue(() =>
+        {
+            try
+            {
+                if (window.AppWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter
+                    { State: Microsoft.UI.Windowing.OverlappedPresenterState.Minimized } presenter)
+                    presenter.Restore();
+            }
+            catch { /* not supported on every Uno host */ }
+            window.Activate();
+            if (OperatingSystem.IsWindows())
+                LunaDrome.Services.NativeWindow.BringToFront();
+        });
     }
 
     /// <summary>
