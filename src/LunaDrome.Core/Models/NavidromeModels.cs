@@ -26,6 +26,10 @@ public class Genre
     public string Name { get; set; } = "";
     public int AlbumCount { get; set; }
     public int SongCount { get; set; }
+
+    /// <summary>"12 albums · 140 songs" (Genres page tiles).</summary>
+    public string Summary =>
+        $"{AlbumCount} album{(AlbumCount == 1 ? "" : "s")} · {SongCount} song{(SongCount == 1 ? "" : "s")}";
 }
 
 public class Song

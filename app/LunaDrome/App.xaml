@@ -553,6 +553,79 @@
       <SolidColorBrush x:Key="CheckBoxForegroundUnchecked" Color="#FFECEDEE"/>
       <SolidColorBrush x:Key="CheckBoxForegroundChecked" Color="#FFECEDEE"/>
 
+      <!-- CheckBox: own template on the app's named brushes, so it follows themes/accents live
+           (the default template's ThemeResource fills stayed white, invisible on light themes). -->
+      <Style TargetType="CheckBox">
+        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+        <Setter Property="FontFamily" Value="{StaticResource AppFont}"/>
+        <Setter Property="FontSize" Value="14"/>
+        <Setter Property="MinHeight" Value="28"/>
+        <Setter Property="UseSystemFocusVisuals" Value="False"/>
+        <Setter Property="Template">
+          <Setter.Value>
+            <ControlTemplate TargetType="CheckBox">
+              <Grid Background="Transparent" ColumnSpacing="8">
+                <VisualStateManager.VisualStateGroups>
+                  <VisualStateGroup x:Name="CombinedStates">
+                    <VisualState x:Name="UncheckedNormal"/>
+                    <VisualState x:Name="UncheckedPointerOver">
+                      <VisualState.Setters>
+                        <Setter Target="Box.BorderBrush" Value="{StaticResource TextPrimaryBrush}"/>
+                      </VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="UncheckedPressed">
+                      <VisualState.Setters>
+                        <Setter Target="Box.BorderBrush" Value="{StaticResource TextPrimaryBrush}"/>
+                      </VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="UncheckedDisabled">
+                      <VisualState.Setters>
+                        <Setter Target="Root.Opacity" Value="0.5"/>
+                      </VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="CheckedNormal">
+                      <VisualState.Setters>
+                        <Setter Target="CheckedFill.Opacity" Value="1"/>
+                      </VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="CheckedPointerOver">
+                      <VisualState.Setters>
+                        <Setter Target="CheckedFill.Opacity" Value="0.85"/>
+                      </VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="CheckedPressed">
+                      <VisualState.Setters>
+                        <Setter Target="CheckedFill.Opacity" Value="0.7"/>
+                      </VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="CheckedDisabled">
+                      <VisualState.Setters>
+                        <Setter Target="CheckedFill.Opacity" Value="1"/>
+                        <Setter Target="Root.Opacity" Value="0.5"/>
+                      </VisualState.Setters>
+                    </VisualState>
+                  </VisualStateGroup>
+                </VisualStateManager.VisualStateGroups>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="20"/>
+                  <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Grid x:Name="Root" Width="20" Height="20" VerticalAlignment="Center">
+                  <Border x:Name="Box" CornerRadius="4" BorderThickness="1.5" BorderBrush="{StaticResource TextSecondaryBrush}"/>
+                  <Grid x:Name="CheckedFill" Opacity="0">
+                    <Border CornerRadius="4" Background="{StaticResource AccentBrush}"/>
+                    <Path Stroke="{StaticResource OnAccentBrush}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                          StrokeLineJoin="Round" Data="M5,10.2 L8.4,13.4 L15,6.6"/>
+                  </Grid>
+                </Grid>
+                <ContentPresenter Grid.Column="1" Content="{TemplateBinding Content}" VerticalAlignment="Center"
+                                  Foreground="{TemplateBinding Foreground}"/>
+              </Grid>
+            </ControlTemplate>
+          </Setter.Value>
+        </Setter>
+      </Style>
+
     </ResourceDictionary>
   </Application.Resources>
 

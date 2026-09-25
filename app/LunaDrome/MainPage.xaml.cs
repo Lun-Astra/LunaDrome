@@ -261,6 +261,10 @@ public sealed partial class MainPage : Page
     private void RefreshSettingsPage()
     {
         BuildSettingsChoices();
+        if (_prefs.Accent.StartsWith('#'))
+            ShowAccentColorPicker();
+        else
+            AccentColorPicker.Visibility = Visibility.Collapsed;
         PrefetchCheck.IsChecked = _prefs.PrefetchNextTrack;
         ResumeQueueCheck.IsChecked = _prefs.ResumeQueueOnStartup;
         OnlineLyricsCheck.IsChecked = _prefs.OnlineLyrics;
@@ -279,6 +283,10 @@ public sealed partial class MainPage : Page
     private void BuildSettingsChoices()
     {
         ThemeOptions.Children.Clear();
+        var darkRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        var lightRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        ThemeOptions.Children.Add(darkRow);
+        ThemeOptions.Children.Add(lightRow);
         foreach (var theme in Themes.ThemeNames)
         {
             var chip = new Border
@@ -290,7 +298,7 @@ public sealed partial class MainPage : Page
                 Background = (Brush)Application.Current.Resources["RaisedBrush"],
                 Child = new TextBlock { Text = theme },
             };
-            ThemeOptions.Children.Add(ChoiceButton(chip, theme, () => _prefs.Theme = theme));
+            (Themes.IsLight(theme) ? lightRow : darkRow).Children.Add(ChoiceButton(chip, theme, () => _prefs.Theme = theme));
         }
 
         AccentOptions.Children.Clear();
@@ -314,8 +322,102 @@ public sealed partial class MainPage : Page
                     StrokeThickness = 1,
                 },
             };
-            AccentOptions.Children.Add(ChoiceButton(ring, accent, () => _prefs.Accent = accent));
+            AccentOptions.Children.Add(ChoiceButton(ring, accent, () =>
+            {
+                _prefs.Accent = accent;
+                AccentColorPicker.Visibility = Visibility.Collapsed;
+            }));
         }
+
+        // "Custom": the color-wheel pick (a rainbow until one is made); opens the wheel.
+        var isCustom = _prefs.Accent.StartsWith('#');
+        _customAccentSwatch = new Microsoft.UI.Xaml.Shapes.Ellipse
+        {
+            Width = 24,
+            Height = 24,
+            Stroke = (Brush)Application.Current.Resources["BorderBrush2"],
+            StrokeThickness = 1,
+            Fill = Themes.TryAccentColor(_prefs.CustomAccent, out var custom) ? new SolidColorBrush(custom) : RainbowBrush(),
+        };
+        var customRing = new Border
+        {
+            Width = 34,
+            Height = 34,
+            CornerRadius = new CornerRadius(17),
+            BorderThickness = new Thickness(2),
+            BorderBrush = isCustom
+                ? (Brush)Application.Current.Resources["TextPrimaryBrush"]
+                : new SolidColorBrush(Microsoft.UI.Colors.Transparent),
+            Child = _customAccentSwatch,
+        };
+        AccentOptions.Children.Add(ChoiceButton(customRing, "Custom", () =>
+        {
+            if (!Themes.TryAccentColor(_prefs.CustomAccent, out _))
+                _prefs.CustomAccent = Themes.ToHex(Themes.AccentSwatch(_prefs.Accent, _prefs.Theme));
+            _prefs.Accent = _prefs.CustomAccent;
+            ShowAccentColorPicker();
+        }));
+    }
+
+    private Microsoft.UI.Xaml.Shapes.Ellipse? _customAccentSwatch;
+    private bool _settingAccentPicker;
+    private DispatcherTimer? _accentSaveTimer;
+
+    private static LinearGradientBrush RainbowBrush()
+    {
+        var brush = new LinearGradientBrush
+        {
+            StartPoint = new Windows.Foundation.Point(0, 0),
+            EndPoint = new Windows.Foundation.Point(1, 1),
+        };
+        uint[] colors = { 0xFFFF5A5A, 0xFFFFC23D, 0xFF3DD68C, 0xFF4C8DFF, 0xFFB15CFF };
+        for (var i = 0; i < colors.Length; i++)
+        {
+            var c = colors[i];
+            brush.GradientStops.Add(new GradientStop
+            {
+                Color = Windows.UI.Color.FromArgb(0xFF, (byte)(c >> 16), (byte)(c >> 8), (byte)c),
+                Offset = i / (double)(colors.Length - 1),
+            });
+        }
+        return brush;
+    }
+
+    private void ShowAccentColorPicker()
+    {
+        if (!Themes.TryAccentColor(_prefs.CustomAccent, out var color))
+            return;
+        _settingAccentPicker = true;
+        AccentColorPicker.Color = color;
+        _settingAccentPicker = false;
+        AccentColorPicker.Visibility = Visibility.Visible;
+    }
+
+    // Dragging on the wheel recolors the app live; preferences.json is written once it settles.
+    private void AccentColorPicker_ColorChanged(ColorPicker sender, ColorChangedEventArgs args)
+    {
+        if (_settingAccentPicker)
+            return;
+
+        var hex = Themes.ToHex(args.NewColor);
+        _prefs.CustomAccent = hex;
+        _prefs.Accent = hex;
+        Themes.Apply(_prefs.Theme, _prefs.Accent);
+        if (_customAccentSwatch != null)
+            _customAccentSwatch.Fill = new SolidColorBrush(args.NewColor);
+
+        if (_accentSaveTimer == null)
+        {
+            _accentSaveTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(400) };
+            _accentSaveTimer.Tick += (_, _) =>
+            {
+                _accentSaveTimer.Stop();
+                PreferencesService.Save(_prefs);
+                BuildSettingsChoices();
+            };
+        }
+        _accentSaveTimer.Stop();
+        _accentSaveTimer.Start();
     }
 
     private Button ChoiceButton(UIElement content, string name, Action choose)
@@ -433,6 +535,7 @@ public sealed partial class MainPage : Page
         _homeLoaded = false;
         _albumsPageLoaded = false;
         _songsPageLoaded = false;
+        _genresPageLoaded = false;
         _lyricsSongId = null;
 
         PasswordBox.Password = "";
@@ -529,6 +632,7 @@ public sealed partial class MainPage : Page
         AlbumsPage.Visibility = Visibility.Collapsed;
         SongsPage.Visibility = Visibility.Collapsed;
         GenreAlbumsPage.Visibility = Visibility.Collapsed;
+        GenresPage.Visibility = Visibility.Collapsed;
         PlaylistsPage.Visibility = Visibility.Collapsed;
         SettingsPage.Visibility = Visibility.Collapsed;
         SearchPage.Visibility = Visibility.Collapsed;
@@ -550,6 +654,7 @@ public sealed partial class MainPage : Page
         NavArtists.IsChecked = false;
         NavAlbums.IsChecked = false;
         NavSongs.IsChecked = false;
+        NavGenres.IsChecked = false;
         if (!keepPlaylist)
             PlaylistsList.SelectedItem = null;
         _suppressNavEvents = false;
@@ -592,6 +697,14 @@ public sealed partial class MainPage : Page
                 {
                     _songsPageLoaded = true;
                     _ = LoadAllSongsAsync();
+                }
+                break;
+            case "Genres":
+                ShowPage(GenresPage);
+                if (!_genresPageLoaded)
+                {
+                    _genresPageLoaded = true;
+                    _ = LoadAllGenresAsync();
                 }
                 break;
         }
@@ -723,6 +836,8 @@ public sealed partial class MainPage : Page
 
     private void HomeMoreAlbumsButton_Click(object sender, RoutedEventArgs e) => NavAlbums.IsChecked = true;
 
+    private void HomeMoreGenresButton_Click(object sender, RoutedEventArgs e) => NavGenres.IsChecked = true;
+
     private void HomePlaylistCard_Tapped(object sender, TappedRoutedEventArgs e)
     {
         if (sender is FrameworkElement { Tag: Playlist playlist })
@@ -752,6 +867,50 @@ public sealed partial class MainPage : Page
         {
             await ShowErrorAsync($"Failed to load albums: {ex.Message}");
         }
+    }
+
+    // ================= Genres =================
+
+    private bool _genresPageLoaded;
+    private List<Genre> _allGenresRaw = new();
+    private bool _genresSortByName;
+
+    private async Task LoadAllGenresAsync()
+    {
+        try
+        {
+            _allGenresRaw = await _client.GetGenresAsync();
+            RefreshAllGenres();
+        }
+        catch (Exception ex)
+        {
+            _genresPageLoaded = false;
+            await ShowErrorAsync($"Failed to load genres: {ex.Message}");
+        }
+    }
+
+    private void AllGenresSearchBox_TextChanged(object sender, TextChangedEventArgs e) => RefreshAllGenres();
+
+    // Most albums first (as the server list comes) or A-Z.
+    private void GenresSortButton_Click(object sender, RoutedEventArgs e)
+    {
+        _genresSortByName = !_genresSortByName;
+        GenresSortButton.Content = _genresSortByName ? "Sort: A–Z" : "Sort: Most albums";
+        RefreshAllGenres();
+    }
+
+    private void RefreshAllGenres()
+    {
+        if (AllGenresSearchBox == null)
+            return;
+
+        var q = AllGenresSearchBox.Text.Trim();
+        IEnumerable<Genre> genres = string.IsNullOrEmpty(q)
+            ? _allGenresRaw
+            : _allGenresRaw.Where(g => g.Name.Contains(q, StringComparison.OrdinalIgnoreCase));
+        if (_genresSortByName)
+            genres = genres.OrderBy(g => g.Name, StringComparer.CurrentCultureIgnoreCase);
+        AllGenresList.ItemsSource = genres.ToList();
     }
 
     // ================= Albums =================
@@ -821,6 +980,48 @@ public sealed partial class MainPage : Page
         {
             await ShowErrorAsync($"Failed to play album: {ex.Message}");
         }
+    }
+
+    // The album's songs for the card menu; empty (after an error message) if loading fails.
+    private async Task<List<Song>> GetAlbumSongsAsync(Album album)
+    {
+        try
+        {
+            var songs = await _client.GetSongsForAlbumAsync(album.Id);
+            PopulateSongArt(songs);
+            return songs;
+        }
+        catch (Exception ex)
+        {
+            await ShowErrorAsync($"Failed to load album: {ex.Message}");
+            return new();
+        }
+    }
+
+    // Right-click an album card: the same queue options as a song, for the whole album.
+    private void AlbumCard_RightTapped(object sender, RightTappedRoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: Album album } card)
+            return;
+
+        var flyout = new MenuFlyout();
+        AddMenuItem(flyout, "Play", async () => await PlayAlbumAsync(album));
+        AddMenuItem(flyout, "Shuffle", async () =>
+        {
+            var songs = await GetAlbumSongsAsync(album);
+            if (songs.Count > 0)
+                PlayQueueFrom(songs.OrderBy(_ => _random.Next()).ToList(), 0);
+        });
+        AddMenuItem(flyout, "Play next", async () => QueueSongsNext(await GetAlbumSongsAsync(album)));
+        AddMenuItem(flyout, "Add to queue", async () => AddToQueue(await GetAlbumSongsAsync(album)));
+        AddMenuItem(flyout, "Play last", async () => QueueSongsLast(await GetAlbumSongsAsync(album)));
+        flyout.Items.Add(new MenuFlyoutSeparator());
+        flyout.Items.Add(BuildAddToPlaylistSubmenu(() => GetAlbumSongsAsync(album)));
+        flyout.Items.Add(new MenuFlyoutSeparator());
+        AddMenuItem(flyout, "Go to album", async () => await OpenAlbumAsync(album));
+        AddMenuItem(flyout, "Go to artist", async () => await NavigateToArtistAsync(album.ArtistId, album.ArtistName));
+        flyout.ShowAt(card, e.GetPosition(card));
+        e.Handled = true;
     }
 
     private async void CardAlbumText_Tapped(object sender, TappedRoutedEventArgs e)
@@ -1167,7 +1368,9 @@ public sealed partial class MainPage : Page
 
         var flyout = BuildSongMenu(song, shown);
         flyout.Items.Add(new MenuFlyoutSeparator());
+        AddMenuItem(flyout, "Play album next", () => QueueSongsNext(_albumSongsRaw));
         AddMenuItem(flyout, "Add album to queue", () => AddToQueue(_albumSongsRaw));
+        AddMenuItem(flyout, "Play album last", () => QueueSongsLast(_albumSongsRaw));
         flyout.ShowAt(row, e.GetPosition(row));
         e.Handled = true;
     }
@@ -1370,8 +1573,9 @@ public sealed partial class MainPage : Page
         });
         AddMenuItem(flyout, "Play next", () => QueueSongsNext(new() { song }));
         AddMenuItem(flyout, "Add to queue", () => AddToQueue(new() { song }));
+        AddMenuItem(flyout, "Play last", () => QueueSongsLast(new() { song }));
         flyout.Items.Add(new MenuFlyoutSeparator());
-        flyout.Items.Add(BuildAddToPlaylistSubmenu(new() { song }));
+        flyout.Items.Add(BuildAddToPlaylistSubmenu(new List<Song> { song }));
         AddFavoriteToggle(flyout, song);
         return flyout;
     }
@@ -1397,7 +1601,11 @@ public sealed partial class MainPage : Page
             catch { /* best-effort */ }
         });
 
-    private MenuFlyoutSubItem BuildAddToPlaylistSubmenu(List<Song> songs)
+    private MenuFlyoutSubItem BuildAddToPlaylistSubmenu(List<Song> songs) =>
+        BuildAddToPlaylistSubmenu(() => Task.FromResult(songs));
+
+    // Songs are fetched only once a playlist is picked (album cards load them on demand).
+    private MenuFlyoutSubItem BuildAddToPlaylistSubmenu(Func<Task<List<Song>>> getSongs)
     {
         var sub = new MenuFlyoutSubItem { Text = "Add to playlist" };
         foreach (var playlist in _playlists)
@@ -1407,7 +1615,7 @@ public sealed partial class MainPage : Page
             {
                 try
                 {
-                    foreach (var song in songs)
+                    foreach (var song in await getSongs())
                         await _client.AddSongToPlaylistAsync(playlist.Id, song.Id);
                     await LoadPlaylistsAsync();
                 }
@@ -1428,7 +1636,7 @@ public sealed partial class MainPage : Page
             var id = await _client.CreatePlaylistAsync(name);
             if (id != null)
             {
-                foreach (var song in songs)
+                foreach (var song in await getSongs())
                     await _client.AddSongToPlaylistAsync(id, song.Id);
             }
             await LoadPlaylistsAsync();
