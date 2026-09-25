@@ -270,7 +270,20 @@ public class NavidromeClient
     // back to the legacy artist+title endpoint (plain lyrics only) if that finds nothing -
     // covers both older servers and songs that only have plain lyrics on file. Best-effort:
     // most tracks won't have lyrics at all, so any failure just means an empty result.
-    public async Task<(List<LyricLine> Lines, bool Synced)> GetLyricsAsync(string songId, string artist, string title)
+    // Without time-synced lyrics on the server, LRCLIB (online) is tried as well, like Feishin.
+    public async Task<(List<LyricLine> Lines, bool Synced)> GetLyricsAsync(Song song)
+    {
+        var server = await GetServerLyricsAsync(song.Id, song.ArtistName, song.Title);
+        if (server.Synced)
+            return server;
+
+        var online = await LrcLibClient.GetLyricsAsync(song.ArtistName, song.Title, song.AlbumName, song.DurationSeconds);
+        if (online.Synced || server.Lines.Count == 0)
+            return online;
+        return server;
+    }
+
+    private async Task<(List<LyricLine> Lines, bool Synced)> GetServerLyricsAsync(string songId, string artist, string title)
     {
         try
         {
@@ -322,6 +335,24 @@ public class NavidromeClient
         _http.GetStringAsync(BuildUrl("scrobble.view", ("id", songId), ("submission", "true")));
 
     public string GetStreamUrl(string songId) => BuildUrl("stream.view", ("id", songId));
+
+    /// <summary>
+    /// Copies a track's stream (the same URL playback uses, so the same transcoding) into
+    /// <paramref name="destination"/> - used to pre-buffer the next queue entry.
+    /// </summary>
+    public async Task DownloadStreamAsync(string songId, Stream destination, CancellationToken cancellationToken)
+    {
+        using var response = await _http.GetAsync(GetStreamUrl(songId), HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        // Subsonic reports errors (e.g. missing file) as a 200 with a JSON/XML body, not audio.
+        var mediaType = response.Content.Headers.ContentType?.MediaType ?? "";
+        if (mediaType.Contains("json") || mediaType.Contains("xml"))
+            throw new HttpRequestException($"Server returned {mediaType} instead of audio.");
+
+        await using var source = await response.Content.ReadAsStreamAsync(cancellationToken);
+        await source.CopyToAsync(destination, cancellationToken);
+    }
 
     // Navidrome resolves cover art for an album, artist, or track ID directly.
     public string GetCoverArtUrl(string id, int size = 300) =>

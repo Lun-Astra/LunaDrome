@@ -45,8 +45,19 @@ public sealed partial class MainPage : Page
     private readonly MediaPlayer _player = new();
     private readonly DispatcherTimer _progressTimer;
 
-    private readonly ObservableCollection<Song> _queue = new();
-    private int _queueIndex = -1;
+    private readonly ObservableCollection<QueueEntry> _queue = new();
+    // The playing (or, after a restore, paused-but-not-loaded) entry. Its position is looked up
+    // on demand (QueueIndex) so drag-reordering the queue can't leave a stale index behind.
+    private QueueEntry? _current;
+    // The entry whose media is actually loaded in _player (null after a queue restore, until Play).
+    private QueueEntry? _loadedEntry;
+    // Queue order from before shuffle was switched on, put back when it's switched off.
+    private List<QueueEntry>? _unshuffledOrder;
+    // Where to seek once the loaded media opens (resuming a restored queue, stall recovery).
+    private TimeSpan _pendingSeek;
+    private readonly TrackPrefetcher _prefetcher;
+    // Windows media flyout / Linux MPRIS: OS media widgets + keyboard media keys (#3, #13).
+    private IMediaControls? _mediaControls;
     private bool _isShuffled;
     private RepeatMode _repeatMode = RepeatMode.Off;
     private readonly Random _random = new();
@@ -88,8 +99,17 @@ public sealed partial class MainPage : Page
     public MainPage()
     {
         _loopback = new LoopbackCapture(_spectrum);
+        _prefetcher = new TrackPrefetcher(_client);
         this.InitializeComponent();
-        Unloaded += (_, _) => { StopVisualizer(); _loopback.Dispose(); };
+        Loaded += (_, _) => EnsureMediaControls();
+        Unloaded += (_, _) =>
+        {
+            SaveQueueState();
+            StopVisualizer();
+            _loopback.Dispose();
+            _prefetcher.Dispose();
+            _mediaControls?.Dispose();
+        };
         _visualizerTimer.Tick += OnVisualizerRenderFrame;
 
         _trackViews = new()
@@ -117,7 +137,11 @@ public sealed partial class MainPage : Page
                 NowPlayingSubText.Text = $"Playback failed: {e.ErrorMessage}";
             });
         };
-        _player.MediaOpened += (_, _) => Log("media opened");
+        _player.MediaOpened += (_, _) =>
+        {
+            Log("media opened");
+            DispatcherQueue.TryEnqueue(ApplyPendingSeek);
+        };
         _player.PlaybackSession.PlaybackStateChanged += (s, _) => Log($"playback state: {s.PlaybackState}");
 
         // Slider marks its own pointer events handled, so listen with handledEventsToo to know
@@ -127,6 +151,8 @@ public sealed partial class MainPage : Page
         ProgressSlider.AddHandler(PointerCaptureLostEvent, new PointerEventHandler((_, _) => CommitSeek()), true);
 
         QueueList.ItemsSource = _queue;
+        SideQueueList.ItemsSource = _queue;
+        _queue.CollectionChanged += (_, _) => RenumberQueue();
 
         // Home cards resize so a whole number of them fills the row width exactly (HomeLayout).
         var homeLayout = (HomeLayout)Resources["HomeLayout"];
@@ -195,6 +221,9 @@ public sealed partial class MainPage : Page
 
         NavHome.IsChecked = true;
         _ = LoadPlaylistsAsync();
+        EnsureMediaControls();
+        RestoreQueueState();
+        _ = CheckForUpdateAsync();
 
         try
         {
@@ -204,6 +233,64 @@ public sealed partial class MainPage : Page
         catch (Exception ex)
         {
             await ShowErrorAsync($"Failed to load artists: {ex.Message}");
+        }
+    }
+
+    // ================= Updates =================
+
+    private UpdateInfo? _update;
+    private bool _updateInProgress;
+
+    private async Task CheckForUpdateAsync()
+    {
+        if (_update != null || await UpdateChecker.CheckAsync() is not { } update)
+            return;
+
+        _update = update;
+        UpdateButton.Content = $"Update to v{update.Version}";
+        ToolTipService.SetToolTip(UpdateButton, UpdateChecker.CanInstallInPlace
+            ? $"Download and install LunaDrome v{update.Version} (you're on v{UpdateChecker.CurrentVersion})"
+            : $"Open the LunaDrome v{update.Version} download page (you're on v{UpdateChecker.CurrentVersion})");
+        UpdateButton.Visibility = Visibility.Visible;
+    }
+
+    private async void UpdateButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_update is not { } update || _updateInProgress)
+            return;
+
+        if (!UpdateChecker.CanInstallInPlace || update.InstallerUrl == null)
+        {
+            UpdateChecker.OpenReleasePage(update);
+            return;
+        }
+
+        var confirm = new ContentDialog
+        {
+            Title = $"Update to LunaDrome v{update.Version}",
+            Content = "LunaDrome will download the update, close, install it and start again. Your queue is kept.",
+            PrimaryButtonText = "Update",
+            CloseButtonText = "Not now",
+            XamlRoot = this.XamlRoot
+        };
+        if (await confirm.ShowAsync() != ContentDialogResult.Primary)
+            return;
+
+        _updateInProgress = true;
+        try
+        {
+            var progress = new Progress<double>(p => UpdateButton.Content = $"Downloading... {p:P0}");
+            var installer = await UpdateChecker.DownloadInstallerAsync(update, progress);
+            UpdateButton.Content = "Installing...";
+            SaveQueueState();
+            UpdateChecker.RunInstaller(installer);
+            Application.Current.Exit();
+        }
+        catch (Exception ex)
+        {
+            _updateInProgress = false;
+            UpdateButton.Content = $"Update to v{update.Version}";
+            await ShowErrorAsync($"Update failed: {ex.Message}");
         }
     }
 
@@ -663,20 +750,23 @@ public sealed partial class MainPage : Page
     private async void ArtistHeaderLastButton_Click(object sender, RoutedEventArgs e) => QueueSongsLast(await GetArtistSongsAsync());
 
     // Feishin's "Next" = insert right after the current track (keeping their order);
-    // "Last" = append to the end of the queue.
+    // "Last" = append to the end of the queue. Neither interrupts what's playing; with nothing
+    // in the queue they start it.
     private void QueueSongsNext(List<Song> songs)
     {
         if (songs.Count == 0)
             return;
 
-        if (_queueIndex < 0)
+        if (_current == null)
         {
             PlayQueueFrom(songs, 0);
             return;
         }
 
-        for (var i = 0; i < songs.Count; i++)
-            _queue.Insert(_queueIndex + 1 + i, songs[i]);
+        var entries = songs.Select(s => new QueueEntry(s)).ToList();
+        InsertIntoQueue(QueueIndex + 1, entries);
+        // Keep them "next" in the pre-shuffle order too, so un-shuffling doesn't bury them.
+        _unshuffledOrder?.InsertRange(_unshuffledOrder.IndexOf(_current) + 1, entries);
     }
 
     private void QueueSongsLast(List<Song> songs)
@@ -684,14 +774,21 @@ public sealed partial class MainPage : Page
         if (songs.Count == 0)
             return;
 
-        if (_queueIndex < 0)
+        if (_current == null)
         {
             PlayQueueFrom(songs, 0);
             return;
         }
 
-        foreach (var song in songs)
-            _queue.Add(song);
+        var entries = songs.Select(s => new QueueEntry(s)).ToList();
+        InsertIntoQueue(_queue.Count, entries);
+        _unshuffledOrder?.AddRange(entries);
+    }
+
+    private void InsertIntoQueue(int index, List<QueueEntry> entries)
+    {
+        for (var i = 0; i < entries.Count; i++)
+            _queue.Insert(index + i, entries[i]);
     }
 
     // ================= Album page =================
@@ -1019,10 +1116,10 @@ public sealed partial class MainPage : Page
             if (source != null && source.IndexOf(song) is var i and >= 0)
                 PlayQueueFrom(source, i);
         });
-        AddMenuItem(flyout, "Play next", () => QueuePlayNext(song));
-        AddMenuItem(flyout, "Add to queue", () => QueueAppend(song));
+        AddMenuItem(flyout, "Play next", () => QueueSongsNext(new() { song }));
+        AddMenuItem(flyout, "Add to queue", () => QueueSongsLast(new() { song }));
         flyout.Items.Add(new MenuFlyoutSeparator());
-        flyout.Items.Add(BuildAddToPlaylistSubmenu(song));
+        flyout.Items.Add(BuildAddToPlaylistSubmenu(new() { song }));
         AddFavoriteToggle(flyout, song);
         return flyout;
     }
@@ -1048,7 +1145,7 @@ public sealed partial class MainPage : Page
             catch { /* best-effort */ }
         });
 
-    private MenuFlyoutSubItem BuildAddToPlaylistSubmenu(Song song)
+    private MenuFlyoutSubItem BuildAddToPlaylistSubmenu(List<Song> songs)
     {
         var sub = new MenuFlyoutSubItem { Text = "Add to playlist" };
         foreach (var playlist in _playlists)
@@ -1058,7 +1155,8 @@ public sealed partial class MainPage : Page
             {
                 try
                 {
-                    await _client.AddSongToPlaylistAsync(playlist.Id, song.Id);
+                    foreach (var song in songs)
+                        await _client.AddSongToPlaylistAsync(playlist.Id, song.Id);
                     await LoadPlaylistsAsync();
                 }
                 catch (Exception ex) { await ShowErrorAsync($"Failed to add to playlist: {ex.Message}"); }
@@ -1077,7 +1175,10 @@ public sealed partial class MainPage : Page
                 return;
             var id = await _client.CreatePlaylistAsync(name);
             if (id != null)
-                await _client.AddSongToPlaylistAsync(id, song.Id);
+            {
+                foreach (var song in songs)
+                    await _client.AddSongToPlaylistAsync(id, song.Id);
+            }
             await LoadPlaylistsAsync();
         };
         sub.Items.Add(create);
@@ -1228,12 +1329,67 @@ public sealed partial class MainPage : Page
         UpdateVisualizerCaptureState();
     }
 
-    private void QueueToggleButton_Click(object sender, RoutedEventArgs e)
+    // The Queue button toggles the docked side panel (Feishin's right sidebar); the full-screen
+    // Queue / Lyrics / Visualizer player stays on the now-playing title. Two separate views of
+    // the same queue.
+    private async void QueueToggleButton_Click(object sender, RoutedEventArgs e)
     {
-        QueueTabButton.IsChecked = true;
-        FullScreenPlayerOverlay.Visibility = Visibility.Visible;
-        Motion.FadeIn(FullScreenPlayerOverlay);
-        UpdateVisualizerCaptureState();
+        var show = QueueSidePanel.Visibility != Visibility.Visible || FullScreenPlayerOverlay.Visibility == Visibility.Visible;
+        if (FullScreenPlayerOverlay.Visibility == Visibility.Visible)
+            CloseFullScreenPlayer_Click(sender, e);
+
+        QueueSidePanel.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        if (!show)
+            return;
+
+        Motion.FadeIn(QueueSidePanel);
+        // After the just-shown list has been laid out, or the scroll is ignored.
+        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        {
+            if (_current != null)
+                SideQueueList.ScrollIntoView(_current, ScrollIntoViewAlignment.Leading);
+        });
+        await LoadLyricsForCurrentSongAsync();
+    }
+
+    // ----- Side panel toolbar (acts on the side list's selection) -----
+
+    // One-off shuffle of what's still to come (the shuffle mode button is separate).
+    private void SideQueueShuffle_Click(object sender, RoutedEventArgs e)
+    {
+        var index = QueueIndex;
+        ReplaceQueue(_queue.Take(index + 1).Concat(Shuffled(_queue.Skip(index + 1))).ToList());
+        if (_current != null)
+            SideQueueList.ScrollIntoView(_current);
+    }
+
+    private void SideQueuePlayNext_Click(object sender, RoutedEventArgs e) =>
+        MoveToPlayNext(SideQueueList, SelectedQueueEntries(SideQueueList));
+
+    private void SideQueueMoveToEnd_Click(object sender, RoutedEventArgs e) =>
+        MoveToEnd(SideQueueList, SelectedQueueEntries(SideQueueList));
+
+    private void SideQueueRemove_Click(object sender, RoutedEventArgs e)
+    {
+        if (SelectedQueueEntries(SideQueueList) is { Count: > 0 } selected)
+            RemoveFromQueue(selected);
+    }
+
+    private void SideQueueClear_Click(object sender, RoutedEventArgs e) =>
+        RemoveFromQueue(_queue.Where(q => q != _current).ToList());
+
+    // Keeps the side panel's # column in step with the queue order.
+    private void RenumberQueue()
+    {
+        for (var i = 0; i < _queue.Count; i++)
+            _queue[i].Number = i + 1;
+    }
+
+    private void ScrollQueuesTo(QueueEntry entry)
+    {
+        QueueList.ScrollIntoView(entry);
+        if (QueueSidePanel.Visibility == Visibility.Visible)
+            SideQueueList.ScrollIntoView(entry);
     }
 
     private void CloseFullScreenPlayer_Click(object sender, RoutedEventArgs e)
@@ -1245,11 +1401,8 @@ public sealed partial class MainPage : Page
     private async void NowPlayingArtist_Tapped(object sender, TappedRoutedEventArgs e)
     {
         e.Handled = true;
-        if (_queueIndex < 0 || _queueIndex >= _queue.Count)
-            return;
-
-        var song = _queue[_queueIndex];
-        await NavigateToArtistAsync(song.ArtistId, song.ArtistName);
+        if (_current?.Song is { } song)
+            await NavigateToArtistAsync(song.ArtistId, song.ArtistName);
     }
 
     private async void SidePanelTabButton_Checked(object sender, RoutedEventArgs e)
@@ -1268,71 +1421,217 @@ public sealed partial class MainPage : Page
 
     private void QueueList_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
     {
-        if ((e.OriginalSource as FrameworkElement)?.DataContext is not Song song)
-            return;
-
-        var index = _queue.IndexOf(song);
-        if (index >= 0)
-            PlayQueueIndex(index);
+        if ((e.OriginalSource as FrameworkElement)?.DataContext is QueueEntry entry && _queue.Contains(entry))
+            PlayEntry(entry);
     }
 
+    // Selected queue rows in queue order (the ListView reports them in click order).
+    private List<QueueEntry> SelectedQueueEntries(ListView list) =>
+        list.SelectedItems.OfType<QueueEntry>().OrderBy(_queue.IndexOf).ToList();
+
+    // Shared by the full-screen Queue tab and the side panel (sender = which list).
+    // Acts on the whole selection (#7); right-clicking a row outside it selects just that row.
     private void QueueList_RightTapped(object sender, RightTappedRoutedEventArgs e)
     {
-        if ((e.OriginalSource as FrameworkElement)?.DataContext is not Song song)
+        if (sender is not ListView list || (e.OriginalSource as FrameworkElement)?.DataContext is not QueueEntry clicked)
             return;
 
-        QueueList.SelectedItem = song;
+        if (!list.SelectedItems.Contains(clicked))
+        {
+            list.SelectedItems.Clear();
+            list.SelectedItems.Add(clicked);
+        }
+
+        var selected = SelectedQueueEntries(list);
         var flyout = new MenuFlyout();
-        flyout.Items.Add(BuildAddToPlaylistSubmenu(song));
-        AddFavoriteToggle(flyout, song);
+        if (selected.Count == 1)
+            AddMenuItem(flyout, "Play", () => PlayEntry(clicked));
+        AddMenuItem(flyout, "Play next", () => MoveToPlayNext(list, selected));
+        AddMenuItem(flyout, "Move up", () => MoveInQueue(list, selected, -1));
+        AddMenuItem(flyout, "Move down", () => MoveInQueue(list, selected, +1));
+        AddMenuItem(flyout, "Move to end", () => MoveToEnd(list, selected));
         flyout.Items.Add(new MenuFlyoutSeparator());
-        AddMenuItem(flyout, "Remove from queue", () => RemoveFromQueue(song));
-        flyout.ShowAt(QueueList, e.GetPosition(QueueList));
+        flyout.Items.Add(BuildAddToPlaylistSubmenu(selected.Select(q => q.Song).ToList()));
+        if (selected.Count == 1)
+            AddFavoriteToggle(flyout, clicked.Song);
+        flyout.Items.Add(new MenuFlyoutSeparator());
+        AddMenuItem(flyout, selected.Count == 1 ? "Remove from queue" : $"Remove {selected.Count} songs from queue",
+            () => RemoveFromQueue(selected));
+        flyout.ShowAt(list, e.GetPosition(list));
         e.Handled = true;
     }
 
-    private void RemoveFromQueue(Song song)
+    private void QueueList_KeyDown(object sender, KeyRoutedEventArgs e)
     {
-        var index = _queue.IndexOf(song);
-        if (index < 0)
+        if (sender is ListView list && e.Key == Windows.System.VirtualKey.Delete && SelectedQueueEntries(list) is { Count: > 0 } selected)
+        {
+            RemoveFromQueue(selected);
+            e.Handled = true;
+        }
+    }
+
+    // Shifts the selected rows one place up (-1) or down (+1) as a block (#8).
+    private void MoveInQueue(ListView list, List<QueueEntry> entries, int delta)
+    {
+        var indices = entries.Select(_queue.IndexOf).Where(i => i >= 0).OrderBy(i => i).ToList();
+        if (indices.Count == 0 || (delta < 0 && indices[0] == 0) || (delta > 0 && indices[^1] == _queue.Count - 1))
             return;
 
-        _queue.RemoveAt(index);
+        if (delta > 0)
+            indices.Reverse();
+        foreach (var i in indices)
+            _queue.Move(i, i + delta);
 
-        // Keep _queueIndex pointing at the same still-playing track after the shift.
-        if (index < _queueIndex)
-            _queueIndex--;
-        else if (index == _queueIndex)
-            _queueIndex = Math.Min(_queueIndex, _queue.Count - 1);
-
-        QueueList.SelectedIndex = _queueIndex;
+        ReselectQueue(list, entries);
     }
+
+    // "Play next" from inside the queue: move the rows to right after the playing track.
+    private void MoveToPlayNext(ListView list, List<QueueEntry> entries)
+    {
+        var moving = entries.Where(q => q != _current && _queue.Contains(q)).ToList();
+        if (moving.Count == 0)
+            return;
+
+        foreach (var entry in moving)
+            _queue.Remove(entry);
+        InsertIntoQueue(QueueIndex + 1, moving);
+        ReselectQueue(list, moving);
+    }
+
+    private void MoveToEnd(ListView list, List<QueueEntry> entries)
+    {
+        var moving = entries.Where(_queue.Contains).ToList();
+        foreach (var entry in moving)
+            _queue.Remove(entry);
+        InsertIntoQueue(_queue.Count, moving);
+        ReselectQueue(list, moving);
+    }
+
+    private static void ReselectQueue(ListView list, List<QueueEntry> entries)
+    {
+        list.SelectedItems.Clear();
+        foreach (var entry in entries)
+            list.SelectedItems.Add(entry);
+    }
+
+    private void RemoveFromQueue(List<QueueEntry> entries)
+    {
+        var removing = entries.ToHashSet();
+
+        // Removing the playing track moves on to the next remaining one (playing it only if
+        // something was playing), or stops if nothing is left after it.
+        QueueEntry? replacement = null;
+        var removingCurrent = _current != null && removing.Contains(_current);
+        if (removingCurrent)
+            replacement = _queue.Skip(QueueIndex + 1).FirstOrDefault(q => !removing.Contains(q));
+
+        foreach (var entry in removing)
+            _queue.Remove(entry);
+        _unshuffledOrder?.RemoveAll(removing.Contains);
+
+        if (!removingCurrent)
+            return;
+
+        if (replacement != null && _isPlaying)
+        {
+            PlayEntry(replacement);
+            return;
+        }
+
+        _player.Pause();
+        SetPlaying(false);
+        _loadedEntry = null;
+        _pendingSeek = TimeSpan.Zero;
+        SetCurrent(replacement);
+    }
+
+    // Lyrics of the current song, fetched once and shared by the full-screen Lyrics tab and the
+    // side panel. _lyricsSongId = the song they belong to (null = not fetched yet).
+    private string? _lyricsSongId;
+    private List<LyricLine> _lyricsLines = new();
 
     private async Task LoadLyricsForCurrentSongAsync()
     {
-        var song = _queueIndex >= 0 && _queueIndex < _queue.Count ? _queue[_queueIndex] : null;
+        var song = _current?.Song;
         if (song == null)
         {
+            _lyricsSongId = null;
+            _lyricsLines = new();
             LyricsList.ItemsSource = null;
             LyricsPlaceholder.Text = "Nothing playing.";
             LyricsPlaceholder.Visibility = Visibility.Visible;
+            ShowSideLyrics();
             return;
         }
 
-        try
+        if (_lyricsSongId != song.Id)
         {
-            var (lines, synced) = await _client.GetLyricsAsync(song.Id, song.ArtistName, song.Title);
+            List<LyricLine> lines;
+            bool synced;
+            try
+            {
+                (lines, synced) = await _client.GetLyricsAsync(song);
+            }
+            catch
+            {
+                (lines, synced) = (new(), false);
+            }
+
+            // Skipped on to another song while this was loading.
+            if (_current?.Song.Id != song.Id)
+                return;
+
+            _lyricsSongId = song.Id;
+            _lyricsLines = lines;
             _lyricsAreSynced = synced;
-            LyricsList.ItemsSource = lines;
-            LyricsPlaceholder.Text = "No lyrics found for this track.";
-            LyricsPlaceholder.Visibility = lines.Count > 0 ? Visibility.Collapsed : Visibility.Visible;
         }
-        catch
+
+        LyricsList.ItemsSource = _lyricsLines;
+        LyricsPlaceholder.Text = "No lyrics found for this track.";
+        LyricsPlaceholder.Visibility = _lyricsLines.Count > 0 ? Visibility.Collapsed : Visibility.Visible;
+        ShowSideLyrics();
+    }
+
+    private int _sideLyricIndex = int.MinValue;
+
+    // Side panel lyrics area: hidden without lyrics; synced = previous / current / next line
+    // (advanced by UpdateSideLyrics from the progress timer), unsynced = scrollable text.
+    private void ShowSideLyrics()
+    {
+        var has = _lyricsLines.Count > 0 && _lyricsSongId == _current?.Song.Id;
+        SideLyricsPanel.Visibility = has ? Visibility.Visible : Visibility.Collapsed;
+        if (!has)
+            return;
+
+        SideLyricsSynced.Visibility = _lyricsAreSynced ? Visibility.Visible : Visibility.Collapsed;
+        SideLyricsPlain.Visibility = _lyricsAreSynced ? Visibility.Collapsed : Visibility.Visible;
+        if (!_lyricsAreSynced)
         {
-            LyricsList.ItemsSource = null;
-            LyricsPlaceholder.Text = "No lyrics found for this track.";
-            LyricsPlaceholder.Visibility = Visibility.Visible;
+            SideLyricsPlainText.Text = string.Join("\n", _lyricsLines.Select(l => l.Text));
+            SideLyricsPlain.ChangeView(null, 0, null, true);
         }
+
+        _sideLyricIndex = int.MinValue;
+        UpdateSideLyrics(_loadedEntry == _current ? _player.PlaybackSession.Position : _pendingSeek);
+    }
+
+    private void UpdateSideLyrics(TimeSpan position)
+    {
+        if (QueueSidePanel.Visibility != Visibility.Visible || !_lyricsAreSynced
+            || _lyricsLines.Count == 0 || _lyricsSongId != _current?.Song.Id)
+            return;
+
+        // Last line that has started (-1 = before the first one).
+        var index = -1;
+        for (var i = 0; i < _lyricsLines.Count && _lyricsLines[i].Start <= position; i++)
+            index = i;
+        if (index == _sideLyricIndex)
+            return;
+
+        _sideLyricIndex = index;
+        SideLyricPrev.Text = index >= 1 ? _lyricsLines[index - 1].Text : "";
+        SideLyricCurrent.Text = index >= 0 ? _lyricsLines[index].Text : "";
+        SideLyricNext.Text = index + 1 < _lyricsLines.Count ? _lyricsLines[index + 1].Text : "";
     }
 
     // Synced lyrics: double-click a line to jump there.
@@ -1418,49 +1717,58 @@ public sealed partial class MainPage : Page
 
     // ================= Queue / playback =================
 
-    private void PlayQueueFrom(List<Song> source, int startIndex)
+    private int QueueIndex => _current == null ? -1 : _queue.IndexOf(_current);
+
+    private void ReplaceQueue(List<QueueEntry> entries)
     {
         _queue.Clear();
-        foreach (var song in source)
-            _queue.Add(song);
-
-        PlayQueueIndex(startIndex);
+        foreach (var entry in entries)
+            _queue.Add(entry);
     }
 
-    // Inserts right after the current track without interrupting playback; if nothing is
-    // playing yet, starts the queue with this one song.
-    private void QueuePlayNext(Song song)
+    private List<QueueEntry> Shuffled(IEnumerable<QueueEntry> entries) => entries.OrderBy(_ => _random.Next()).ToList();
+
+    // Replaces the queue with source and plays source[startIndex]. With shuffle on, that track
+    // plays first and the rest follow in random order (the list order is kept for un-shuffle).
+    private void PlayQueueFrom(List<Song> source, int startIndex)
     {
-        if (_queueIndex < 0)
+        if (startIndex < 0 || startIndex >= source.Count)
+            return;
+
+        var entries = source.Select(s => new QueueEntry(s)).ToList();
+        var start = entries[startIndex];
+        if (_isShuffled)
         {
-            PlayQueueFrom(new List<Song> { song }, 0);
-            return;
+            _unshuffledOrder = entries;
+            ReplaceQueue(new List<QueueEntry> { start }.Concat(Shuffled(entries.Where(q => q != start))).ToList());
         }
-        _queue.Insert(_queueIndex + 1, song);
-    }
-
-    private void QueueAppend(Song song)
-    {
-        if (_queueIndex < 0)
+        else
         {
-            PlayQueueFrom(new List<Song> { song }, 0);
-            return;
+            _unshuffledOrder = null;
+            ReplaceQueue(entries);
         }
-        _queue.Add(song);
+
+        PlayEntry(start);
     }
 
-    private async void PlayQueueIndex(int index)
+    private void PlayEntry(QueueEntry entry, TimeSpan startAt = default)
     {
-        if (index < 0 || index >= _queue.Count)
-            return;
+        if (entry != _loadedEntry)
+            _stallRecoveries = 0;
 
-        _queueIndex = index;
-        var song = _queue[index];
+        SetCurrent(entry);
+        var song = entry.Song;
 
-        Log($"play '{song.Title}' ({song.Id})");
+        // Already pre-buffered by TrackPrefetcher? Then play it from disk: starts instantly (#4).
+        var file = _prefetcher.TryGetFile(song.Id);
+        Log($"play '{song.Title}' ({song.Id}){(file != null ? " from prefetch" : "")}");
         try
         {
-            _player.Source = MediaSource.CreateFromUri(new Uri(_client.GetStreamUrl(song.Id)));
+            _loadedEntry = entry;
+            _endedEntry = null;
+            _pendingSeek = startAt;
+            ResetStallWatch();
+            _player.Source = MediaSource.CreateFromUri(file != null ? new Uri(file) : new Uri(_client.GetStreamUrl(song.Id)));
             _player.Play();
         }
         catch (Exception ex)
@@ -1472,7 +1780,44 @@ public sealed partial class MainPage : Page
             return;
         }
         SetPlaying(true);
+    }
 
+    // Seeks once the media has opened - seeking before that is ignored by the player.
+    private void ApplyPendingSeek()
+    {
+        if (_pendingSeek <= TimeSpan.Zero || _loadedEntry == null)
+            return;
+
+        _player.PlaybackSession.Position = _pendingSeek;
+        _pendingSeek = TimeSpan.Zero;
+    }
+
+    // Marks the playing row and fills the now-playing bar / full-screen player (null = clear).
+    private async void SetCurrent(QueueEntry? entry)
+    {
+        if (_current != null)
+            _current.IsCurrent = false;
+        _current = entry;
+        _mediaControls?.SetCanGoPreviousNext(entry != null, entry != null);
+
+        if (entry == null)
+        {
+            NowPlayingText.Text = "Nothing playing";
+            NowPlayingSubText.Text = "";
+            NowPlayingArt.Background = null;
+            FullScreenTitleText.Text = "";
+            FullScreenArtistText.Text = "";
+            FullScreenArt.Background = null;
+            ProgressSlider.Value = 0;
+            ElapsedText.Text = "0:00";
+            DurationText.Text = "0:00";
+            _mediaControls?.SetTrack(null);
+            ShowSideLyrics();
+            return;
+        }
+
+        entry.IsCurrent = true;
+        var song = entry.Song;
         NowPlayingText.Text = song.Title;
         NowPlayingSubText.Text = song.ArtistName;
         SetImage(NowPlayingArt, song.CoverArtUrl ?? _client.GetCoverArtUrl(song.AlbumId, 240));
@@ -1480,9 +1825,11 @@ public sealed partial class MainPage : Page
         FullScreenArtistText.Text = song.ArtistName;
         // The full-screen art is 360x360 - fetch a bigger rendition than the 240px list thumbnails.
         SetImage(FullScreenArt, _client.GetCoverArtUrl(song.AlbumId, 720));
-        QueueList.SelectedIndex = index;
+        ScrollQueuesTo(entry);
+        ShowSideLyrics(); // hides the previous song's lyrics until the new ones load
+        _mediaControls?.SetTrack(song, _client.GetCoverArtUrl(song.AlbumId, 480));
 
-        if (LyricsPanelView.Visibility == Visibility.Visible)
+        if (LyricsPanelView.Visibility == Visibility.Visible || QueueSidePanel.Visibility == Visibility.Visible)
             await LoadLyricsForCurrentSongAsync();
     }
 
@@ -1499,13 +1846,40 @@ public sealed partial class MainPage : Page
         _isPlaying = playing;
         PlayIcon.Visibility = playing ? Visibility.Collapsed : Visibility.Visible;
         PauseIcon.Visibility = playing ? Visibility.Visible : Visibility.Collapsed;
+        _mediaControls?.SetPlaybackState(_current == null ? null : playing);
     }
 
+    // Shuffle reorders the queue itself instead of picking a random entry on every Next: the
+    // queue then shows the real play order, Play next really plays next (#10) and Back goes to
+    // the track that actually played before (#6). Tracks already played stay where they are;
+    // switching shuffle off restores the original order.
     private void ShuffleButton_Click(object sender, RoutedEventArgs e)
     {
         _isShuffled = !_isShuffled;
-        ShuffleIconPath.Stroke = (Brush)Application.Current.Resources[_isShuffled ? "AccentBrush" : "TextSecondaryBrush"];
+        UpdateShuffleIcon();
+
+        if (_isShuffled)
+        {
+            _unshuffledOrder = _queue.ToList();
+            var index = QueueIndex;
+            ReplaceQueue(_queue.Take(index + 1).Concat(Shuffled(_queue.Skip(index + 1))).ToList());
+        }
+        else if (_unshuffledOrder != null)
+        {
+            var inQueue = _queue.ToHashSet();
+            var restored = _unshuffledOrder.Where(inQueue.Contains).ToList();
+            var restoredSet = restored.ToHashSet();
+            restored.AddRange(_queue.Where(q => !restoredSet.Contains(q)));
+            _unshuffledOrder = null;
+            ReplaceQueue(restored);
+        }
+
+        if (_current != null)
+            ScrollQueuesTo(_current);
     }
+
+    private void UpdateShuffleIcon() =>
+        ShuffleIconPath.Stroke = (Brush)Application.Current.Resources[_isShuffled ? "AccentBrush" : "TextSecondaryBrush"];
 
     private void RepeatButton_Click(object sender, RoutedEventArgs e)
     {
@@ -1515,7 +1889,11 @@ public sealed partial class MainPage : Page
             RepeatMode.All => RepeatMode.One,
             _ => RepeatMode.Off
         };
+        UpdateRepeatIcon();
+    }
 
+    private void UpdateRepeatIcon()
+    {
         var brush = (Brush)Application.Current.Resources[_repeatMode == RepeatMode.Off ? "TextSecondaryBrush" : "AccentBrush"];
         RepeatIconPath.Stroke = brush;
         RepeatArrowHead.Fill = brush;
@@ -1523,74 +1901,149 @@ public sealed partial class MainPage : Page
         RepeatOneBadge.Visibility = _repeatMode == RepeatMode.One ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    // One rule for both the Next button and auto-advance: random-excluding-current when
-    // shuffled, else sequential, wrapping to 0 only with RepeatMode.All. -1 = nothing next.
-    private int GetNextQueueIndex()
+    // One rule for the Next button and auto-advance: the following queue entry, wrapping to the
+    // first only with RepeatMode.All. Null = nothing next.
+    private QueueEntry? GetNextEntry()
     {
-        if (_queue.Count == 0 || _queueIndex < 0)
-            return -1;
+        var index = QueueIndex;
+        if (index < 0)
+            return null;
+        if (index + 1 < _queue.Count)
+            return _queue[index + 1];
+        return _repeatMode == RepeatMode.All ? _queue[0] : null;
+    }
 
-        if (_isShuffled && _queue.Count > 1)
+    private void PreviousButton_Click(object sender, RoutedEventArgs e) => PlayPrevious();
+
+    // Like other players (#6): a few seconds into a track, Back restarts it; right at the start
+    // it goes to the previous queue entry. On the first entry it always restarts.
+    private void PlayPrevious()
+    {
+        if (_current == null)
+            return;
+
+        var index = QueueIndex;
+        var loadedAndRunning = _loadedEntry == _current && _endedEntry != _loadedEntry;
+        if (loadedAndRunning && (_player.PlaybackSession.Position > TimeSpan.FromSeconds(3) || index <= 0))
         {
-            int next;
-            do { next = _random.Next(_queue.Count); } while (next == _queueIndex);
-            return next;
+            _player.PlaybackSession.Position = TimeSpan.Zero;
+            ResetStallWatch();
+            return;
         }
 
-        if (_queueIndex + 1 < _queue.Count)
-            return _queueIndex + 1;
-
-        return _repeatMode == RepeatMode.All ? 0 : -1;
+        PlayEntry(index > 0 ? _queue[index - 1] : _current);
     }
 
-    private void PreviousButton_Click(object sender, RoutedEventArgs e)
+    private void NextButton_Click(object sender, RoutedEventArgs e) => PlayNext();
+
+    private void PlayNext()
     {
-        if (_queueIndex > 0)
-            PlayQueueIndex(_queueIndex - 1);
+        if (GetNextEntry() is { } next)
+            PlayEntry(next);
     }
-
-    private void NextButton_Click(object sender, RoutedEventArgs e) => PlayQueueIndex(GetNextQueueIndex());
 
     // Natural completion only (not Stop/skip) scrobbles - skipping shouldn't inflate play counts.
-    private async void OnMediaEnded()
+    private void OnMediaEnded()
     {
-        if (_queueIndex >= 0 && _queueIndex < _queue.Count)
-        {
-            try { await _client.ScrobbleAsync(_queue[_queueIndex].Id); }
-            catch { /* best-effort */ }
-        }
+        // The player's MediaEnded and the stall watchdog can both report the same ending.
+        if (_loadedEntry == null || _endedEntry == _loadedEntry)
+            return;
+        _endedEntry = _loadedEntry;
 
-        if (_repeatMode == RepeatMode.One && _queueIndex >= 0 && _queueIndex < _queue.Count)
+        // Not awaited: waiting on the server here used to hold up starting the next track (#11).
+        _ = ScrobbleQuietlyAsync(_loadedEntry.Song.Id);
+
+        if (_repeatMode == RepeatMode.One && _current != null)
         {
-            PlayQueueIndex(_queueIndex);
+            PlayEntry(_current);
             return;
         }
 
-        var next = GetNextQueueIndex();
-        if (next >= 0)
-            PlayQueueIndex(next);
+        if (GetNextEntry() is { } next)
+            PlayEntry(next);
         else
             SetPlaying(false);
     }
 
-    private void PlayPauseButton_Click(object sender, RoutedEventArgs e)
+    private async Task ScrobbleQuietlyAsync(string songId)
     {
-        if (_queueIndex < 0)
+        try { await _client.ScrobbleAsync(songId); }
+        catch { /* best-effort */ }
+    }
+
+    // Needs the window to exist (Windows ties the flyout to its handle), so it's tried on Loaded
+    // and again after login.
+    private void EnsureMediaControls()
+    {
+        if (_mediaControls != null)
             return;
 
-        if (_player.PlaybackSession.PlaybackState == MediaPlaybackState.Playing)
+        _mediaControls = MediaControls.Create();
+        Log($"media controls: {_mediaControls?.GetType().Name ?? "not available yet"}");
+        if (_mediaControls == null)
+            return;
+
+        _mediaControls.CommandReceived += command => DispatcherQueue.TryEnqueue(() => HandleMediaCommand(command));
+        if (_current != null)
         {
-            _player.Pause();
-            SetPlaying(false);
-        }
-        else
-        {
-            _player.Play();
-            SetPlaying(true);
+            SetCurrent(_current);
+            SetPlaying(_isPlaying);
         }
     }
 
-    private void StopButton_Click(object sender, RoutedEventArgs e)
+    private void HandleMediaCommand(MediaCommand command)
+    {
+        switch (command)
+        {
+            case MediaCommand.Play: Play(); break;
+            case MediaCommand.Pause: Pause(); break;
+            case MediaCommand.PlayPause: TogglePlayPause(); break;
+            case MediaCommand.Stop: Stop(); break;
+            case MediaCommand.Next: PlayNext(); break;
+            case MediaCommand.Previous: PlayPrevious(); break;
+        }
+    }
+
+    private void PlayPauseButton_Click(object sender, RoutedEventArgs e) => TogglePlayPause();
+
+    private void TogglePlayPause()
+    {
+        if (_current == null)
+            return;
+
+        if (_isPlaying)
+            Pause();
+        else
+            Play();
+    }
+
+    private void Play()
+    {
+        if (_current == null)
+            return;
+
+        // A restored queue (or one whose playing track was removed) has nothing loaded yet;
+        // a finished track needs loading again too.
+        if (_loadedEntry != _current || _endedEntry == _loadedEntry)
+        {
+            PlayEntry(_current, _loadedEntry != _current ? _pendingSeek : TimeSpan.Zero);
+            return;
+        }
+
+        _player.Play();
+        ResetStallWatch();
+        SetPlaying(true);
+    }
+
+    private void Pause()
+    {
+        _player.Pause();
+        SetPlaying(false);
+    }
+
+    private void StopButton_Click(object sender, RoutedEventArgs e) => Stop();
+
+    private void Stop()
     {
         _player.Pause();
         _player.PlaybackSession.Position = TimeSpan.Zero;
@@ -1608,26 +2061,191 @@ public sealed partial class MainPage : Page
             return;
 
         _isUserSeeking = false;
+        if (_current != null && _loadedEntry != _current)
+        {
+            // Restored queue, not loaded yet: remember the spot for when Play is pressed.
+            _pendingSeek = TimeSpan.FromSeconds(ProgressSlider.Value);
+            ElapsedText.Text = FormatTime(_pendingSeek);
+            return;
+        }
+
         if (_player.PlaybackSession.NaturalDuration > TimeSpan.Zero)
+        {
             _player.PlaybackSession.Position = TimeSpan.FromSeconds(ProgressSlider.Value);
+            ResetStallWatch();
+        }
     }
+
+    private static string FormatTime(TimeSpan t) => $"{(int)t.TotalMinutes}:{t.Seconds:D2}";
+
+    private int _saveTickCounter;
 
     private void ProgressTimer_Tick(object? sender, object e)
     {
         var session = _player.PlaybackSession;
-        if (session == null || session.NaturalDuration <= TimeSpan.Zero)
+        if (session == null)
             return;
 
         var position = session.Position;
         var duration = session.NaturalDuration;
 
+        CheckForStall(position, duration);
+        PrefetchNext();
+
+        // Keep queue.json fresh while playing (~every 10s) so even a crash resumes close by.
+        if (++_saveTickCounter >= 25)
+        {
+            _saveTickCounter = 0;
+            if (_isPlaying)
+                SaveQueueState();
+        }
+
+        if (duration <= TimeSpan.Zero || _loadedEntry == null || _loadedEntry != _current)
+            return;
+
+        _mediaControls?.SetPosition(position, duration);
+        UpdateSideLyrics(position);
         if (!_isUserSeeking)
         {
             ProgressSlider.Maximum = duration.TotalSeconds;
             ProgressSlider.Value = position.TotalSeconds;
         }
-        ElapsedText.Text = $"{(int)position.TotalMinutes}:{position.Seconds:D2}";
-        DurationText.Text = $"{(int)duration.TotalMinutes}:{duration.Seconds:D2}";
+        ElapsedText.Text = FormatTime(position);
+        DurationText.Text = FormatTime(duration);
+    }
+
+    // Starts buffering whatever will play next (follows queue edits, shuffle, repeat).
+    private void PrefetchNext()
+    {
+        if (_loadedEntry == null || !_isPlaying)
+            return;
+
+        if (GetNextEntry() is { } next && next.Song.Id != _loadedEntry.Song.Id)
+            _prefetcher.Prefetch(next.Song.Id, keepSongId: _loadedEntry.Song.Id);
+    }
+
+    // ----- Stall watchdog (#11) -----
+    // Now and then a track never starts (stuck opening/buffering the server stream) or never
+    // reports its end, and only Stop + Play got it going again. If playback should be running
+    // but the position hasn't moved for StallTimeout, do that automatically: at the very end of
+    // the track treat it as finished, otherwise reload it at the same spot (twice, then skip).
+    private static readonly TimeSpan StallTimeout = TimeSpan.FromSeconds(10);
+    private TimeSpan _stallLastPosition;
+    private long _stallSinceTicks;
+    private int _stallRecoveries;
+    private QueueEntry? _endedEntry;
+
+    private void ResetStallWatch()
+    {
+        _stallLastPosition = TimeSpan.MinValue;
+        _stallSinceTicks = Environment.TickCount64;
+    }
+
+    private void CheckForStall(TimeSpan position, TimeSpan duration)
+    {
+        if (!_isPlaying || _isUserSeeking || _current == null || _loadedEntry != _current || _endedEntry == _loadedEntry)
+        {
+            ResetStallWatch();
+            return;
+        }
+
+        if (position != _stallLastPosition)
+        {
+            _stallLastPosition = position;
+            _stallSinceTicks = Environment.TickCount64;
+            return;
+        }
+
+        if (Environment.TickCount64 - _stallSinceTicks < StallTimeout.TotalMilliseconds)
+            return;
+
+        ResetStallWatch();
+        if (duration > TimeSpan.Zero && position >= duration - TimeSpan.FromSeconds(2))
+        {
+            Log("stalled at the end of the track - treating it as finished");
+            OnMediaEnded();
+        }
+        else if (_stallRecoveries < 2)
+        {
+            _stallRecoveries++;
+            Log($"playback stalled at {position} - reloading (attempt {_stallRecoveries})");
+            PlayEntry(_current, position);
+        }
+        else
+        {
+            Log("playback keeps stalling - skipping to the next track");
+            if (GetNextEntry() is { } next)
+                PlayEntry(next);
+            else
+                Pause();
+        }
+    }
+
+    // ----- Queue persistence (#12) -----
+
+    public void SaveQueueState()
+    {
+        if (!_client.IsAuthenticated)
+            return;
+
+        try
+        {
+            var entries = _queue.ToList();
+            var indexOf = entries.Select((q, i) => (q, i)).ToDictionary(p => p.q, p => p.i);
+            var position = _loadedEntry != null && _loadedEntry == _current && _endedEntry != _loadedEntry
+                ? _player.PlaybackSession.Position
+                : _pendingSeek;
+
+            QueueStateService.Save(new QueueState
+            {
+                ServerUrl = _client.ServerUrl,
+                Username = _client.Username,
+                Songs = entries.Select(q => q.Song).ToList(),
+                CurrentIndex = QueueIndex,
+                PositionSeconds = position.TotalSeconds,
+                Shuffled = _isShuffled,
+                RepeatMode = (int)_repeatMode,
+                UnshuffledOrder = _unshuffledOrder?.Where(indexOf.ContainsKey).Select(q => indexOf[q]).ToList(),
+            });
+        }
+        catch (Exception ex)
+        {
+            Log($"saving the queue failed: {ex.Message}");
+        }
+    }
+
+    // After login: put back the queue from last time, paused at the same spot. Nothing is
+    // loaded until Play (so the app doesn't start making noise on launch).
+    private void RestoreQueueState()
+    {
+        var state = QueueStateService.Load();
+        if (_current != null || state == null || state.Songs.Count == 0
+            || !string.Equals(state.ServerUrl, _client.ServerUrl, StringComparison.OrdinalIgnoreCase)
+            || state.Username != _client.Username)
+            return;
+
+        PopulateSongArt(state.Songs);
+        var entries = state.Songs.Select(s => new QueueEntry(s)).ToList();
+        ReplaceQueue(entries);
+
+        _isShuffled = state.Shuffled;
+        UpdateShuffleIcon();
+        _unshuffledOrder = _isShuffled && state.UnshuffledOrder != null
+            ? state.UnshuffledOrder.Where(i => i >= 0 && i < entries.Count).Distinct().Select(i => entries[i]).ToList()
+            : null;
+        _repeatMode = Enum.IsDefined(typeof(RepeatMode), state.RepeatMode) ? (RepeatMode)state.RepeatMode : RepeatMode.Off;
+        UpdateRepeatIcon();
+
+        var current = entries[Math.Clamp(state.CurrentIndex, 0, entries.Count - 1)];
+        SetCurrent(current);
+        SetPlaying(false);
+
+        var duration = TimeSpan.FromSeconds(current.Song.DurationSeconds);
+        _pendingSeek = TimeSpan.FromSeconds(Math.Clamp(state.PositionSeconds, 0, Math.Max(0, duration.TotalSeconds - 1)));
+        ProgressSlider.Maximum = Math.Max(1, duration.TotalSeconds);
+        ProgressSlider.Value = _pendingSeek.TotalSeconds;
+        ElapsedText.Text = FormatTime(_pendingSeek);
+        DurationText.Text = FormatTime(duration);
     }
 
     // ================= Image helpers =================

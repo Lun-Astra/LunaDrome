@@ -194,19 +194,58 @@
       </StackPanel>
     </DataTemplate>
 
-    <!-- Queue row (full-screen player): 36px art + title / artist. -->
-    <DataTemplate x:Key="QueueRowTemplate">
-      <StackPanel Orientation="Horizontal" Margin="2,3">
-        <Border Width="36" Height="36" CornerRadius="4" Margin="0,0,10,0" Background="{StaticResource RaisedBrush}">
-          <Image Source="{Binding CoverArtUrl}" Stretch="UniformToFill" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+    <!-- Side queue panel row (Feishin's right sidebar): # (or a playing marker), art, title /
+         artist, duration. Bound to a QueueEntry. -->
+    <DataTemplate x:Key="SideQueueRowTemplate">
+      <Grid Margin="0,4" Background="Transparent">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="34"/>
+          <ColumnDefinition Width="Auto"/>
+          <ColumnDefinition Width="*"/>
+          <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+        <TextBlock Grid.Column="0" Text="{Binding Number}" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}"
+                   HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="{Binding NumberVisibility}"/>
+        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="3" HorizontalAlignment="Center" VerticalAlignment="Center"
+                    Visibility="{Binding CurrentMarkerVisibility}">
+          <Rectangle Width="3" Height="12" RadiusX="1" RadiusY="1" Fill="{StaticResource AccentBrush}"/>
+          <Rectangle Width="3" Height="12" RadiusX="1" RadiusY="1" Fill="{StaticResource AccentBrush}"/>
+        </StackPanel>
+        <Border Grid.Column="1" Width="44" Height="44" CornerRadius="4" Margin="0,0,12,0" Background="{StaticResource RaisedBrush}">
+          <Image Source="{Binding Song.CoverArtUrl}" Stretch="UniformToFill" HorizontalAlignment="Center" VerticalAlignment="Center"/>
         </Border>
-        <StackPanel VerticalAlignment="Center">
-          <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis"/>
-          <Border Background="Transparent" Margin="0,2,0,0" HorizontalAlignment="Left" controls:Motion.ClickableText="True" Tag="{Binding}" Tapped="SongArtistText_Tapped" ToolTipService.ToolTip="Go to artist">
-            <TextBlock Text="{Binding ArtistName}" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis"/>
+        <StackPanel Grid.Column="2" VerticalAlignment="Center">
+          <TextBlock Text="{Binding Song.Title}" FontWeight="{Binding TitleFontWeight}" TextTrimming="CharacterEllipsis"/>
+          <Border Background="Transparent" Margin="0,3,0,0" HorizontalAlignment="Left" controls:Motion.ClickableText="True" Tag="{Binding Song}" Tapped="SongArtistText_Tapped" ToolTipService.ToolTip="Go to artist">
+            <TextBlock Text="{Binding Song.ArtistName}" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis"/>
           </Border>
         </StackPanel>
-      </StackPanel>
+        <TextBlock Grid.Column="3" Text="{Binding Song.DurationDisplay}" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}"
+                   VerticalAlignment="Center" Margin="12,0,6,0"/>
+      </Grid>
+    </DataTemplate>
+
+    <!-- Queue row (full-screen player): 36px art + title / artist. Bound to a QueueEntry; the
+         accent bar + bold title mark the playing track, independent of the multi-selection. -->
+    <DataTemplate x:Key="QueueRowTemplate">
+      <Grid Margin="2,3">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="10"/>
+          <ColumnDefinition Width="Auto"/>
+          <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+        <Rectangle Grid.Column="0" Width="3" Height="24" RadiusX="1.5" RadiusY="1.5" HorizontalAlignment="Left"
+                   Fill="{StaticResource AccentBrush}" Visibility="{Binding CurrentMarkerVisibility}"/>
+        <Border Grid.Column="1" Width="36" Height="36" CornerRadius="4" Margin="0,0,10,0" Background="{StaticResource RaisedBrush}">
+          <Image Source="{Binding Song.CoverArtUrl}" Stretch="UniformToFill" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+        </Border>
+        <StackPanel Grid.Column="2" VerticalAlignment="Center">
+          <TextBlock Text="{Binding Song.Title}" FontWeight="{Binding TitleFontWeight}" TextTrimming="CharacterEllipsis"/>
+          <Border Background="Transparent" Margin="0,2,0,0" HorizontalAlignment="Left" controls:Motion.ClickableText="True" Tag="{Binding Song}" Tapped="SongArtistText_Tapped" ToolTipService.ToolTip="Go to artist">
+            <TextBlock Text="{Binding Song.ArtistName}" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis"/>
+          </Border>
+        </StackPanel>
+      </Grid>
     </DataTemplate>
   </Page.Resources>
 
@@ -242,6 +281,7 @@
             <ColumnDefinition Width="170"/>
             <ColumnDefinition Width="20"/>
             <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="Auto"/>
           </Grid.ColumnDefinitions>
 
           <!-- ===== Sidebar ===== -->
@@ -249,6 +289,7 @@
             <Grid.RowDefinitions>
               <RowDefinition Height="Auto"/>
               <RowDefinition Height="*"/>
+              <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
             <StackPanel Grid.Row="0">
               <TextBlock Text="LUNADROME" FontSize="12" FontWeight="Bold" Foreground="{StaticResource AccentBrush}"
@@ -285,6 +326,9 @@
                 </DataTemplate>
               </ListView.ItemTemplate>
             </ListView>
+            <!-- Shown only when GitHub has a newer release (UpdateChecker). -->
+            <Button Grid.Row="2" x:Name="UpdateButton" Visibility="Collapsed" HorizontalAlignment="Stretch" Height="34"
+                    Margin="0,10,0,0" Style="{StaticResource PrimaryButtonStyle}" Click="UpdateButton_Click"/>
           </Grid>
 
           <!-- ===== Page host ===== -->
@@ -696,7 +740,7 @@
                 </Grid.ColumnDefinitions>
                 <StackPanel Grid.Column="0" Orientation="Horizontal">
                   <Button Width="30" Height="30" Margin="0,0,10,0" Tag="AllTracks"
-                          Style="{StaticResource PrimaryButtonStyle}" Click="PlayMenuButton_Click" ToolTipService.ToolTip="Play">
+                          Style="{StaticResource PrimaryButtonStyle}" Click="PlayMenuButton_Click" AutomationProperties.Name="Play menu" ToolTipService.ToolTip="Play">
                     <Polygon Points="0,0 9,5.5 0,11" Fill="{StaticResource OnAccentBrush}" Margin="2,0,0,0"/>
                   </Button>
                   <TextBlock Text="ALL TRACKS" Style="{StaticResource SectionHeaderStyle}" Margin="0,0,10,0" VerticalAlignment="Center"/>
@@ -756,7 +800,7 @@
                   <TextBlock x:Name="PlaylistTracksHeader" Text="PLAYLIST" Style="{StaticResource SectionHeaderStyle}"
                              Margin="0,0,10,0" VerticalAlignment="Center"/>
                   <Button Width="30" Height="30" VerticalAlignment="Center" Tag="PlaylistTracks"
-                          Style="{StaticResource PrimaryButtonStyle}" Click="PlayMenuButton_Click" ToolTipService.ToolTip="Play">
+                          Style="{StaticResource PrimaryButtonStyle}" Click="PlayMenuButton_Click" AutomationProperties.Name="Play menu" ToolTipService.ToolTip="Play">
                     <Polygon Points="0,0 9,5.5 0,11" Fill="{StaticResource OnAccentBrush}" Margin="2,0,0,0"/>
                   </Button>
                 </StackPanel>
@@ -775,6 +819,92 @@
                         DoubleTapped="TrackList_DoubleTapped" RightTapped="TrackList_RightTapped"/>
             </Grid>
           </Grid>
+
+          <!-- ===== Queue side panel (the Queue button; Feishin's right sidebar) =====
+               Docked next to the pages, which shrink to make room. Toolbar acts on the selected
+               rows; synced lyrics for the playing track underneath. -->
+          <Border Grid.Column="3" x:Name="QueueSidePanel" Visibility="Collapsed" Width="420" Margin="16,0,0,0"
+                  Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush2}" BorderThickness="1" CornerRadius="8">
+            <Grid>
+              <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+              </Grid.RowDefinitions>
+
+              <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="10,8,10,4" Spacing="2">
+                <Button Style="{StaticResource IconButtonStyle}" Click="SideQueueShuffle_Click"
+                        AutomationProperties.Name="Shuffle queue" ToolTipService.ToolTip="Shuffle the upcoming songs">
+                  <Path Width="16" Height="14" Stretch="Uniform" Stroke="{StaticResource TextSecondaryBrush}" StrokeThickness="1.6"
+                        StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                        Data="M1,4 L6,4 L15,13 M11,13 L15,13 L15,9 M1,12 L6,12 L15,3 M11,3 L15,3 L15,7"/>
+                </Button>
+                <Button Style="{StaticResource IconButtonStyle}" Click="SideQueuePlayNext_Click"
+                        AutomationProperties.Name="Play selected next" ToolTipService.ToolTip="Play selected next">
+                  <Path Width="16" Height="14" Stretch="Uniform" Stroke="{StaticResource TextSecondaryBrush}" StrokeThickness="1.6"
+                        StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                        Data="M2,2 L2,9 L14,9 M10,5 L14,9 L10,13"/>
+                </Button>
+                <Button Style="{StaticResource IconButtonStyle}" Click="SideQueueMoveToEnd_Click"
+                        AutomationProperties.Name="Move selected to end" ToolTipService.ToolTip="Move selected to the end">
+                  <Path Width="16" Height="14" Stretch="Uniform" Stroke="{StaticResource TextSecondaryBrush}" StrokeThickness="1.6"
+                        StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                        Data="M1,2 L9,2 M1,7 L9,7 M1,12 L6,12 M13,3 L13,13 M10,10 L13,13 L16,10"/>
+                </Button>
+                <Button Style="{StaticResource IconButtonStyle}" Click="SideQueueRemove_Click"
+                        AutomationProperties.Name="Remove selected" ToolTipService.ToolTip="Remove selected from the queue">
+                  <Path Width="14" Height="15" Stretch="Uniform" Stroke="{StaticResource TextSecondaryBrush}" StrokeThickness="1.6"
+                        StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                        Data="M1,4 L13,4 M5,4 L5,1.5 L9,1.5 L9,4 M2.5,4 L3.5,14 L10.5,14 L11.5,4"/>
+                </Button>
+                <Button Style="{StaticResource IconButtonStyle}" Click="SideQueueClear_Click"
+                        AutomationProperties.Name="Clear queue" ToolTipService.ToolTip="Clear the queue (keeps the playing song)">
+                  <Path Width="16" Height="14" Stretch="Uniform" Stroke="{StaticResource TextSecondaryBrush}" StrokeThickness="1.6"
+                        StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                        Data="M1,2 L11,2 M1,7 L8,7 M1,12 L6,12 M10,8 L15,13 M15,8 L10,13"/>
+                </Button>
+              </StackPanel>
+
+              <Grid Grid.Row="1" Margin="10,4,16,4" Padding="0,0,0,6" BorderBrush="{StaticResource BorderBrush2}" BorderThickness="0,0,0,1">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="34"/>
+                  <ColumnDefinition Width="*"/>
+                  <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="#" Style="{StaticResource SectionHeaderStyle}" Margin="0" HorizontalAlignment="Center"/>
+                <TextBlock Grid.Column="1" Text="TITLE" Style="{StaticResource SectionHeaderStyle}" Margin="0"/>
+                <!-- Clock icon over the duration column. -->
+                <Grid Grid.Column="2" Width="14" Height="14" Margin="0,0,10,0" VerticalAlignment="Center">
+                  <Ellipse Stroke="{StaticResource TextSecondaryBrush}" StrokeThickness="1.4"/>
+                  <Path Stroke="{StaticResource TextSecondaryBrush}" StrokeThickness="1.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                        Data="M7,3.5 L7,7 L9.5,8.5"/>
+                </Grid>
+              </Grid>
+
+              <!-- Same queue as the full-screen player's Queue tab, its own list (selection etc.). -->
+              <ListView Grid.Row="2" x:Name="SideQueueList" SelectionMode="Extended" Padding="6,0,6,6"
+                        ItemTemplate="{StaticResource SideQueueRowTemplate}"
+                        CanReorderItems="True" CanDragItems="True" AllowDrop="True"
+                        DoubleTapped="QueueList_DoubleTapped" RightTapped="QueueList_RightTapped" KeyDown="QueueList_KeyDown"/>
+
+              <!-- Synced lyrics: previous / current / next line; unsynced ones scroll as plain text. -->
+              <Grid Grid.Row="3" x:Name="SideLyricsPanel" Height="170" Visibility="Collapsed"
+                    BorderBrush="{StaticResource BorderBrush2}" BorderThickness="0,1,0,0">
+                <StackPanel x:Name="SideLyricsSynced" VerticalAlignment="Center" Spacing="12" Padding="20,0">
+                  <TextBlock x:Name="SideLyricPrev" FontSize="15" Foreground="{StaticResource TextSecondaryBrush}" Opacity="0.6"
+                             TextAlignment="Center" TextWrapping="Wrap" MaxLines="2"/>
+                  <TextBlock x:Name="SideLyricCurrent" FontSize="19" FontWeight="Bold"
+                             TextAlignment="Center" TextWrapping="Wrap" MaxLines="3"/>
+                  <TextBlock x:Name="SideLyricNext" FontSize="15" Foreground="{StaticResource TextSecondaryBrush}" Opacity="0.6"
+                             TextAlignment="Center" TextWrapping="Wrap" MaxLines="2"/>
+                </StackPanel>
+                <ScrollViewer x:Name="SideLyricsPlain" Visibility="Collapsed" controls:WheelScroll.Enabled="True" Padding="20,12">
+                  <TextBlock x:Name="SideLyricsPlainText" FontSize="14" LineHeight="22" TextAlignment="Center" TextWrapping="Wrap"/>
+                </ScrollViewer>
+              </Grid>
+            </Grid>
+          </Border>
         </Grid>
 
         <!-- ===== Full-screen player (click the now-playing title) ===== -->
@@ -817,8 +947,11 @@
                              Style="{StaticResource SidePanelTabStyle}" Checked="SidePanelTabButton_Checked"/>
               </Grid>
               <Grid Grid.Row="1">
-                <ListView x:Name="QueueList" SelectionMode="Single" ItemTemplate="{StaticResource QueueRowTemplate}"
-                          DoubleTapped="QueueList_DoubleTapped" RightTapped="QueueList_RightTapped"/>
+                <!-- Ctrl/Shift-click to select several rows, then right-click to move or remove them
+                     together; rows can also be dragged to reorder, and Delete removes the selection. -->
+                <ListView x:Name="QueueList" SelectionMode="Extended" ItemTemplate="{StaticResource QueueRowTemplate}"
+                          CanReorderItems="True" CanDragItems="True" AllowDrop="True"
+                          DoubleTapped="QueueList_DoubleTapped" RightTapped="QueueList_RightTapped" KeyDown="QueueList_KeyDown"/>
 
                 <Grid x:Name="LyricsPanelView" Visibility="Collapsed">
                   <TextBlock x:Name="LyricsPlaceholder" Text="No lyrics found for this track." TextWrapping="Wrap"
@@ -875,13 +1008,13 @@
           <!-- Transport + progress -->
           <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="24,0">
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-              <Button x:Name="StopButton" Style="{StaticResource IconButtonStyle}" Click="StopButton_Click"
+              <Button x:Name="StopButton" Style="{StaticResource IconButtonStyle}" Click="StopButton_Click" AutomationProperties.Name="Stop"
                       ToolTipService.ToolTip="Stop">
                 <Rectangle Width="12" Height="12" RadiusX="1.5" RadiusY="1.5" Fill="{StaticResource TextPrimaryBrush}"/>
               </Button>
 
               <Button x:Name="ShuffleButton" Style="{StaticResource IconButtonStyle}" Margin="2,0,0,0"
-                      Click="ShuffleButton_Click" ToolTipService.ToolTip="Shuffle">
+                      Click="ShuffleButton_Click" AutomationProperties.Name="Shuffle" ToolTipService.ToolTip="Shuffle">
                 <Path x:Name="ShuffleIconPath" Width="16" Height="14" Stretch="Uniform"
                       Stroke="{StaticResource TextSecondaryBrush}" StrokeThickness="1.6"
                       StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
@@ -889,7 +1022,7 @@
               </Button>
 
               <Button x:Name="PreviousButton" Style="{StaticResource IconButtonStyle}" Margin="2,0,0,0"
-                      Click="PreviousButton_Click" ToolTipService.ToolTip="Previous">
+                      Click="PreviousButton_Click" AutomationProperties.Name="Previous" ToolTipService.ToolTip="Previous">
                 <Canvas Width="14" Height="14">
                   <Rectangle Width="2" Height="14" Fill="{StaticResource TextPrimaryBrush}"/>
                   <Polygon Points="12,1 4,7 12,13" Fill="{StaticResource TextPrimaryBrush}"/>
@@ -897,7 +1030,7 @@
               </Button>
 
               <Button x:Name="PlayPauseButton" Width="44" Height="44" CornerRadius="22" Margin="8,0"
-                      Style="{StaticResource PrimaryButtonStyle}" Click="PlayPauseButton_Click" ToolTipService.ToolTip="Play/Pause">
+                      Style="{StaticResource PrimaryButtonStyle}" Click="PlayPauseButton_Click" AutomationProperties.Name="Play/Pause" ToolTipService.ToolTip="Play/Pause">
                 <Grid Width="16" Height="16">
                   <Polygon x:Name="PlayIcon" Points="1,0 15,8 1,16" Fill="{StaticResource OnAccentBrush}"/>
                   <Grid x:Name="PauseIcon" Visibility="Collapsed">
@@ -907,7 +1040,7 @@
                 </Grid>
               </Button>
 
-              <Button x:Name="NextButton" Style="{StaticResource IconButtonStyle}" Click="NextButton_Click"
+              <Button x:Name="NextButton" Style="{StaticResource IconButtonStyle}" Click="NextButton_Click" AutomationProperties.Name="Next"
                       ToolTipService.ToolTip="Next">
                 <Canvas Width="14" Height="14">
                   <Polygon Points="2,1 10,7 2,13" Fill="{StaticResource TextPrimaryBrush}"/>
@@ -916,7 +1049,7 @@
               </Button>
 
               <Button x:Name="RepeatButton" Style="{StaticResource IconButtonStyle}" Margin="0,0,2,0"
-                      Click="RepeatButton_Click" ToolTipService.ToolTip="Repeat">
+                      Click="RepeatButton_Click" AutomationProperties.Name="Repeat" ToolTipService.ToolTip="Repeat">
                 <Grid Width="16" Height="16">
                   <Path x:Name="RepeatIconPath" Stroke="{StaticResource TextSecondaryBrush}" StrokeThickness="1.6"
                         StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
@@ -929,7 +1062,7 @@
               </Button>
 
               <Button x:Name="QueueToggleButton" Style="{StaticResource IconButtonStyle}" Margin="2,0,0,0"
-                      Click="QueueToggleButton_Click" ToolTipService.ToolTip="Queue">
+                      Click="QueueToggleButton_Click" AutomationProperties.Name="Queue" ToolTipService.ToolTip="Queue">
                 <StackPanel VerticalAlignment="Center">
                   <Rectangle Width="16" Height="2" Fill="{StaticResource TextPrimaryBrush}" Margin="0,0,0,3"/>
                   <Rectangle Width="16" Height="2" Fill="{StaticResource TextPrimaryBrush}" Margin="0,0,0,3"/>
