@@ -40,7 +40,7 @@ public partial class App : Application
 
             rootFrame.NavigationFailed += OnNavigationFailed;
 
-            // Remember the queue + position for next launch (#12).
+            // Remember the queue + position (#12) and preferences for next launch.
             MainWindow.Closed += (_, _) => (rootFrame.Content as MainPage)?.SaveQueueState();
         }
 

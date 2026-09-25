@@ -40,25 +40,32 @@ public static class UpdateChecker
     }
 
     /// <summary>The latest release if it's newer than this build, else null (also on any error).</summary>
-    public static async Task<UpdateInfo?> CheckAsync()
+    public static async Task<UpdateInfo?> CheckAsync() => (await CheckWithErrorAsync()).Update;
+
+    /// <summary>Update = newer release (null if up to date); Error = why the check failed.</summary>
+    public static async Task<(UpdateInfo? Update, string? Error)> CheckWithErrorAsync()
     {
         try
         {
             // A build without a version stamped in (0.0.0) can't be compared meaningfully.
             if (CurrentVersion.Major == 0)
-                return null;
+                return (null, "this build has no version number");
 
             using var http = CreateClient(TimeSpan.FromSeconds(15));
             http.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
-            using var doc = JsonDocument.Parse(await http.GetStringAsync(LatestReleaseApi));
+            using var response = await http.GetAsync(LatestReleaseApi);
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                return (null, "no public releases found on GitHub");
+            response.EnsureSuccessStatusCode();
+            using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
             var root = doc.RootElement;
 
             var tag = root.GetProperty("tag_name").GetString() ?? "";
             if (!Version.TryParse(tag.TrimStart('v', 'V'), out var latest))
-                return null;
+                return (null, $"unrecognized release tag '{tag}'");
             latest = new Version(latest.Major, latest.Minor, Math.Max(latest.Build, 0));
             if (latest <= CurrentVersion)
-                return null;
+                return (null, null);
 
             string? installerUrl = null;
             foreach (var asset in root.GetProperty("assets").EnumerateArray())
@@ -69,15 +76,18 @@ public static class UpdateChecker
             }
 
             var page = root.GetProperty("html_url").GetString() ?? "https://github.com/Lun-Astra/LunaDrome/releases/latest";
-            return new UpdateInfo(latest, page, installerUrl);
+            return (new UpdateInfo(latest, page, installerUrl), null);
         }
         catch (Exception ex)
         {
             if (Environment.GetEnvironmentVariable("LUNADROME_LOG") == "1")
                 Console.Error.WriteLine($"[LunaDrome] update check failed: {ex.Message}");
-            return null;
+            return (null, ex.Message);
         }
     }
+
+    public static void OpenUrl(string url) =>
+        Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
 
     /// <summary>Downloads the setup program to temp; progress is 0..1.</summary>
     public static async Task<string> DownloadInstallerAsync(UpdateInfo update, IProgress<double> progress)
@@ -115,6 +125,5 @@ public static class UpdateChecker
     public static void RunInstaller(string installerPath) =>
         Process.Start(new ProcessStartInfo(installerPath, "/SILENT /SP- /NOCANCEL /CLOSEAPPLICATIONS") { UseShellExecute = true });
 
-    public static void OpenReleasePage(UpdateInfo update) =>
-        Process.Start(new ProcessStartInfo(update.PageUrl) { UseShellExecute = true });
+    public static void OpenReleasePage(UpdateInfo update) => OpenUrl(update.PageUrl);
 }
