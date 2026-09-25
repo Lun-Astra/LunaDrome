@@ -51,7 +51,7 @@ internal sealed unsafe class SmtcMediaControls : IMediaControls
 
     public static SmtcMediaControls? TryCreate()
     {
-        var hwnd = FindAppWindow();
+        var hwnd = NativeWindow.FindAppWindow();
         if (hwnd == IntPtr.Zero)
             return null;
 
@@ -267,41 +267,6 @@ internal sealed unsafe class SmtcMediaControls : IMediaControls
         catch { /* never let an exception cross into Windows */ }
         return 0;
     }
-
-    // Process.MainWindowHandle isn't reliable here: a debug build also owns a console window.
-    // Take this process's visible top-level window that isn't a console (Uno's window).
-    private static IntPtr FindAppWindow()
-    {
-        var pid = (uint)Environment.ProcessId;
-        IntPtr found = IntPtr.Zero;
-        var className = new char[64];
-        EnumWindows((hwnd, _) =>
-        {
-            GetWindowThreadProcessId(hwnd, out var windowPid);
-            if (windowPid != pid || !IsWindowVisible(hwnd))
-                return true;
-            var length = GetClassName(hwnd, className, className.Length);
-            if (new string(className, 0, length) == "ConsoleWindowClass")
-                return true;
-            found = hwnd;
-            return false;
-        }, IntPtr.Zero);
-        return found;
-    }
-
-    private delegate bool EnumWindowsProc(IntPtr hwnd, IntPtr lParam);
-
-    [DllImport("user32.dll")]
-    private static extern bool EnumWindows(EnumWindowsProc callback, IntPtr lParam);
-
-    [DllImport("user32.dll")]
-    private static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint processId);
-
-    [DllImport("user32.dll")]
-    private static extern bool IsWindowVisible(IntPtr hwnd);
-
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-    private static extern int GetClassName(IntPtr hwnd, [Out] char[] className, int maxCount);
 
     // ----- WinRT plumbing -----
 
