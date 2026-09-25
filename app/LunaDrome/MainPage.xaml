@@ -1181,7 +1181,8 @@
                     BorderBrush="{StaticResource BorderBrush2}" BorderThickness="1" MaxWidth="560">
               <StackPanel Orientation="Horizontal" Spacing="14">
                 <TextBlock x:Name="ToastText" VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="400"/>
-                <Button x:Name="ToastActionButton" Visibility="Collapsed" Style="{StaticResource PrimaryButtonStyle}" Click="ToastAction_Click"/>
+                <Button x:Name="ToastActionButton" Visibility="Collapsed" Style="{StaticResource PrimaryButtonStyle}" Padding="14,6" MinHeight="30"
+                        VerticalAlignment="Center" Click="ToastAction_Click"/>
               </StackPanel>
             </Border>
           </Grid>
