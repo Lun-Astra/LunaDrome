@@ -323,6 +323,24 @@ public class NavidromeClient
 
     public string GetStreamUrl(string songId) => BuildUrl("stream.view", ("id", songId));
 
+    /// <summary>
+    /// Copies a track's stream (the same URL playback uses, so the same transcoding) into
+    /// <paramref name="destination"/> - used to pre-buffer the next queue entry.
+    /// </summary>
+    public async Task DownloadStreamAsync(string songId, Stream destination, CancellationToken cancellationToken)
+    {
+        using var response = await _http.GetAsync(GetStreamUrl(songId), HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        // Subsonic reports errors (e.g. missing file) as a 200 with a JSON/XML body, not audio.
+        var mediaType = response.Content.Headers.ContentType?.MediaType ?? "";
+        if (mediaType.Contains("json") || mediaType.Contains("xml"))
+            throw new HttpRequestException($"Server returned {mediaType} instead of audio.");
+
+        await using var source = await response.Content.ReadAsStreamAsync(cancellationToken);
+        await source.CopyToAsync(destination, cancellationToken);
+    }
+
     // Navidrome resolves cover art for an album, artist, or track ID directly.
     public string GetCoverArtUrl(string id, int size = 300) =>
         BuildUrl("getCoverArt.view", ("id", id), ("size", size.ToString()));

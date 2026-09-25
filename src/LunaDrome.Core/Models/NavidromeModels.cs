@@ -52,6 +52,8 @@ public class Song
     public int PlaylistIndex { get; set; } = -1;
 
     public string DurationDisplay => $"{DurationSeconds / 60}:{DurationSeconds % 60:D2}";
+
+    public Song Clone() => (Song)MemberwiseClone();
 }
 
 public class LyricLine

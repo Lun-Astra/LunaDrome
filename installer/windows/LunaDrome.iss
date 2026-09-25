@@ -56,6 +56,8 @@ Name: "{autodesktop}\LunaDrome"; Filename: "{app}\LunaDrome.exe"; WorkingDir: "{
 
 [Run]
 Filename: "{app}\LunaDrome.exe"; Description: "{cm:LaunchProgram,LunaDrome}"; Flags: nowait postinstall skipifsilent
+; The app's built-in updater runs this setup with /SILENT after closing itself: start it again.
+Filename: "{app}\LunaDrome.exe"; Flags: nowait; Check: WizardSilent
 
 ; Settings (server URL, remembered login) live in the user's profile, not {app}, so they survive
 ; uninstall/reinstall on purpose - uninstalling the app shouldn't sign you out of your server.

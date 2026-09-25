@@ -39,6 +39,9 @@ public partial class App : Application
             MainWindow.Content = rootFrame;
 
             rootFrame.NavigationFailed += OnNavigationFailed;
+
+            // Remember the queue + position for next launch (#12).
+            MainWindow.Closed += (_, _) => (rootFrame.Content as MainPage)?.SaveQueueState();
         }
 
         if (rootFrame.Content == null)

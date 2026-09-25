@@ -21,6 +21,9 @@
          in App.xaml.cs from the same file. -->
     <ApplicationIcon>Assets\lunadrome.ico</ApplicationIcon>
 
+    <!-- Services/SmtcMediaControls.cs calls the WinRT media-flyout COM interfaces through raw vtables. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+
     <!--
       UnoFeatures are used to quickly add and manage features enabled for your app.
       https://aka.platform.uno/singleproject-features
@@ -38,6 +41,12 @@
 
   <ItemGroup>
     <PackageReference Include="NAudio.Wasapi" />
+  </ItemGroup>
+
+  <!-- The Uno SDK doesn't stamp a version into the assembly, so embed the display version as
+       metadata: the built-in updater (Services/UpdateChecker.cs) compares it with GitHub's latest. -->
+  <ItemGroup>
+    <AssemblyMetadata Include="AppVersion" Value="$(ApplicationDisplayVersion)" />
   </ItemGroup>
 
   <!-- The LibVLC package drops native libs + plugins for every Windows architecture into
