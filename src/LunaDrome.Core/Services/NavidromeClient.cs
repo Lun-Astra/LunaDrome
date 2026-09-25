@@ -270,7 +270,20 @@ public class NavidromeClient
     // back to the legacy artist+title endpoint (plain lyrics only) if that finds nothing -
     // covers both older servers and songs that only have plain lyrics on file. Best-effort:
     // most tracks won't have lyrics at all, so any failure just means an empty result.
-    public async Task<(List<LyricLine> Lines, bool Synced)> GetLyricsAsync(string songId, string artist, string title)
+    // Without time-synced lyrics on the server, LRCLIB (online) is tried as well, like Feishin.
+    public async Task<(List<LyricLine> Lines, bool Synced)> GetLyricsAsync(Song song)
+    {
+        var server = await GetServerLyricsAsync(song.Id, song.ArtistName, song.Title);
+        if (server.Synced)
+            return server;
+
+        var online = await LrcLibClient.GetLyricsAsync(song.ArtistName, song.Title, song.AlbumName, song.DurationSeconds);
+        if (online.Synced || server.Lines.Count == 0)
+            return online;
+        return server;
+    }
+
+    private async Task<(List<LyricLine> Lines, bool Synced)> GetServerLyricsAsync(string songId, string artist, string title)
     {
         try
         {

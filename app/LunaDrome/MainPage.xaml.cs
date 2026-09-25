@@ -151,6 +151,8 @@ public sealed partial class MainPage : Page
         ProgressSlider.AddHandler(PointerCaptureLostEvent, new PointerEventHandler((_, _) => CommitSeek()), true);
 
         QueueList.ItemsSource = _queue;
+        SideQueueList.ItemsSource = _queue;
+        _queue.CollectionChanged += (_, _) => RenumberQueue();
 
         // Home cards resize so a whole number of them fills the row width exactly (HomeLayout).
         var homeLayout = (HomeLayout)Resources["HomeLayout"];
@@ -1327,19 +1329,67 @@ public sealed partial class MainPage : Page
         UpdateVisualizerCaptureState();
     }
 
-    // Toggles: pressing it again while the queue is showing closes the player (#9).
-    private void QueueToggleButton_Click(object sender, RoutedEventArgs e)
+    // The Queue button toggles the docked side panel (Feishin's right sidebar); the full-screen
+    // Queue / Lyrics / Visualizer player stays on the now-playing title. Two separate views of
+    // the same queue.
+    private async void QueueToggleButton_Click(object sender, RoutedEventArgs e)
     {
-        if (FullScreenPlayerOverlay.Visibility == Visibility.Visible && QueueTabButton.IsChecked == true)
-        {
+        var show = QueueSidePanel.Visibility != Visibility.Visible || FullScreenPlayerOverlay.Visibility == Visibility.Visible;
+        if (FullScreenPlayerOverlay.Visibility == Visibility.Visible)
             CloseFullScreenPlayer_Click(sender, e);
-            return;
-        }
 
-        QueueTabButton.IsChecked = true;
-        FullScreenPlayerOverlay.Visibility = Visibility.Visible;
-        Motion.FadeIn(FullScreenPlayerOverlay);
-        UpdateVisualizerCaptureState();
+        QueueSidePanel.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        if (!show)
+            return;
+
+        Motion.FadeIn(QueueSidePanel);
+        // After the just-shown list has been laid out, or the scroll is ignored.
+        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        {
+            if (_current != null)
+                SideQueueList.ScrollIntoView(_current, ScrollIntoViewAlignment.Leading);
+        });
+        await LoadLyricsForCurrentSongAsync();
+    }
+
+    // ----- Side panel toolbar (acts on the side list's selection) -----
+
+    // One-off shuffle of what's still to come (the shuffle mode button is separate).
+    private void SideQueueShuffle_Click(object sender, RoutedEventArgs e)
+    {
+        var index = QueueIndex;
+        ReplaceQueue(_queue.Take(index + 1).Concat(Shuffled(_queue.Skip(index + 1))).ToList());
+        if (_current != null)
+            SideQueueList.ScrollIntoView(_current);
+    }
+
+    private void SideQueuePlayNext_Click(object sender, RoutedEventArgs e) =>
+        MoveToPlayNext(SideQueueList, SelectedQueueEntries(SideQueueList));
+
+    private void SideQueueMoveToEnd_Click(object sender, RoutedEventArgs e) =>
+        MoveToEnd(SideQueueList, SelectedQueueEntries(SideQueueList));
+
+    private void SideQueueRemove_Click(object sender, RoutedEventArgs e)
+    {
+        if (SelectedQueueEntries(SideQueueList) is { Count: > 0 } selected)
+            RemoveFromQueue(selected);
+    }
+
+    private void SideQueueClear_Click(object sender, RoutedEventArgs e) =>
+        RemoveFromQueue(_queue.Where(q => q != _current).ToList());
+
+    // Keeps the side panel's # column in step with the queue order.
+    private void RenumberQueue()
+    {
+        for (var i = 0; i < _queue.Count; i++)
+            _queue[i].Number = i + 1;
+    }
+
+    private void ScrollQueuesTo(QueueEntry entry)
+    {
+        QueueList.ScrollIntoView(entry);
+        if (QueueSidePanel.Visibility == Visibility.Visible)
+            SideQueueList.ScrollIntoView(entry);
     }
 
     private void CloseFullScreenPlayer_Click(object sender, RoutedEventArgs e)
@@ -1376,29 +1426,30 @@ public sealed partial class MainPage : Page
     }
 
     // Selected queue rows in queue order (the ListView reports them in click order).
-    private List<QueueEntry> SelectedQueueEntries() =>
-        QueueList.SelectedItems.OfType<QueueEntry>().OrderBy(_queue.IndexOf).ToList();
+    private List<QueueEntry> SelectedQueueEntries(ListView list) =>
+        list.SelectedItems.OfType<QueueEntry>().OrderBy(_queue.IndexOf).ToList();
 
+    // Shared by the full-screen Queue tab and the side panel (sender = which list).
     // Acts on the whole selection (#7); right-clicking a row outside it selects just that row.
     private void QueueList_RightTapped(object sender, RightTappedRoutedEventArgs e)
     {
-        if ((e.OriginalSource as FrameworkElement)?.DataContext is not QueueEntry clicked)
+        if (sender is not ListView list || (e.OriginalSource as FrameworkElement)?.DataContext is not QueueEntry clicked)
             return;
 
-        if (!QueueList.SelectedItems.Contains(clicked))
+        if (!list.SelectedItems.Contains(clicked))
         {
-            QueueList.SelectedItems.Clear();
-            QueueList.SelectedItems.Add(clicked);
+            list.SelectedItems.Clear();
+            list.SelectedItems.Add(clicked);
         }
 
-        var selected = SelectedQueueEntries();
+        var selected = SelectedQueueEntries(list);
         var flyout = new MenuFlyout();
         if (selected.Count == 1)
             AddMenuItem(flyout, "Play", () => PlayEntry(clicked));
-        AddMenuItem(flyout, "Play next", () => MoveToPlayNext(selected));
-        AddMenuItem(flyout, "Move up", () => MoveInQueue(selected, -1));
-        AddMenuItem(flyout, "Move down", () => MoveInQueue(selected, +1));
-        AddMenuItem(flyout, "Move to end", () => MoveToEnd(selected));
+        AddMenuItem(flyout, "Play next", () => MoveToPlayNext(list, selected));
+        AddMenuItem(flyout, "Move up", () => MoveInQueue(list, selected, -1));
+        AddMenuItem(flyout, "Move down", () => MoveInQueue(list, selected, +1));
+        AddMenuItem(flyout, "Move to end", () => MoveToEnd(list, selected));
         flyout.Items.Add(new MenuFlyoutSeparator());
         flyout.Items.Add(BuildAddToPlaylistSubmenu(selected.Select(q => q.Song).ToList()));
         if (selected.Count == 1)
@@ -1406,13 +1457,13 @@ public sealed partial class MainPage : Page
         flyout.Items.Add(new MenuFlyoutSeparator());
         AddMenuItem(flyout, selected.Count == 1 ? "Remove from queue" : $"Remove {selected.Count} songs from queue",
             () => RemoveFromQueue(selected));
-        flyout.ShowAt(QueueList, e.GetPosition(QueueList));
+        flyout.ShowAt(list, e.GetPosition(list));
         e.Handled = true;
     }
 
     private void QueueList_KeyDown(object sender, KeyRoutedEventArgs e)
     {
-        if (e.Key == Windows.System.VirtualKey.Delete && SelectedQueueEntries() is { Count: > 0 } selected)
+        if (sender is ListView list && e.Key == Windows.System.VirtualKey.Delete && SelectedQueueEntries(list) is { Count: > 0 } selected)
         {
             RemoveFromQueue(selected);
             e.Handled = true;
@@ -1420,7 +1471,7 @@ public sealed partial class MainPage : Page
     }
 
     // Shifts the selected rows one place up (-1) or down (+1) as a block (#8).
-    private void MoveInQueue(List<QueueEntry> entries, int delta)
+    private void MoveInQueue(ListView list, List<QueueEntry> entries, int delta)
     {
         var indices = entries.Select(_queue.IndexOf).Where(i => i >= 0).OrderBy(i => i).ToList();
         if (indices.Count == 0 || (delta < 0 && indices[0] == 0) || (delta > 0 && indices[^1] == _queue.Count - 1))
@@ -1431,11 +1482,11 @@ public sealed partial class MainPage : Page
         foreach (var i in indices)
             _queue.Move(i, i + delta);
 
-        ReselectQueue(entries);
+        ReselectQueue(list, entries);
     }
 
     // "Play next" from inside the queue: move the rows to right after the playing track.
-    private void MoveToPlayNext(List<QueueEntry> entries)
+    private void MoveToPlayNext(ListView list, List<QueueEntry> entries)
     {
         var moving = entries.Where(q => q != _current && _queue.Contains(q)).ToList();
         if (moving.Count == 0)
@@ -1444,23 +1495,23 @@ public sealed partial class MainPage : Page
         foreach (var entry in moving)
             _queue.Remove(entry);
         InsertIntoQueue(QueueIndex + 1, moving);
-        ReselectQueue(moving);
+        ReselectQueue(list, moving);
     }
 
-    private void MoveToEnd(List<QueueEntry> entries)
+    private void MoveToEnd(ListView list, List<QueueEntry> entries)
     {
         var moving = entries.Where(_queue.Contains).ToList();
         foreach (var entry in moving)
             _queue.Remove(entry);
         InsertIntoQueue(_queue.Count, moving);
-        ReselectQueue(moving);
+        ReselectQueue(list, moving);
     }
 
-    private void ReselectQueue(List<QueueEntry> entries)
+    private static void ReselectQueue(ListView list, List<QueueEntry> entries)
     {
-        QueueList.SelectedItems.Clear();
+        list.SelectedItems.Clear();
         foreach (var entry in entries)
-            QueueList.SelectedItems.Add(entry);
+            list.SelectedItems.Add(entry);
     }
 
     private void RemoveFromQueue(List<QueueEntry> entries)
@@ -1494,31 +1545,93 @@ public sealed partial class MainPage : Page
         SetCurrent(replacement);
     }
 
+    // Lyrics of the current song, fetched once and shared by the full-screen Lyrics tab and the
+    // side panel. _lyricsSongId = the song they belong to (null = not fetched yet).
+    private string? _lyricsSongId;
+    private List<LyricLine> _lyricsLines = new();
+
     private async Task LoadLyricsForCurrentSongAsync()
     {
         var song = _current?.Song;
         if (song == null)
         {
+            _lyricsSongId = null;
+            _lyricsLines = new();
             LyricsList.ItemsSource = null;
             LyricsPlaceholder.Text = "Nothing playing.";
             LyricsPlaceholder.Visibility = Visibility.Visible;
+            ShowSideLyrics();
             return;
         }
 
-        try
+        if (_lyricsSongId != song.Id)
         {
-            var (lines, synced) = await _client.GetLyricsAsync(song.Id, song.ArtistName, song.Title);
+            List<LyricLine> lines;
+            bool synced;
+            try
+            {
+                (lines, synced) = await _client.GetLyricsAsync(song);
+            }
+            catch
+            {
+                (lines, synced) = (new(), false);
+            }
+
+            // Skipped on to another song while this was loading.
+            if (_current?.Song.Id != song.Id)
+                return;
+
+            _lyricsSongId = song.Id;
+            _lyricsLines = lines;
             _lyricsAreSynced = synced;
-            LyricsList.ItemsSource = lines;
-            LyricsPlaceholder.Text = "No lyrics found for this track.";
-            LyricsPlaceholder.Visibility = lines.Count > 0 ? Visibility.Collapsed : Visibility.Visible;
         }
-        catch
+
+        LyricsList.ItemsSource = _lyricsLines;
+        LyricsPlaceholder.Text = "No lyrics found for this track.";
+        LyricsPlaceholder.Visibility = _lyricsLines.Count > 0 ? Visibility.Collapsed : Visibility.Visible;
+        ShowSideLyrics();
+    }
+
+    private int _sideLyricIndex = int.MinValue;
+
+    // Side panel lyrics area: hidden without lyrics; synced = previous / current / next line
+    // (advanced by UpdateSideLyrics from the progress timer), unsynced = scrollable text.
+    private void ShowSideLyrics()
+    {
+        var has = _lyricsLines.Count > 0 && _lyricsSongId == _current?.Song.Id;
+        SideLyricsPanel.Visibility = has ? Visibility.Visible : Visibility.Collapsed;
+        if (!has)
+            return;
+
+        SideLyricsSynced.Visibility = _lyricsAreSynced ? Visibility.Visible : Visibility.Collapsed;
+        SideLyricsPlain.Visibility = _lyricsAreSynced ? Visibility.Collapsed : Visibility.Visible;
+        if (!_lyricsAreSynced)
         {
-            LyricsList.ItemsSource = null;
-            LyricsPlaceholder.Text = "No lyrics found for this track.";
-            LyricsPlaceholder.Visibility = Visibility.Visible;
+            SideLyricsPlainText.Text = string.Join("\n", _lyricsLines.Select(l => l.Text));
+            SideLyricsPlain.ChangeView(null, 0, null, true);
         }
+
+        _sideLyricIndex = int.MinValue;
+        UpdateSideLyrics(_loadedEntry == _current ? _player.PlaybackSession.Position : _pendingSeek);
+    }
+
+    private void UpdateSideLyrics(TimeSpan position)
+    {
+        if (QueueSidePanel.Visibility != Visibility.Visible || !_lyricsAreSynced
+            || _lyricsLines.Count == 0 || _lyricsSongId != _current?.Song.Id)
+            return;
+
+        // Last line that has started (-1 = before the first one).
+        var index = -1;
+        for (var i = 0; i < _lyricsLines.Count && _lyricsLines[i].Start <= position; i++)
+            index = i;
+        if (index == _sideLyricIndex)
+            return;
+
+        _sideLyricIndex = index;
+        SideLyricPrev.Text = index >= 1 ? _lyricsLines[index - 1].Text : "";
+        SideLyricCurrent.Text = index >= 0 ? _lyricsLines[index].Text : "";
+        SideLyricNext.Text = index + 1 < _lyricsLines.Count ? _lyricsLines[index + 1].Text : "";
     }
 
     // Synced lyrics: double-click a line to jump there.
@@ -1699,6 +1812,7 @@ public sealed partial class MainPage : Page
             ElapsedText.Text = "0:00";
             DurationText.Text = "0:00";
             _mediaControls?.SetTrack(null);
+            ShowSideLyrics();
             return;
         }
 
@@ -1711,10 +1825,11 @@ public sealed partial class MainPage : Page
         FullScreenArtistText.Text = song.ArtistName;
         // The full-screen art is 360x360 - fetch a bigger rendition than the 240px list thumbnails.
         SetImage(FullScreenArt, _client.GetCoverArtUrl(song.AlbumId, 720));
-        QueueList.ScrollIntoView(entry);
+        ScrollQueuesTo(entry);
+        ShowSideLyrics(); // hides the previous song's lyrics until the new ones load
         _mediaControls?.SetTrack(song, _client.GetCoverArtUrl(song.AlbumId, 480));
 
-        if (LyricsPanelView.Visibility == Visibility.Visible)
+        if (LyricsPanelView.Visibility == Visibility.Visible || QueueSidePanel.Visibility == Visibility.Visible)
             await LoadLyricsForCurrentSongAsync();
     }
 
@@ -1760,7 +1875,7 @@ public sealed partial class MainPage : Page
         }
 
         if (_current != null)
-            QueueList.ScrollIntoView(_current);
+            ScrollQueuesTo(_current);
     }
 
     private void UpdateShuffleIcon() =>
@@ -1989,6 +2104,7 @@ public sealed partial class MainPage : Page
             return;
 
         _mediaControls?.SetPosition(position, duration);
+        UpdateSideLyrics(position);
         if (!_isUserSeeking)
         {
             ProgressSlider.Maximum = duration.TotalSeconds;
