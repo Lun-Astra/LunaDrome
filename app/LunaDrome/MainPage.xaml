@@ -231,6 +231,79 @@
       </Grid>
     </DataTemplate>
 
+    <!-- Jam page: an upcoming track (who asked for it, download state, remove). -->
+    <DataTemplate x:Key="JamQueueTemplate">
+      <Grid Margin="0,3" Padding="8,6" CornerRadius="6" Background="Transparent" ColumnSpacing="12">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto"/>
+          <ColumnDefinition Width="*"/>
+          <ColumnDefinition Width="Auto"/>
+          <ColumnDefinition Width="Auto"/>
+          <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+        <Border Width="44" Height="44" CornerRadius="5" Background="{StaticResource RaisedBrush}">
+          <Image Source="{Binding ArtUrl}" Stretch="UniformToFill" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+        </Border>
+        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+          <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis"/>
+          <TextBlock Text="{Binding Artist}" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" Margin="0,2,0,0"/>
+        </StackPanel>
+        <StackPanel Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right">
+          <TextBlock Text="{Binding StatusDisplay}" FontSize="12" HorizontalAlignment="Right" Foreground="{StaticResource TextSecondaryBrush}"/>
+          <TextBlock Text="{Binding RequestedBy}" FontSize="11" HorizontalAlignment="Right" Foreground="{StaticResource TextSecondaryBrush}"
+                     TextTrimming="CharacterEllipsis" MaxWidth="160" Margin="0,2,0,0"/>
+        </StackPanel>
+        <TextBlock Grid.Column="3" Text="{Binding DurationDisplay}" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center"/>
+        <Button Grid.Column="4" Style="{StaticResource IconButtonStyle}" Width="30" Height="30" Tag="{Binding}" Click="JamRemove_Click"
+                AutomationProperties.Name="Remove from the jam" ToolTipService.ToolTip="Remove from the jam">
+          <Path Width="10" Height="10" Stretch="Uniform" Stroke="{StaticResource TextSecondaryBrush}" StrokeThickness="1.8"
+                StrokeStartLineCap="Round" StrokeEndLineCap="Round" Data="M0,0 L10,10 M10,0 L0,10"/>
+        </Button>
+      </Grid>
+    </DataTemplate>
+
+    <!-- Jam page: recently played, with "play again". -->
+    <DataTemplate x:Key="JamHistoryTemplate">
+      <Grid Margin="0,2" Padding="8,4" ColumnSpacing="12">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto"/>
+          <ColumnDefinition Width="*"/>
+          <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+        <Border Width="36" Height="36" CornerRadius="4" Background="{StaticResource RaisedBrush}">
+          <Image Source="{Binding ArtUrl}" Stretch="UniformToFill" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+        </Border>
+        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+          <TextBlock Text="{Binding Title}" FontSize="13" TextTrimming="CharacterEllipsis"/>
+          <TextBlock Text="{Binding Artist}" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis"/>
+        </StackPanel>
+        <Button Grid.Column="2" Content="Play again" Style="{StaticResource TextButtonStyle}" Tag="{Binding}" Click="JamRequeue_Click"
+                VerticalAlignment="Center" ToolTipService.ToolTip="Put this back in the jam's queue"/>
+      </Grid>
+    </DataTemplate>
+
+    <!-- Jam page: a YouTube search result (through JamiDrome) with Add. -->
+    <DataTemplate x:Key="JamSearchTemplate">
+      <Grid Margin="0,3" Padding="8,6" CornerRadius="6" Background="Transparent" ColumnSpacing="12">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto"/>
+          <ColumnDefinition Width="*"/>
+          <ColumnDefinition Width="Auto"/>
+          <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+        <Border Width="64" Height="36" CornerRadius="4" Background="{StaticResource RaisedBrush}">
+          <Image Source="{Binding Thumbnail}" Stretch="UniformToFill" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+        </Border>
+        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+          <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis"/>
+          <TextBlock Text="{Binding Subtitle}" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" Margin="0,2,0,0"/>
+        </StackPanel>
+        <TextBlock Grid.Column="2" Text="{Binding DurationDisplay}" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center"/>
+        <Button Grid.Column="3" Content="Add" Style="{StaticResource TextButtonStyle}" Tag="{Binding}" Click="JamSearchAdd_Click" VerticalAlignment="Center"
+                ToolTipService.ToolTip="Add to the jam (JamiDrome downloads it)"/>
+      </Grid>
+    </DataTemplate>
+
     <!-- Downloads page row: label, status line, progress. -->
     <DataTemplate x:Key="DownloadRowTemplate">
       <Border Margin="0,0,0,10" Padding="16,12" CornerRadius="8" Background="{StaticResource PanelBrush}"
@@ -472,6 +545,15 @@
                            Style="{StaticResource NavItemStyle}" Checked="Nav_Checked"/>
               <RadioButton x:Name="NavGenres" Content="Genres" Tag="Genres" GroupName="MainNav"
                            Style="{StaticResource NavItemStyle}" Checked="Nav_Checked"/>
+              <!-- JamiDrome (shown once connected in Settings); the dot = this PC is playing the jam. -->
+              <RadioButton x:Name="NavJam" Tag="Jam" GroupName="MainNav" Visibility="Collapsed"
+                           Style="{StaticResource NavItemStyle}" Checked="Nav_Checked" AutomationProperties.Name="Jam">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                  <TextBlock Text="Jam"/>
+                  <Ellipse x:Name="NavJamLiveDot" Width="7" Height="7" Fill="{StaticResource AccentBrush}" VerticalAlignment="Center"
+                           Visibility="Collapsed"/>
+                </StackPanel>
+              </RadioButton>
               <Grid Margin="8,24,0,8">
                 <Grid.ColumnDefinitions>
                   <ColumnDefinition Width="*"/>
@@ -641,6 +723,97 @@
               </StackPanel>
             </ScrollViewer>
 
+            <!-- Jam (JamiDrome): the one shared jam on the server. This PC can be its speaker
+                 ("Play here"), share an invite link, add songs, skip / pause for everyone. -->
+            <ScrollViewer x:Name="JamPage" Visibility="Collapsed" controls:WheelScroll.Enabled="True" VerticalScrollBarVisibility="Auto">
+              <StackPanel Margin="0,0,16,24" Spacing="16" MaxWidth="900" HorizontalAlignment="Left">
+                <Grid ColumnSpacing="8">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                  </Grid.ColumnDefinitions>
+                  <StackPanel VerticalAlignment="Center">
+                    <TextBlock Text="Jam" FontSize="28" FontWeight="Bold"/>
+                    <TextBlock x:Name="JamStatusText" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,2,0,0"/>
+                  </StackPanel>
+                  <Button Grid.Column="1" x:Name="JamSpeakerButton" Content="Play here" Style="{StaticResource PrimaryButtonStyle}"
+                          Padding="18,8" VerticalAlignment="Center" Click="JamSpeaker_Click"/>
+                  <Button Grid.Column="2" Content="Share link" Style="{StaticResource TextButtonStyle}" VerticalAlignment="Center"
+                          Click="JamShare_Click" ToolTipService.ToolTip="Invite friends: they add songs from their phone's browser"/>
+                  <Button Grid.Column="3" Content="End jam" Style="{StaticResource TextButtonStyle}" VerticalAlignment="Center"
+                          Click="JamEnd_Click" ToolTipService.ToolTip="Clear the queue and turn off every invite link"/>
+                </Grid>
+
+                <!-- Now playing -->
+                <Border Padding="20" CornerRadius="8" Background="{StaticResource PanelBrush}"
+                        BorderBrush="{StaticResource BorderBrush2}" BorderThickness="1">
+                  <Grid ColumnSpacing="20">
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="Auto"/>
+                      <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Border Width="140" Height="140" CornerRadius="9" Background="{StaticResource RaisedBrush}" VerticalAlignment="Top">
+                      <Image x:Name="JamArt" Stretch="UniformToFill" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="4">
+                      <TextBlock Text="NOW PLAYING" Style="{StaticResource SectionHeaderStyle}" Margin="0"/>
+                      <TextBlock x:Name="JamTitleText" FontSize="22" FontWeight="Bold" TextTrimming="CharacterEllipsis"/>
+                      <TextBlock x:Name="JamArtistText" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis"/>
+                      <TextBlock x:Name="JamRequestedText" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis"/>
+                      <Grid Margin="0,10,0,0" ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                          <ColumnDefinition Width="Auto"/>
+                          <ColumnDefinition Width="*"/>
+                          <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="JamElapsedText" FontSize="12" Text="0:00" Foreground="{StaticResource TextSecondaryBrush}"/>
+                        <ProgressBar Grid.Column="1" x:Name="JamProgress" Maximum="1" VerticalAlignment="Center"/>
+                        <TextBlock Grid.Column="2" x:Name="JamDurationText" FontSize="12" Text="0:00" Foreground="{StaticResource TextSecondaryBrush}"/>
+                      </Grid>
+                      <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
+                        <Button x:Name="JamPauseButton" Content="Pause" Style="{StaticResource TextButtonStyle}" Click="JamPause_Click"
+                                ToolTipService.ToolTip="Pauses the jam for everyone"/>
+                        <Button x:Name="JamSkipButton" Content="Skip" Style="{StaticResource TextButtonStyle}" Click="JamSkip_Click"/>
+                        <CheckBox x:Name="JamAutoDjCheck" Content="Auto DJ" Click="JamAutoDj_Click" Margin="12,0,0,0" VerticalAlignment="Center"
+                                  ToolTipService.ToolTip="When the queue runs out, keep playing similar songs"/>
+                      </StackPanel>
+                    </StackPanel>
+                  </Grid>
+                </Border>
+
+                <!-- Add a song -->
+                <StackPanel Spacing="6">
+                  <TextBlock Text="ADD A SONG" Style="{StaticResource SectionHeaderStyle}" Margin="0"/>
+                  <Grid ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="*"/>
+                      <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBox x:Name="JamSearchBox" PlaceholderText="Search YouTube Music" KeyDown="JamSearchBox_KeyDown"
+                             AutomationProperties.Name="Search songs to add to the jam"/>
+                    <Button Grid.Column="1" Content="Search" Style="{StaticResource TextButtonStyle}" Click="JamSearch_Click"/>
+                  </Grid>
+                  <TextBlock x:Name="JamSearchStatusText" Style="{StaticResource SettingsHintStyle}" Margin="0"
+                             Text="Or right-click any song or album in your library and pick Add to Jam."/>
+                  <ItemsControl x:Name="JamSearchResultsList" ItemTemplate="{StaticResource JamSearchTemplate}"/>
+                </StackPanel>
+
+                <StackPanel>
+                  <TextBlock Text="UP NEXT" Style="{StaticResource SectionHeaderStyle}" Margin="0,0,0,4"/>
+                  <TextBlock x:Name="JamQueueEmptyText" Foreground="{StaticResource TextSecondaryBrush}" Visibility="Collapsed"
+                             Text="Nothing queued. Add a song, share the link, or turn on Auto DJ."/>
+                  <ItemsControl x:Name="JamQueueList" ItemTemplate="{StaticResource JamQueueTemplate}"/>
+                </StackPanel>
+
+                <StackPanel x:Name="JamHistorySection" Visibility="Collapsed">
+                  <TextBlock Text="RECENTLY PLAYED" Style="{StaticResource SectionHeaderStyle}" Margin="0,0,0,4"/>
+                  <ItemsControl x:Name="JamHistoryList" ItemTemplate="{StaticResource JamHistoryTemplate}"/>
+                </StackPanel>
+              </StackPanel>
+            </ScrollViewer>
+
             <!-- Downloads sent to SpotiDrome this session, with live progress. -->
             <Grid x:Name="DownloadsPage" Visibility="Collapsed">
               <Grid.RowDefinitions>
@@ -706,6 +879,23 @@
                       <Button Grid.Column="1" x:Name="SpotiDromeSaveButton" Style="{StaticResource TextButtonStyle}" Content="Save &amp; test" Click="SpotiDromeSave_Click"/>
                     </Grid>
                     <TextBlock x:Name="SpotiDromeTestText" Style="{StaticResource SettingsHintStyle}" Margin="0"/>
+                  </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource SettingsCardStyle}">
+                  <StackPanel Spacing="10">
+                    <TextBlock Text="JAMIDROME" Style="{StaticResource SectionHeaderStyle}" Margin="0"/>
+                    <TextBlock Style="{StaticResource SettingsHintStyle}" Margin="0"
+                               Text="Connect your JamiDrome server to get the Jam page: play the shared jam here and send friends a link so they can add songs from their phone. Signs in with your Navidrome account (admins only). Leave it empty to turn it off."/>
+                    <Grid ColumnSpacing="8">
+                      <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                      </Grid.ColumnDefinitions>
+                      <TextBox x:Name="JamiDromeUrlBox" PlaceholderText="https://jam.example.com" AutomationProperties.Name="JamiDrome address"/>
+                      <Button Grid.Column="1" x:Name="JamiDromeSaveButton" Style="{StaticResource TextButtonStyle}" Content="Connect" Click="JamiDromeSave_Click"/>
+                    </Grid>
+                    <TextBlock x:Name="JamiDromeTestText" Style="{StaticResource SettingsHintStyle}" Margin="0"/>
                   </StackPanel>
                 </Border>
 

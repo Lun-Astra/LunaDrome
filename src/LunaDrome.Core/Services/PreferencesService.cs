@@ -20,6 +20,13 @@ public class Preferences
 
     /// <summary>SpotiDrome web address (http://host:8080); empty = "Download via SpotiDrome" hidden.</summary>
     public string SpotiDromeUrl { get; set; } = "";
+
+    /// <summary>JamiDrome web address (https://jam.example.com); empty = no Jam page.</summary>
+    public string JamiDromeUrl { get; set; } = "";
+    /// <summary>JamiDrome host token (encrypted with CredentialProtector), from signing in there.</summary>
+    public string JamiDromeHostToken { get; set; } = "";
+    /// <summary>This install's id as a jam speaker, so the server can tell devices apart.</summary>
+    public string JamDeviceId { get; set; } = "";
 }
 
 /// <summary>Reads/writes preferences.json in the LunaDrome-Uno settings folder.</summary>

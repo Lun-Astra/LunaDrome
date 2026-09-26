@@ -391,6 +391,14 @@ public class NavidromeClient
     public string GetCoverArtUrl(string id, int size = 300) =>
         BuildUrl("getCoverArt.view", ("id", id), ("size", size.ToString()));
 
+    /// <summary>A fresh Subsonic token + salt for this account - lets another service (JamiDrome)
+    /// check the login with Navidrome without the password leaving this device.</summary>
+    public (string Token, string Salt) CreateAuthToken()
+    {
+        var salt = GenerateSalt();
+        return (ComputeToken(_password, salt), salt);
+    }
+
     private string BuildUrl(string endpoint, params (string Key, string Value)[] extraParams)
     {
         var salt = GenerateSalt();
