@@ -128,6 +128,7 @@ public sealed partial class MainPage : Page
 
         Themes.Apply(_prefs.Theme, _prefs.Accent);
         InitSearch();
+        InitJam();
         VolumeSlider.Value = Math.Clamp(_prefs.Volume, 0, 1);
         _player.Volume = VolumeSlider.Value;
         _player.MediaEnded += (_, _) => DispatcherQueue.TryEnqueue(OnMediaEnded);
@@ -270,6 +271,7 @@ public sealed partial class MainPage : Page
         OnlineLyricsCheck.IsChecked = _prefs.OnlineLyrics;
         AutoUpdateCheck.IsChecked = _prefs.CheckForUpdates;
         RefreshSpotiDromeSettings();
+        RefreshJamiDromeSettings();
         UpdateCacheSizeText();
         AccountUserText.Text = $"Signed in as {_client.Username}";
         AccountServerText.Text = _client.ServerUrl;
@@ -516,6 +518,7 @@ public sealed partial class MainPage : Page
         if (await confirm.ShowAsync() != ContentDialogResult.Primary)
             return;
 
+        LeaveJamPlayback(release: true);
         SaveQueueState();
         _signedIn = false;
         SettingsService.Save(new AppSettings { ServerUrl = _client.ServerUrl, Username = _client.Username });
@@ -637,6 +640,8 @@ public sealed partial class MainPage : Page
         SettingsPage.Visibility = Visibility.Collapsed;
         SearchPage.Visibility = Visibility.Collapsed;
         DownloadsPage.Visibility = Visibility.Collapsed;
+        JamPage.Visibility = Visibility.Collapsed;
+        _jam?.SetWatching(false);
     }
 
     private static void ShowPage(UIElement page)
@@ -655,6 +660,7 @@ public sealed partial class MainPage : Page
         NavAlbums.IsChecked = false;
         NavSongs.IsChecked = false;
         NavGenres.IsChecked = false;
+        NavJam.IsChecked = false;
         if (!keepPlaylist)
             PlaylistsList.SelectedItem = null;
         _suppressNavEvents = false;
@@ -706,6 +712,9 @@ public sealed partial class MainPage : Page
                     _genresPageLoaded = true;
                     _ = LoadAllGenresAsync();
                 }
+                break;
+            case "Jam":
+                ShowJamPage();
                 break;
         }
     }
@@ -1017,6 +1026,7 @@ public sealed partial class MainPage : Page
         AddMenuItem(flyout, "Play last", async () => QueueSongsLast(await GetAlbumSongsAsync(album)));
         flyout.Items.Add(new MenuFlyoutSeparator());
         flyout.Items.Add(BuildAddToPlaylistSubmenu(() => GetAlbumSongsAsync(album)));
+        AddJamMenuItem(flyout, () => GetAlbumSongsAsync(album));
         flyout.Items.Add(new MenuFlyoutSeparator());
         AddMenuItem(flyout, "Go to album", async () => await OpenAlbumAsync(album));
         AddMenuItem(flyout, "Go to artist", async () => await NavigateToArtistAsync(album.ArtistId, album.ArtistName));
@@ -1576,6 +1586,7 @@ public sealed partial class MainPage : Page
         AddMenuItem(flyout, "Play last", () => QueueSongsLast(new() { song }));
         flyout.Items.Add(new MenuFlyoutSeparator());
         flyout.Items.Add(BuildAddToPlaylistSubmenu(new List<Song> { song }));
+        AddJamMenuItem(flyout, () => Task.FromResult(new List<Song> { song }));
         AddFavoriteToggle(flyout, song);
         return flyout;
     }
@@ -2213,6 +2224,8 @@ public sealed partial class MainPage : Page
 
     private void PlayEntry(QueueEntry entry, TimeSpan startAt = default)
     {
+        // Playing something from the library while this PC plays the jam = leave the jam.
+        LeaveJamPlayback(release: true);
         if (entry != _loadedEntry)
             _stallRecoveries = 0;
 
@@ -2245,6 +2258,11 @@ public sealed partial class MainPage : Page
     // Seeks once the media has opened - seeking before that is ignored by the player.
     private void ApplyPendingSeek()
     {
+        if (JamOwnsPlayback)
+        {
+            ApplyJamPendingSeek();
+            return;
+        }
         if (_pendingSeek <= TimeSpan.Zero || _loadedEntry == null)
             return;
 
@@ -2258,6 +2276,13 @@ public sealed partial class MainPage : Page
         if (_current != null)
             _current.IsCurrent = false;
         _current = entry;
+        // While this PC plays the jam, the bar shows the jam track - only mark the queue row.
+        if (JamOwnsPlayback)
+        {
+            if (entry != null)
+                entry.IsCurrent = true;
+            return;
+        }
         _mediaControls?.SetCanGoPreviousNext(entry != null, entry != null);
 
         if (entry == null)
@@ -2306,7 +2331,7 @@ public sealed partial class MainPage : Page
         _isPlaying = playing;
         PlayIcon.Visibility = playing ? Visibility.Collapsed : Visibility.Visible;
         PauseIcon.Visibility = playing ? Visibility.Visible : Visibility.Collapsed;
-        _mediaControls?.SetPlaybackState(_current == null ? null : playing);
+        _mediaControls?.SetPlaybackState(_current == null && !JamOwnsPlayback ? null : playing);
     }
 
     // Shuffle reorders the queue itself instead of picking a random entry on every Next: the
@@ -2379,6 +2404,9 @@ public sealed partial class MainPage : Page
     // it goes to the previous queue entry. On the first entry it always restarts.
     private void PlayPrevious()
     {
+        // The jam has no "previous" - its timeline only moves forward.
+        if (JamOwnsPlayback)
+            return;
         if (_current == null)
             return;
 
@@ -2398,6 +2426,11 @@ public sealed partial class MainPage : Page
 
     private void PlayNext()
     {
+        if (JamOwnsPlayback)
+        {
+            JamSkip();
+            return;
+        }
         if (GetNextEntry() is { } next)
             PlayEntry(next);
     }
@@ -2405,6 +2438,11 @@ public sealed partial class MainPage : Page
     // Natural completion only (not Stop/skip) scrobbles - skipping shouldn't inflate play counts.
     private void OnMediaEnded()
     {
+        if (JamOwnsPlayback)
+        {
+            OnJamMediaEnded();
+            return;
+        }
         // The player's MediaEnded and the stall watchdog can both report the same ending.
         if (_loadedEntry == null || _endedEntry == _loadedEntry)
             return;
@@ -2468,6 +2506,12 @@ public sealed partial class MainPage : Page
 
     private void TogglePlayPause()
     {
+        // While this PC plays the jam, pause/resume is for everyone in it.
+        if (JamOwnsPlayback)
+        {
+            JamTogglePause();
+            return;
+        }
         if (_current == null)
             return;
 
@@ -2479,6 +2523,11 @@ public sealed partial class MainPage : Page
 
     private void Play()
     {
+        if (JamOwnsPlayback)
+        {
+            JamResume();
+            return;
+        }
         if (_current == null)
             return;
 
@@ -2497,6 +2546,11 @@ public sealed partial class MainPage : Page
 
     private void Pause()
     {
+        if (JamOwnsPlayback)
+        {
+            JamPause();
+            return;
+        }
         _player.Pause();
         SetPlaying(false);
     }
@@ -2505,6 +2559,11 @@ public sealed partial class MainPage : Page
 
     private void Stop()
     {
+        if (JamOwnsPlayback)
+        {
+            JamPause();
+            return;
+        }
         _player.Pause();
         _player.PlaybackSession.Position = TimeSpan.Zero;
         SetPlaying(false);
@@ -2524,6 +2583,9 @@ public sealed partial class MainPage : Page
             return;
 
         _isUserSeeking = false;
+        // The jam's timeline is shared - no seeking; the slider snaps back on the next tick.
+        if (JamOwnsPlayback)
+            return;
         if (_current != null && _loadedEntry != _current)
         {
             // Restored queue, not loaded yet: remember the spot for when Play is pressed.
@@ -2563,11 +2625,23 @@ public sealed partial class MainPage : Page
                 SaveQueueState();
         }
 
+        UpdateJamProgress();
+        if (JamOwnsPlayback)
+        {
+            ShowJamPlaybackPosition(position, duration);
+            return;
+        }
+
         if (duration <= TimeSpan.Zero || _loadedEntry == null || _loadedEntry != _current)
             return;
 
-        _mediaControls?.SetPosition(position, duration);
         UpdateSideLyrics(position);
+        ShowPlaybackPosition(position, duration);
+    }
+
+    private void ShowPlaybackPosition(TimeSpan position, TimeSpan duration)
+    {
+        _mediaControls?.SetPosition(position, duration);
         if (!_isUserSeeking)
         {
             ProgressSlider.Maximum = duration.TotalSeconds;
@@ -2580,7 +2654,7 @@ public sealed partial class MainPage : Page
     // Starts buffering whatever will play next (follows queue edits, shuffle, repeat).
     private void PrefetchNext()
     {
-        if (_loadedEntry == null || !_isPlaying || !_prefs.PrefetchNextTrack)
+        if (JamOwnsPlayback || _loadedEntry == null || !_isPlaying || !_prefs.PrefetchNextTrack)
             return;
 
         if (GetNextEntry() is { } next && next.Song.Id != _loadedEntry.Song.Id)
@@ -2606,7 +2680,7 @@ public sealed partial class MainPage : Page
 
     private void CheckForStall(TimeSpan position, TimeSpan duration)
     {
-        if (!_isPlaying || _isUserSeeking || _current == null || _loadedEntry != _current || _endedEntry == _loadedEntry)
+        if (JamOwnsPlayback || !_isPlaying || _isUserSeeking || _current == null || _loadedEntry != _current || _endedEntry == _loadedEntry)
         {
             ResetStallWatch();
             return;

@@ -52,7 +52,13 @@ public partial class App : Application
             rootFrame.NavigationFailed += OnNavigationFailed;
 
             // Remember the queue + position (#12) and preferences for next launch.
-            MainWindow.Closed += (_, _) => (rootFrame.Content as MainPage)?.SaveQueueState();
+            MainWindow.Closed += (_, _) =>
+            {
+                var page = rootFrame.Content as MainPage;
+                page?.SaveQueueState();
+                // Playing the jam? Hand it back so it pauses now, not after the server's timeout.
+                page?.ReleaseJamOnExit();
+            };
         }
 
         if (rootFrame.Content == null)
