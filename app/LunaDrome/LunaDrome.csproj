@@ -10,7 +10,7 @@
     <!-- App Identifier -->
     <ApplicationId>com.companyname.lunadrome</ApplicationId>
     <!-- Versions -->
-    <ApplicationDisplayVersion>3.3.0</ApplicationDisplayVersion>
+    <ApplicationDisplayVersion>3.4.0</ApplicationDisplayVersion>
     <ApplicationVersion>2</ApplicationVersion>
     <!-- Package Publisher -->
     <ApplicationPublisher>LunaDrome</ApplicationPublisher>

@@ -25,8 +25,9 @@ public class Preferences
 
     /// <summary>JamiDrome web address (https://jam.example.com); empty = no Jam page.</summary>
     public string JamiDromeUrl { get; set; } = "";
-    /// <summary>JamiDrome host token (encrypted with CredentialProtector), from signing in there.</summary>
-    public string JamiDromeHostToken { get; set; } = "";
+    /// <summary>JamiDrome API key (encrypted with CredentialProtector), made in its Host panel.
+    /// (Replaces the old JamiDromeHostToken from the Navidrome sign-in; JamiDrome dropped those.)</summary>
+    public string JamiDromeApiKey { get; set; } = "";
     /// <summary>This install's id as a jam speaker, so the server can tell devices apart.</summary>
     public string JamDeviceId { get; set; } = "";
 }
