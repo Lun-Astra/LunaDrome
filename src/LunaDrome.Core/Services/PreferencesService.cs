@@ -20,6 +20,8 @@ public class Preferences
 
     /// <summary>SpotiDrome web address (http://host:8080); empty = "Download via SpotiDrome" hidden.</summary>
     public string SpotiDromeUrl { get; set; } = "";
+    /// <summary>SpotiDrome API key (encrypted with CredentialProtector), created in SpotiDrome > Settings > Access.</summary>
+    public string SpotiDromeApiKey { get; set; } = "";
 
     /// <summary>JamiDrome web address (https://jam.example.com); empty = no Jam page.</summary>
     public string JamiDromeUrl { get; set; } = "";

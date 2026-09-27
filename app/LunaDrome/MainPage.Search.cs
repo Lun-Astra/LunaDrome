@@ -26,7 +26,7 @@ public sealed partial class MainPage
 
     private void InitSearch()
     {
-        _spotiDrome.Configure(_prefs.SpotiDromeUrl);
+        _spotiDrome.Configure(_prefs.SpotiDromeUrl, CredentialProtector.Unprotect(_prefs.SpotiDromeApiKey));
         DownloadsList.ItemsSource = _downloads;
         _downloadPollTimer.Tick += async (_, _) => await PollDownloadsAsync();
         _toastTimer.Tick += (_, _) => HideToast();
@@ -646,15 +646,19 @@ public sealed partial class MainPage
     private void RefreshSpotiDromeSettings()
     {
         SpotiDromeUrlBox.Text = _prefs.SpotiDromeUrl;
+        SpotiDromeKeyBox.Password = CredentialProtector.Unprotect(_prefs.SpotiDromeApiKey) ?? "";
         if (string.IsNullOrEmpty(SpotiDromeTestText.Text))
             SpotiDromeTestText.Text = _spotiDrome.IsConfigured ? $"Using {_spotiDrome.BaseUrl}" : "Not connected.";
     }
 
     private async void SpotiDromeSave_Click(object sender, RoutedEventArgs e)
     {
+        var apiKey = SpotiDromeKeyBox.Password.Trim();
         _prefs.SpotiDromeUrl = SpotiDromeUrlBox.Text.Trim();
+        // Stored encrypted, like the JamiDrome host token.
+        _prefs.SpotiDromeApiKey = apiKey.Length > 0 ? CredentialProtector.Protect(apiKey) : "";
         PreferencesService.Save(_prefs);
-        _spotiDrome.Configure(_prefs.SpotiDromeUrl);
+        _spotiDrome.Configure(_prefs.SpotiDromeUrl, apiKey);
 
         if (!_spotiDrome.IsConfigured)
         {
