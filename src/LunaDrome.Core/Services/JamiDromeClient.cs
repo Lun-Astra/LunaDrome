@@ -104,10 +104,10 @@ public class JamiDromeException : Exception
 }
 
 /// <summary>
-/// LunaDrome's link to JamiDrome (Luna's shared "jam" server, next to SpotiDrome): a host
-/// logs in with Navidrome credentials, then controls the jam, shares invite links and can be
-/// the jam's one "speaker". Talks to the /api the JamiDrome web pages use. UI-free, so the
-/// phone app can reuse it.
+/// LunaDrome's link to JamiDrome (Luna's shared "jam" server, next to SpotiDrome): with an
+/// API key (made in the JamiDrome player page's Host panel) it controls the jam, shares invite
+/// links and can be the jam's one "speaker". Talks to the /api the JamiDrome web pages use.
+/// UI-free, so the phone app can reuse it.
 /// </summary>
 public class JamiDromeClient
 {
@@ -118,13 +118,13 @@ public class JamiDromeClient
 
     /// <summary>API root, e.g. https://jam.example.com/api; empty = not configured.</summary>
     public string BaseUrl { get; private set; } = "";
-    /// <summary>The host token from /host/login; empty = not logged in.</summary>
-    public string HostToken { get; private set; } = "";
+    /// <summary>The API key (jdk_…) from JamiDrome's Host panel; empty = not connected.</summary>
+    public string ApiKey { get; private set; } = "";
     /// <summary>Sent as X-Jam-Session (the server keys votes and bans off it).</summary>
     public string SessionId { get; set; } = "";
 
     public bool IsConfigured => BaseUrl.Length > 0;
-    public bool IsLoggedIn => IsConfigured && HostToken.Length > 0;
+    public bool IsLoggedIn => IsConfigured && ApiKey.Length > 0;
 
     /// <summary>The site root (BaseUrl without /api) - where invite links and /api/... paths live.</summary>
     public string SiteRoot => BaseUrl.EndsWith("/api", StringComparison.OrdinalIgnoreCase) ? BaseUrl[..^4] : BaseUrl;
@@ -144,10 +144,10 @@ public class JamiDromeClient
         return url;
     }
 
-    public void Configure(string? url, string? hostToken)
+    public void Configure(string? url, string? apiKey)
     {
         BaseUrl = NormalizeUrl(url ?? "");
-        HostToken = hostToken ?? "";
+        ApiKey = (apiKey ?? "").Trim();
     }
 
     /// <summary>Makes a relative "/api/..." path from the server absolute; absolute URLs pass through.</summary>
@@ -158,33 +158,45 @@ public class JamiDromeClient
         return SiteRoot + (url.StartsWith('/') ? url : "/" + url);
     }
 
-    /// <summary>A URL the media player / an Image can load: absolute, with the host token as ?key=
+    /// <summary>A URL the media player / an Image can load: absolute, with the API key as ?key=
     /// (neither can send headers).</summary>
     public string? AuthorizedUrl(string? url)
     {
         var absolute = ResolveUrl(url);
         if (string.IsNullOrEmpty(absolute) || !absolute.StartsWith(SiteRoot, StringComparison.OrdinalIgnoreCase))
             return absolute;
-        return $"{absolute}{(absolute.Contains('?') ? '&' : '?')}key={Uri.EscapeDataString(HostToken)}";
+        return $"{absolute}{(absolute.Contains('?') ? '&' : '?')}key={Uri.EscapeDataString(ApiKey)}";
     }
 
     public string InviteQrUrl(string link) => AuthorizedUrl($"{BaseUrl}/invite/qr?data={Uri.EscapeDataString(link)}")!;
 
-    /// <summary>Exchanges Navidrome credentials (Subsonic token + salt, the password never leaves
-    /// this device) for a host token. Returns the token; throws JamiDromeException with the reason.</summary>
-    public async Task<string> LoginAsync(string username, string token, string salt, string label)
+    /// <summary>Null when the address and API key work, else what went wrong. GET /session says
+    /// whether the key is accepted; a JamiDrome from before API keys has no /session.</summary>
+    public async Task<string?> TestConnectionAsync()
     {
-        var body = await SendAsync(HttpMethod.Post, "/host/login",
-            new { username, token, salt, label }, authenticated: false);
-        HostToken = body.GetProperty("token").GetString() ?? throw new JamiDromeException("No token returned.");
-        return HostToken;
-    }
-
-    public async Task LogoutAsync()
-    {
-        try { await SendAsync(HttpMethod.Post, "/host/logout", null); }
-        catch { /* the token is dropped locally either way */ }
-        HostToken = "";
+        if (!IsConfigured)
+            return "No address set.";
+        if (ApiKey.Length == 0)
+            return "Paste an API key: create one on the JamiDrome player page under Host controls > API keys.";
+        try
+        {
+            using var doc = JsonDocument.Parse(await GetRawAsync("/session"));
+            return doc.RootElement.TryGetProperty("logged_in", out var loggedIn) && loggedIn.GetBoolean()
+                ? null
+                : "JamiDrome rejected the API key (mistyped or revoked) - create a new one in its Host controls.";
+        }
+        catch (JamiDromeException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+        {
+            return "This JamiDrome has no API keys yet - update it (git pull + docker compose up -d --build).";
+        }
+        catch (JamiDromeException ex)
+        {
+            return ex.Message;
+        }
+        catch (Exception ex)
+        {
+            return $"Couldn't reach JamiDrome: {ex.Message}";
+        }
     }
 
     public async Task<JamState> GetStateAsync(CancellationToken cancellationToken = default)
@@ -279,8 +291,8 @@ public class JamiDromeClient
     private HttpRequestMessage Request(HttpMethod method, string path, bool authenticated = true)
     {
         var request = new HttpRequestMessage(method, BaseUrl + path);
-        if (authenticated && HostToken.Length > 0)
-            request.Headers.Add("X-Jam-Host-Token", HostToken);
+        if (authenticated && ApiKey.Length > 0)
+            request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", ApiKey);
         if (SessionId.Length > 0)
             request.Headers.Add("X-Jam-Session", SessionId);
         return request;

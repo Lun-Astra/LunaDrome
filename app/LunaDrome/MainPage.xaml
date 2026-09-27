@@ -891,13 +891,18 @@
                   <StackPanel Spacing="10">
                     <TextBlock Text="JAMIDROME" Style="{StaticResource SectionHeaderStyle}" Margin="0"/>
                     <TextBlock Style="{StaticResource SettingsHintStyle}" Margin="0"
-                               Text="Connect your JamiDrome server to get the Jam page: play the shared jam here and send friends a link so they can add songs from their phone. Signs in with your Navidrome account (admins only). Leave it empty to turn it off."/>
-                    <Grid ColumnSpacing="8">
+                               Text="Connect your JamiDrome server to get the Jam page: play the shared jam here and send friends a link so they can add songs from their phone. Create an API key on the JamiDrome player page under Host Controls &gt; API keys and paste it below. Leave the address empty to turn it off."/>
+                    <Grid ColumnSpacing="8" RowSpacing="8">
                       <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                       </Grid.ColumnDefinitions>
+                      <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                      </Grid.RowDefinitions>
                       <TextBox x:Name="JamiDromeUrlBox" PlaceholderText="https://jam.example.com" AutomationProperties.Name="JamiDrome address"/>
+                      <PasswordBox Grid.Row="1" x:Name="JamiDromeKeyBox" PlaceholderText="API key (jdk_…)" AutomationProperties.Name="JamiDrome API key"/>
                       <Button Grid.Column="1" x:Name="JamiDromeSaveButton" Style="{StaticResource TextButtonStyle}" Content="Connect" Click="JamiDromeSave_Click"/>
                     </Grid>
                     <TextBlock x:Name="JamiDromeTestText" Style="{StaticResource SettingsHintStyle}" Margin="0"/>

@@ -43,7 +43,7 @@ public sealed partial class MainPage
         _jam.StateChanged += () => DispatcherQueue.TryEnqueue(OnJamStateChanged);
         _jam.SpeakerLost += speaker => DispatcherQueue.TryEnqueue(() => OnJamSpeakerLost(speaker));
         _jam.AuthLost += () => DispatcherQueue.TryEnqueue(OnJamAuthLost);
-        _jam.Client.Configure(_prefs.JamiDromeUrl, CredentialProtector.Unprotect(_prefs.JamiDromeHostToken));
+        _jam.Client.Configure(_prefs.JamiDromeUrl, CredentialProtector.Unprotect(_prefs.JamiDromeApiKey));
         UpdateJamNav();
     }
 
@@ -102,13 +102,14 @@ public sealed partial class MainPage
             LeaveJamPlayback(release: false);
         _jam.Client.Configure(_prefs.JamiDromeUrl, "");
         _jam.SetWatching(false);
-        _prefs.JamiDromeHostToken = "";
+        // Keys don't expire, so a 401 means it was revoked - forget it.
+        _prefs.JamiDromeApiKey = "";
         PreferencesService.Save(_prefs);
         UpdateJamNav();
-        JamiDromeTestText.Text = "JamiDrome signed you out - press Connect to sign in again.";
+        JamiDromeTestText.Text = "JamiDrome rejected the API key (revoked?) - paste a new one and press Connect.";
         if (JamPage.Visibility == Visibility.Visible)
             NavHome.IsChecked = true;
-        ShowToast("JamiDrome signed you out. Reconnect it in Settings.");
+        ShowToast("JamiDrome rejected the API key. Set a new one in Settings.");
     }
 
     // ================= Being the speaker =================
@@ -616,6 +617,7 @@ public sealed partial class MainPage
     private void RefreshJamiDromeSettings()
     {
         JamiDromeUrlBox.Text = _prefs.JamiDromeUrl;
+        JamiDromeKeyBox.Password = CredentialProtector.Unprotect(_prefs.JamiDromeApiKey) ?? "";
         if (string.IsNullOrEmpty(JamiDromeTestText.Text))
             JamiDromeTestText.Text = _jam.Client.IsLoggedIn ? $"Connected to {_jam.Client.SiteRoot}." : "Not connected.";
     }
@@ -623,41 +625,39 @@ public sealed partial class MainPage
     private async void JamiDromeSave_Click(object sender, RoutedEventArgs e)
     {
         var url = JamiDromeUrlBox.Text.Trim();
+        var apiKey = JamiDromeKeyBox.Password.Trim();
         if (JamOwnsPlayback)
             LeaveJamPlayback(release: true);
-        if (_jam.Client.IsLoggedIn)
-            await _jam.Client.LogoutAsync();
 
+        // Nothing counts as connected until the key has been tested below.
         _prefs.JamiDromeUrl = url;
-        _prefs.JamiDromeHostToken = "";
+        _prefs.JamiDromeApiKey = "";
         PreferencesService.Save(_prefs);
-        _jam.Client.Configure(url, "");
+        _jam.Client.Configure(url, apiKey);
         _jam.SetWatching(false);
-        UpdateJamNav();
 
         if (!_jam.Client.IsConfigured)
         {
+            _jam.Client.Configure(url, "");
+            UpdateJamNav();
             JamiDromeTestText.Text = "Turned off - no Jam page.";
             return;
         }
 
         JamiDromeSaveButton.IsEnabled = false;
-        JamiDromeTestText.Text = $"Signing in to {_jam.Client.SiteRoot} as {_client.Username}…";
-        try
+        JamiDromeTestText.Text = $"Testing {_jam.Client.SiteRoot}…";
+        var error = await _jam.Client.TestConnectionAsync();
+        if (error == null)
         {
-            var (token, salt) = _client.CreateAuthToken();
-            var hostToken = await _jam.Client.LoginAsync(_client.Username, token, salt, _jam.DeviceName);
-            _prefs.JamiDromeHostToken = CredentialProtector.Protect(hostToken);
+            // Stored encrypted, like the SpotiDrome key.
+            _prefs.JamiDromeApiKey = CredentialProtector.Protect(apiKey);
             PreferencesService.Save(_prefs);
             JamiDromeTestText.Text = $"Connected to {_jam.Client.SiteRoot}. The Jam page is in the sidebar.";
         }
-        catch (JamiDromeException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        else
         {
-            JamiDromeTestText.Text = "Connected, but this JamiDrome has no host login yet - update it (git pull + docker compose up -d --build).";
-        }
-        catch (Exception ex)
-        {
-            JamiDromeTestText.Text = $"Couldn't sign in: {ex.Message}";
+            _jam.Client.Configure(url, "");
+            JamiDromeTestText.Text = error;
         }
         JamiDromeSaveButton.IsEnabled = true;
         UpdateJamNav();

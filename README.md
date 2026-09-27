@@ -18,6 +18,23 @@ Windows-only app was retired in favor of this one; it's still in git history.)
 - Playlists (create, delete, add / remove tracks), favorites, scrobbling
 - Queue, synced / plain lyrics, and an audio visualizer (WASAPI process loopback on Windows,
   PulseAudio / PipeWire monitor on Linux) in a full-screen player
+- Search, with **"Download via SpotiDrome"**: YouTube Music songs and whole albums go straight
+  into the Navidrome library through [SpotiDrome](https://github.com/Lun-Astra/SpotiDrome)
+- **Jam** page through [JamiDrome](https://github.com/Lun-Astra/Jamidrome): be the shared jam's
+  speaker, share invite links (QR), control playback, Auto DJ and the queue
+
+## Connecting SpotiDrome and JamiDrome
+
+Both servers require an **API key** (Settings in LunaDrome has a field for each, stored
+encrypted like the password):
+
+- **SpotiDrome:** in its web UI, Settings → Access → API keys, scope **LunaDrome** (search,
+  downloads and their progress only). Address: the web UI, e.g. `https://muziekapp.example.com`.
+- **JamiDrome:** on its player page, Host Controls → API keys. Address: the player page, e.g.
+  `https://jam.example.com`.
+
+Paste the key under the address and press **Save & test** / **Connect**. A key is shown only once
+when it's created; if it's revoked, LunaDrome says so and asks for a new one.
 
 ## Structure
 
@@ -47,7 +64,7 @@ Grab the latest build from the [Releases](https://github.com/Lun-Astra/LunaDrome
   (or `sudo ./install.sh --system`); needs libvlc, and `parec` for the visualizer.
 
 Releases are built by GitHub Actions (`.github/workflows/release.yml`) when a version tag is
-pushed: `git tag v2.1.0 && git push origin v2.1.0`. Installer sources are in `installer/`.
+pushed: `git tag v3.4.0 && git push origin v3.4.0`. Installer sources are in `installer/`.
 
 ## Running (development)
 
