@@ -1,5 +1,7 @@
 using System.ComponentModel;
+using System.Net;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -89,6 +91,9 @@ public class SpotiDromeJob
 /// LunaDrome's optional link to a SpotiDrome instance (Luna's downloader for his Navidrome):
 /// search YouTube Music through it and have it download songs/albums straight into the
 /// Navidrome library. Talks to the API the SpotiDrome web UI uses (http://host:8080/api).
+/// Since SpotiDrome cd9e111 every call needs an API key (SpotiDrome > Settings > Access, scope
+/// "LunaDrome"), sent as a Bearer token; a SpotiDrome from before that has no /session and
+/// simply ignores the header.
 /// </summary>
 public class SpotiDromeClient
 {
@@ -118,20 +123,67 @@ public class SpotiDromeClient
         return url;
     }
 
-    public void Configure(string? url) => BaseUrl = NormalizeUrl(url ?? "");
+    public bool HasApiKey => _http.DefaultRequestHeaders.Authorization is not null;
 
-    /// <summary>Null when reachable, else what went wrong.</summary>
+    public void Configure(string? url, string? apiKey = null)
+    {
+        BaseUrl = NormalizeUrl(url ?? "");
+        var key = (apiKey ?? "").Trim();
+        _http.DefaultRequestHeaders.Authorization = key.Length > 0 ? new AuthenticationHeaderValue("Bearer", key) : null;
+    }
+
+    private const string NeedKeyMessage =
+        "SpotiDrome needs an API key: create one in SpotiDrome > Settings > Access (scope \"LunaDrome\") and paste it here.";
+    private const string RejectedKeyMessage =
+        "SpotiDrome rejected the API key (mistyped or revoked) - create a new one in SpotiDrome > Settings > Access.";
+    private const string ScopeMessage =
+        "This SpotiDrome API key isn't allowed to do that - use a key with the \"LunaDrome\" scope.";
+
+    /// <summary>A readable message for SpotiDrome's auth refusals (401 = no/bad key, 403 = key scope).</summary>
+    private string? AuthProblem(HttpStatusCode status) => status switch
+    {
+        HttpStatusCode.Unauthorized => HasApiKey ? RejectedKeyMessage : NeedKeyMessage,
+        HttpStatusCode.Forbidden => ScopeMessage,
+        _ => null,
+    };
+
+    private async Task<string> GetStringCheckedAsync(string url, CancellationToken cancellationToken = default)
+    {
+        using var response = await _http.GetAsync(url, cancellationToken);
+        if (AuthProblem(response.StatusCode) is { } problem)
+            throw new HttpRequestException(problem, null, response.StatusCode);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadAsStringAsync(cancellationToken);
+    }
+
+    /// <summary>Null when reachable (and the key works), else what went wrong.</summary>
     public async Task<string?> TestConnectionAsync()
     {
         if (!IsConfigured)
             return "No address set.";
         try
         {
+            // GET /session says whether the key is accepted. A SpotiDrome from before API keys
+            // has no /session (404) and needs no key - fall back to the old check there.
+            using var session = await _http.GetAsync($"{BaseUrl}/session");
+            if (session.StatusCode != HttpStatusCode.NotFound)
+            {
+                if (!session.IsSuccessStatusCode)
+                    return $"SpotiDrome answered {(int)session.StatusCode} {session.ReasonPhrase}.";
+                using var doc = JsonDocument.Parse(await session.Content.ReadAsStringAsync());
+                if (!(doc.RootElement.TryGetProperty("logged_in", out var loggedIn) && loggedIn.GetBoolean()))
+                    return HasApiKey ? RejectedKeyMessage : NeedKeyMessage;
+            }
+
             using var response = await _http.GetAsync($"{BaseUrl}/ytdlp/version");
+            if (AuthProblem(response.StatusCode) is { } problem)
+                return problem;
             if (!response.IsSuccessStatusCode)
                 return $"SpotiDrome answered {(int)response.StatusCode} {response.ReasonPhrase}.";
             // The search API came with the LunaDrome integration; an older SpotiDrome lacks it.
             using var search = await _http.GetAsync($"{BaseUrl}/search?q=");
+            if (AuthProblem(search.StatusCode) is { } searchProblem)
+                return searchProblem;
             return search.IsSuccessStatusCode
                 ? null
                 : "Connected, but this SpotiDrome has no search API yet - update it (git pull + docker compose up -d --build).";
@@ -144,13 +196,13 @@ public class SpotiDromeClient
 
     public async Task<SpotiDromeSearchResult> SearchAsync(string query, CancellationToken cancellationToken = default)
     {
-        var json = await _http.GetStringAsync($"{BaseUrl}/search?q={Uri.EscapeDataString(query)}&limit=12", cancellationToken);
+        var json = await GetStringCheckedAsync($"{BaseUrl}/search?q={Uri.EscapeDataString(query)}&limit=12", cancellationToken);
         return JsonSerializer.Deserialize<SpotiDromeSearchResult>(json, JsonOptions) ?? new();
     }
 
     public async Task<SpotiDromeAlbum> GetAlbumAsync(string browseId)
     {
-        var json = await _http.GetStringAsync($"{BaseUrl}/search/album/{Uri.EscapeDataString(browseId)}");
+        var json = await GetStringCheckedAsync($"{BaseUrl}/search/album/{Uri.EscapeDataString(browseId)}");
         return JsonSerializer.Deserialize<SpotiDromeAlbum>(json, JsonOptions) ?? new();
     }
 
@@ -174,6 +226,8 @@ public class SpotiDromeClient
             ["job_label"] = $"[LunaDrome] {label}",
         });
         var body = await response.Content.ReadAsStringAsync();
+        if (AuthProblem(response.StatusCode) is { } problem)
+            throw new HttpRequestException(problem, null, response.StatusCode);
         if (!response.IsSuccessStatusCode)
             throw new HttpRequestException($"SpotiDrome refused the download ({(int)response.StatusCode}): {body}");
         using var doc = JsonDocument.Parse(body);
@@ -185,6 +239,10 @@ public class SpotiDromeClient
         // Polled every few seconds - a stalled server should count as "not responding" quickly.
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         using var response = await _http.GetAsync($"{BaseUrl}/jobs/{Uri.EscapeDataString(jobId)}", cts.Token);
+        // A key problem isn't "SpotiDrome lost the job" - the job is still running there; throw so
+        // polling keeps trying (and picks up again once the key is fixed in Settings).
+        if (AuthProblem(response.StatusCode) is { } problem)
+            throw new HttpRequestException(problem, null, response.StatusCode);
         if (!response.IsSuccessStatusCode)
             return null;
         return JsonSerializer.Deserialize<SpotiDromeJob>(await response.Content.ReadAsStringAsync(), JsonOptions);

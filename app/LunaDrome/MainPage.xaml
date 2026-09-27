@@ -869,13 +869,18 @@
                   <StackPanel Spacing="10">
                     <TextBlock Text="SPOTIDROME" Style="{StaticResource SectionHeaderStyle}" Margin="0"/>
                     <TextBlock Style="{StaticResource SettingsHintStyle}" Margin="0"
-                               Text="Connect your SpotiDrome downloader to get &quot;Download via SpotiDrome&quot; in search: songs and albums from YouTube Music go straight into your library. Leave it empty to turn it off."/>
-                    <Grid ColumnSpacing="8">
+                               Text="Connect your SpotiDrome downloader to get &quot;Download via SpotiDrome&quot; in search: songs and albums from YouTube Music go straight into your library. Create an API key in SpotiDrome under Settings &gt; Access (scope &quot;LunaDrome&quot;) and paste it below. Leave the address empty to turn it off."/>
+                    <Grid ColumnSpacing="8" RowSpacing="8">
                       <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                       </Grid.ColumnDefinitions>
-                      <TextBox x:Name="SpotiDromeUrlBox" PlaceholderText="http://192.168.1.20:8080" AutomationProperties.Name="SpotiDrome address"/>
+                      <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                      </Grid.RowDefinitions>
+                      <TextBox x:Name="SpotiDromeUrlBox" PlaceholderText="https://muziekapp.example.com" AutomationProperties.Name="SpotiDrome address"/>
+                      <PasswordBox Grid.Row="1" x:Name="SpotiDromeKeyBox" PlaceholderText="API key (sdk_…)" AutomationProperties.Name="SpotiDrome API key"/>
                       <Button Grid.Column="1" x:Name="SpotiDromeSaveButton" Style="{StaticResource TextButtonStyle}" Content="Save &amp; test" Click="SpotiDromeSave_Click"/>
                     </Grid>
                     <TextBlock x:Name="SpotiDromeTestText" Style="{StaticResource SettingsHintStyle}" Margin="0"/>
