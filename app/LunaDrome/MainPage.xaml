@@ -65,7 +65,7 @@
           <TextBlock Text="{Binding ArtistName}" FontSize="13" Foreground="{StaticResource TextSecondaryBrush}"
                      TextTrimming="CharacterEllipsis" MaxWidth="{Binding CardWidth, Source={StaticResource HomeLayout}}"/>
         </Border>
-        <TextBlock Text="{Binding Year}" FontSize="13" Margin="0,3,0,0" Foreground="{StaticResource TextSecondaryBrush}"/>
+        <TextBlock Text="{Binding Year}" FontSize="13" Margin="0,3,0,0" Foreground="{StaticResource TextSecondaryBrush}" Height="18"/>
       </StackPanel>
     </DataTemplate>
 
@@ -378,12 +378,12 @@
           </Border>
         </Grid>
         <Border Background="Transparent" Margin="0,10,0,0" HorizontalAlignment="Left" controls:Motion.ClickableText="True" Tag="{Binding}" Tapped="CardAlbumText_Tapped">
-          <TextBlock Text="{Binding Name}" FontSize="14" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" MaxWidth="172"/>
+          <TextBlock Text="{Binding Name}" FontSize="14" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" MaxWidth="172" Height="20"/>
         </Border>
         <Border Background="Transparent" Margin="0,3,0,0" HorizontalAlignment="Left" controls:Motion.ClickableText="True" Tag="{Binding}" Tapped="CardArtistText_Tapped">
-          <TextBlock Text="{Binding ArtistName}" FontSize="13" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" MaxWidth="172"/>
+          <TextBlock Text="{Binding ArtistName}" FontSize="13" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" MaxWidth="172" Height="18"/>
         </Border>
-        <TextBlock Text="{Binding Year}" FontSize="13" Margin="0,3,0,0" Foreground="{StaticResource TextSecondaryBrush}"/>
+        <TextBlock Text="{Binding Year}" FontSize="13" Margin="0,3,0,0" Foreground="{StaticResource TextSecondaryBrush}" Height="18"/>
       </StackPanel>
     </DataTemplate>
 
@@ -1168,8 +1168,8 @@
                  "ARTIST" eyebrow, big name, album/track counts, Play / Next / Last + favorite,
                  then the "Album" grid. -->
             <ScrollViewer x:Name="ArtistDetailPage" controls:WheelScroll.Enabled="True" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
-              <StackPanel Margin="0,0,16,16">
-                <Grid Height="290" Margin="0,0,0,28">
+              <StackPanel x:Name="ArtistDetailContent" Margin="0,0,16,16">
+                <Grid x:Name="ArtistHeaderGrid" Height="290" Margin="0,0,0,28">
                   <Border CornerRadius="14" Background="{StaticResource RaisedBrush}"/>
                   <Border CornerRadius="14">
                     <Image x:Name="ArtistHeaderBackdrop" Stretch="UniformToFill" IsHitTestVisible="False"/>
@@ -1183,22 +1183,22 @@
                     </Border.Background>
                   </Border>
 
-                  <Grid Margin="32,0,28,32" VerticalAlignment="Bottom">
+                  <Grid x:Name="ArtistHeaderInner" Margin="32,0,28,32" VerticalAlignment="Bottom">
                     <Grid.ColumnDefinitions>
                       <ColumnDefinition Width="Auto"/>
                       <ColumnDefinition Width="*"/>
                       <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-                    <Grid Width="200" Height="200">
+                    <Grid x:Name="ArtistHeaderArtBox" Width="200" Height="200">
                       <Border CornerRadius="6" Background="{StaticResource RaisedBrush}"/>
                       <Border x:Name="ArtistHeaderArt" CornerRadius="6"/>
                     </Grid>
-                    <StackPanel Grid.Column="1" VerticalAlignment="Bottom" Margin="20,0,0,0">
+                    <StackPanel x:Name="ArtistHeaderTextPanel" Grid.Column="1" VerticalAlignment="Bottom" Margin="20,0,0,0">
                       <TextBlock Text="ARTIST" FontSize="13" FontWeight="Bold" Foreground="White"/>
                       <TextBlock x:Name="ArtistHeaderNameText" FontSize="44" FontWeight="Bold" Foreground="White"
                                  TextTrimming="CharacterEllipsis" Margin="0,2,0,0"/>
-                      <TextBlock x:Name="ArtistHeaderStatsText" FontSize="14" FontWeight="SemiBold" Foreground="#DDFFFFFF" Margin="0,4,0,0"/>
-                      <StackPanel Orientation="Horizontal" Margin="0,16,0,0" Spacing="12">
+                      <TextBlock x:Name="ArtistHeaderStatsText" FontSize="14" FontWeight="SemiBold" Foreground="#DDFFFFFF" Margin="0,4,0,0" TextTrimming="CharacterEllipsis"/>
+                      <StackPanel x:Name="ArtistActionButtons" Orientation="Horizontal" Margin="0,16,0,0" Spacing="12">
                         <Button Style="{StaticResource PillButtonStyle}" Click="ArtistHeaderPlayButton_Click">
                           <StackPanel Orientation="Horizontal" Spacing="8">
                             <Polygon Points="0,0 10,6.5 0,13" Fill="{StaticResource OnAccentBrush}" VerticalAlignment="Center"/>
@@ -1250,7 +1250,7 @@
                 </Grid>
                 <muxc:ItemsRepeater x:Name="ArtistAlbumsList" ItemTemplate="{StaticResource FeishinAlbumCardTemplate}">
                   <muxc:ItemsRepeater.Layout>
-                    <muxc:UniformGridLayout MinItemWidth="184" MinItemHeight="252" ItemsStretch="None"
+                    <muxc:UniformGridLayout x:Name="ArtistAlbumsLayout" MinItemWidth="184" MinItemHeight="268" ItemsStretch="None"
                                             MinColumnSpacing="0" MinRowSpacing="0"/>
                   </muxc:ItemsRepeater.Layout>
                 </muxc:ItemsRepeater>
@@ -1261,7 +1261,7 @@
                  "ALBUM" eyebrow, big title, meta line, artist link, Play / Next / Last, then a
                  searchable # / TITLE / time / favorite track table. -->
             <ScrollViewer x:Name="AlbumPage" controls:WheelScroll.Enabled="True" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
-              <StackPanel Margin="0,0,16,16">
+              <StackPanel x:Name="AlbumPageContent" Margin="0,0,16,16">
                 <Grid x:Name="AlbumHeaderGrid" Height="290" Margin="0,0,0,24">
                   <Border x:Name="AlbumHeaderTint" CornerRadius="14" Background="{StaticResource RaisedBrush}"/>
                   <Border CornerRadius="14">
