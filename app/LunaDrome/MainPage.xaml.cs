@@ -105,6 +105,7 @@ public sealed partial class MainPage : Page
         _loopback = new LoopbackCapture(_spectrum);
         _prefetcher = new TrackPrefetcher(_client);
         this.InitializeComponent();
+        InitCompactLayout();
         Loaded += (_, _) => EnsureMediaControls();
         Unloaded += (_, _) =>
         {
@@ -668,6 +669,7 @@ public sealed partial class MainPage : Page
 
     private void Nav_Checked(object sender, RoutedEventArgs e)
     {
+        CloseCompactSidebar();
         if (!_initialized || _suppressNavEvents || sender is not RadioButton { Tag: string tag })
             return;
 
