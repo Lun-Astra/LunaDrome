@@ -1,0 +1,65 @@
+# Builds the signed Android APK. On a version tag (v3.5.0) it is attached to that
+# GitHub Release as LunaDrome-<version>-android.apk; run it by hand from the Actions
+# tab (workflow_dispatch) to just build it (artifact only).
+# Signed with the release key from the ANDROID_KEYSTORE_B64 / ANDROID_KEYSTORE_PASS
+# secrets - always the same key, so a newer APK installs over an older one.
+name: Android
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Android workload
+        run: dotnet workload install android
+      - name: Version from tag
+        id: v
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          [[ "$GITHUB_REF_TYPE" == "tag" ]] || v="0.0.1"
+          IFS=. read -r a b c <<< "$v"
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "code=$(( a * 10000 + b * 100 + ${c:-0} ))" >> "$GITHUB_OUTPUT"
+      - name: Signing key
+        run: echo "${{ secrets.ANDROID_KEYSTORE_B64 }}" | base64 -d > "$RUNNER_TEMP/lunadrome.p12"
+      - name: Build signed APK
+        env:
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASS }}
+        run: >
+          dotnet publish app/LunaDrome/LunaDrome.csproj -f net10.0-android -c Release -o publish/android
+          -p:AndroidPackageFormat=apk
+          -p:ApplicationDisplayVersion=${{ steps.v.outputs.version }}
+          -p:ApplicationVersion=${{ steps.v.outputs.code }}
+          -p:AndroidKeyStore=true
+          -p:AndroidSigningKeyStore="$RUNNER_TEMP/lunadrome.p12"
+          -p:AndroidSigningKeyAlias=lunadrome
+          -p:AndroidSigningStorePass=env:KS_PASS
+          -p:AndroidSigningKeyPass=env:KS_PASS
+      - name: Name the APK
+        run: |
+          mkdir -p dist
+          cp "$(ls publish/android/*-Signed.apk | head -1)" "dist/LunaDrome-${{ steps.v.outputs.version }}-android.apk"
+          ls -la dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: dist/*.apk
+      - if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.apk
