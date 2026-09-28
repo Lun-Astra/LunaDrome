@@ -39,9 +39,11 @@ public sealed partial class MainPage
         MainContentArea.Margin = compact ? new Thickness(8, 8, 8, 6) : new Thickness(20, 20, 20, 12);
         SidebarColumn.Width = new GridLength(compact ? 0 : 170);
         SidebarGapColumn.Width = new GridLength(compact ? 0 : 20);
-        CompactMenuButton.Visibility = compact ? Visibility.Visible : Visibility.Collapsed;
+        // #25: phones navigate with the bottom bar; the ☰/✕ button only shows as ✕ while the
+        // side menu ("More") is open.
+        CompactNavBar.Visibility = compact ? Visibility.Visible : Visibility.Collapsed;
         Canvas.SetZIndex(CompactMenuButton, 20);   // stays above the open menu, so ✕ can close it
-        PageArea.Margin = compact ? new Thickness(0, 42, 0, 0) : new Thickness(0);
+        PageArea.Margin = new Thickness(0);
 
         // Sidebar: its own column on desktop, an overlay panel over the page in compact mode.
         Grid.SetColumnSpan(SidebarPane, compact ? 4 : 1);
@@ -109,7 +111,61 @@ public sealed partial class MainPage
     private void UpdateCompactSidebar()
     {
         SidebarPane.Visibility = !IsCompact || _compactSidebarOpen ? Visibility.Visible : Visibility.Collapsed;
-        CompactMenuButton.Content = _compactSidebarOpen ? "✕" : "☰";
+        CompactMenuButton.Visibility = IsCompact && _compactSidebarOpen ? Visibility.Visible : Visibility.Collapsed;
+        CompactMenuButton.Content = "✕";
+        UpdateCompactNavHighlight(_compactSidebarOpen ? "More" : _compactNavTag);
+    }
+
+    // ----- Bottom navigation bar (#25) -----
+    private string _compactNavTag = "Home";
+
+    private void CompactNav_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: string tag })
+            return;
+        switch (tag)
+        {
+            case "More":
+                _compactSidebarOpen = !_compactSidebarOpen;
+                UpdateCompactSidebar();
+                break;
+            case "Search":
+                _compactSidebarOpen = true;
+                UpdateCompactSidebar();
+                UpdateCompactNavHighlight("Search");
+                GlobalSearchBox.Focus(FocusState.Programmatic);
+                break;
+            default:
+                var nav = tag switch { "Artists" => NavArtists, "Albums" => NavAlbums, "Songs" => NavSongs, _ => NavHome };
+                if (nav.IsChecked == true)
+                    CloseCompactSidebar();
+                else
+                    nav.IsChecked = true;   // Nav_Checked shows the page (and closes the menu)
+                break;
+        }
+    }
+
+    /// <summary>Called from Nav_Checked, so the bar also follows navigation from elsewhere.</summary>
+    private void OnCompactNavigated(string tag)
+    {
+        _compactNavTag = tag is "Home" or "Artists" or "Albums" or "Songs" ? tag : "More";
+        UpdateCompactNavHighlight(_compactNavTag);
+    }
+
+    private void UpdateCompactNavHighlight(string activeTag)
+    {
+        var accent = (Brush)Application.Current.Resources["AccentBrush"];
+        var normal = (Brush)Application.Current.Resources["TextSecondaryBrush"];
+        foreach (var button in CompactNavGrid.Children.OfType<Button>())
+        {
+            var brush = (string)button.Tag == activeTag ? accent : normal;
+            if (button.Content is StackPanel panel)
+                foreach (var child in panel.Children)
+                {
+                    if (child is Microsoft.UI.Xaml.Shapes.Path path) path.Stroke = brush;
+                    if (child is TextBlock text) text.Foreground = brush;
+                }
+        }
     }
 
     private void CompactMenuButton_Click(object sender, RoutedEventArgs e)
