@@ -56,6 +56,10 @@ public sealed partial class MainPage
         SidebarPane.Padding = compact ? new Thickness(16, 52, 16, 8) : new Thickness(0);
         NavHome.Visibility = NavArtists.Visibility = NavAlbums.Visibility = NavSongs.Visibility =
             compact ? Visibility.Collapsed : Visibility.Visible;
+        // Search is its own tab on a phone, with the box on the Search page.
+        SidebarSearchGrid.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        PageSearchGrid.Visibility = compact ? Visibility.Visible : Visibility.Collapsed;
+        SearchPageContent.Margin = compact ? new Thickness(0, 0, 0, 16) : new Thickness(0, 0, 16, 24);
         SidebarPane.Background = compact ? (Brush)Application.Current.Resources["PanelBrush"] : null;
         Canvas.SetZIndex(SidebarPane, compact ? 10 : 0);
         _compactSidebarOpen = false;
@@ -83,18 +87,22 @@ public sealed partial class MainPage
         if (!compact)
             ((Controls.TrackColumnLayout)Resources["TrackColumns"]).SetCompact(false, 0);
         BuildSettingsChoices();   // theme chips wrap differently on a phone
-        AlbumActionButtons.Spacing = compact ? 6 : 12;
-        // Play keeps its label; Next / Last show just their icon on a phone (they don't fit otherwise).
-        foreach (var (button, index) in AlbumActionButtons.Children.OfType<Button>().Select((b, i) => (b, i)))
-        {
-            if (compact)
-                button.Padding = new Thickness(11, 6, 11, 6);
-            else
-                button.ClearValue(Control.PaddingProperty);   // back to the pill style's padding
-            if (index > 0 && button.Content is StackPanel { } content)
-                foreach (var label in content.Children.OfType<TextBlock>())
-                    label.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
-        }
+        CompactActionButtons(AlbumActionButtons, compact);
+
+        // Artist page: the same header treatment, and the smaller search/album-grid cards so two
+        // fit side by side (the 172px ones left a single column, cut off on the right).
+        ArtistHeaderGrid.Height = compact ? 190 : 290;
+        ArtistHeaderInner.Margin = compact ? new Thickness(14, 0, 10, 14) : new Thickness(32, 0, 28, 32);
+        ArtistHeaderArtBox.Width = ArtistHeaderArtBox.Height = compact ? 88 : 200;
+        ArtistHeaderStatsText.FontSize = compact ? 12 : 14;
+        // The 16px right gutter is for the desktop scrollbar; phones have 8px page margins already.
+        ArtistDetailContent.Margin = AlbumPageContent.Margin = compact ? new Thickness(0, 0, 0, 12) : new Thickness(0, 0, 16, 16);
+        ArtistHeaderTextPanel.Margin = compact ? new Thickness(12, 0, 0, 0) : new Thickness(20, 0, 0, 0);
+        ArtistHeaderNameText.FontSize = compact ? 24 : 44;
+        CompactActionButtons(ArtistActionButtons, compact);
+        ArtistAlbumsList.ItemTemplate = (DataTemplate)Resources[compact ? "LargeAlbumCardTemplate" : "FeishinAlbumCardTemplate"];
+        ArtistAlbumsLayout.MinItemWidth = compact ? 162 : 184;
+        ArtistAlbumsLayout.MinItemHeight = compact ? 224 : 268;
 
         // Full-screen player: cover + title as a row on top, Queue / Lyrics / Visualizer below it
         // (side by side they need ~900px).
@@ -147,6 +155,22 @@ public sealed partial class MainPage
         YtSongsList.ItemTemplate = YtVideosList.ItemTemplate = ytTemplate;
     }
 
+    // Play keeps its label; Next / Last show just their icon on a phone (they don't fit otherwise).
+    private static void CompactActionButtons(StackPanel buttons, bool compact)
+    {
+        buttons.Spacing = compact ? 6 : 12;
+        foreach (var (button, index) in buttons.Children.OfType<Button>().Select((b, i) => (b, i)))
+        {
+            if (compact)
+                button.Padding = new Thickness(11, 6, 11, 6);
+            else
+                button.ClearValue(Control.PaddingProperty);   // back to the pill style's padding
+            if (index > 0 && button.Content is StackPanel { } content)
+                foreach (var label in content.Children.OfType<TextBlock>())
+                    label.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        }
+    }
+
     /// <summary>Track lists: the title column fills what the time + favorite columns leave.</summary>
     private void UpdateCompactWidths(double width)
     {
@@ -183,10 +207,9 @@ public sealed partial class MainPage
                 UpdateCompactSidebar();
                 break;
             case "Search":
-                _compactSidebarOpen = true;
-                UpdateCompactSidebar();
-                UpdateCompactNavHighlight("Search");
-                GlobalSearchBox.Focus(FocusState.Programmatic);
+                // Its own page (it used to open the More menu, i.e. the same page as More).
+                CloseCompactSidebar();
+                OpenSearchPage();
                 break;
             default:
                 var nav = tag switch { "Artists" => NavArtists, "Albums" => NavAlbums, "Songs" => NavSongs, _ => NavHome };

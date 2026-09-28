@@ -535,3 +535,7 @@ Luna is hopping off for the night. Current state of the app, for picking this ba
 
 ### v3.6.2: album card years — 2026-09-28
 - Album cards (search, Albums, genres) have fixed line heights, and the grids use MinItemHeight 224 (artist search 150). UniformGridLayout sizes every row from one card, so a card without a year, or Android's taller font, cut off the year line on the others.
+
+### v3.6.3: artist page + Search tab on phones — 2026-09-28
+- The artist page on phones gets the album header's compact treatment (88px photo, 24px name, icon-only Next/Last) and the smaller album cards, two per row. The artist-page and Home cards have fixed line heights (the year was also clipped on desktop).
+- The phone Search tab is its own page with its own search box (`PageSearchBox`, focused, keeps the last results) instead of opening the More menu; the More menu has no search box on phones.
