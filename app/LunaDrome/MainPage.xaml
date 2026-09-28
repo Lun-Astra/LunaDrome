@@ -969,13 +969,13 @@
                   <Image x:Name="HeroBackdrop" Stretch="Fill" Margin="-50" IsHitTestVisible="False"/>
                   <Border CornerRadius="14" Background="#B3141517"/>
 
-                  <Grid Margin="58,28">
+                  <Grid x:Name="HeroInnerGrid" Margin="58,28">
                     <Grid.ColumnDefinitions>
                       <ColumnDefinition Width="Auto"/>
                       <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
 
-                    <Grid Width="176" Height="176" VerticalAlignment="Center" Tapped="HeroPlayOverlay_Tapped">
+                    <Grid x:Name="HeroArtBox" Width="176" Height="176" VerticalAlignment="Center" Tapped="HeroPlayOverlay_Tapped">
                       <Border CornerRadius="10" Background="{StaticResource RaisedBrush}"/>
                       <Border x:Name="HeroArt" CornerRadius="10"/>
                       <Border CornerRadius="10" Background="#66000000" controls:Motion.HoverFade="True">
@@ -987,7 +987,7 @@
                       </Border>
                     </Grid>
 
-                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="28,0,0,0">
+                    <StackPanel x:Name="HeroTextPanel" Grid.Column="1" VerticalAlignment="Center" Margin="28,0,0,0">
                       <Border Background="Transparent" HorizontalAlignment="Left" controls:Motion.ClickableText="True" Tapped="HeroTitleText_Tapped" ToolTipService.ToolTip="Go to album">
                         <TextBlock x:Name="HeroTitleText" FontSize="30" FontWeight="Bold" Foreground="White" TextTrimming="CharacterEllipsis"/>
                       </Border>
@@ -1229,7 +1229,7 @@
                  searchable # / TITLE / time / favorite track table. -->
             <ScrollViewer x:Name="AlbumPage" controls:WheelScroll.Enabled="True" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
               <StackPanel Margin="0,0,16,16">
-                <Grid Height="290" Margin="0,0,0,24">
+                <Grid x:Name="AlbumHeaderGrid" Height="290" Margin="0,0,0,24">
                   <Border x:Name="AlbumHeaderTint" CornerRadius="14" Background="{StaticResource RaisedBrush}"/>
                   <Border CornerRadius="14">
                     <Border.Background>
@@ -1240,16 +1240,16 @@
                     </Border.Background>
                   </Border>
 
-                  <Grid Margin="32,0,28,32" VerticalAlignment="Bottom">
+                  <Grid x:Name="AlbumHeaderInner" Margin="32,0,28,32" VerticalAlignment="Bottom">
                     <Grid.ColumnDefinitions>
                       <ColumnDefinition Width="Auto"/>
                       <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
-                    <Grid Width="200" Height="200">
+                    <Grid x:Name="AlbumHeaderArtBox" Width="200" Height="200">
                       <Border CornerRadius="6" Background="{StaticResource RaisedBrush}"/>
                       <Border x:Name="AlbumHeaderArt" CornerRadius="6"/>
                     </Grid>
-                    <StackPanel Grid.Column="1" VerticalAlignment="Bottom" Margin="20,0,0,0">
+                    <StackPanel x:Name="AlbumHeaderTextPanel" Grid.Column="1" VerticalAlignment="Bottom" Margin="20,0,0,0">
                       <TextBlock Text="ALBUM" FontSize="13" FontWeight="Bold" Foreground="White"/>
                       <TextBlock x:Name="AlbumHeaderTitleText" FontSize="44" FontWeight="Bold" Foreground="White"
                                  TextTrimming="CharacterEllipsis" Margin="0,2,0,0"/>
@@ -1257,7 +1257,7 @@
                       <Border Background="Transparent" Margin="0,6,0,0" HorizontalAlignment="Left" controls:Motion.ClickableText="True" Tapped="AlbumHeaderArtistText_Tapped">
                         <TextBlock x:Name="AlbumHeaderArtistText" FontSize="14" FontWeight="SemiBold" Foreground="#DDFFFFFF"/>
                       </Border>
-                      <StackPanel Orientation="Horizontal" Margin="0,16,0,0" Spacing="12">
+                      <StackPanel x:Name="AlbumActionButtons" Orientation="Horizontal" Margin="0,16,0,0" Spacing="12">
                         <Button Style="{StaticResource PillButtonStyle}" Click="AlbumPlayButton_Click">
                           <StackPanel Orientation="Horizontal" Spacing="8">
                             <Polygon Points="0,0 10,6.5 0,13" Fill="{StaticResource OnAccentBrush}" VerticalAlignment="Center"/>
