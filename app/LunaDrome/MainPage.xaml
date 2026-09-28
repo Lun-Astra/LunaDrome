@@ -1688,6 +1688,13 @@
                 <TextBlock x:Name="NowPlayingSubText" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis"/>
               </Border>
             </StackPanel>
+            <!-- #17: favorite the song that's playing -->
+            <Grid x:Name="NowPlayingFavorite" Width="30" Height="30" Margin="6,0,0,0" VerticalAlignment="Center" Background="Transparent"
+                  Visibility="Collapsed" Tapped="NowPlayingFavorite_Tapped" ToolTipService.ToolTip="Favorite" AutomationProperties.Name="Favorite">
+              <Path x:Name="NowPlayingFavoriteHeart" Width="15" Height="14" Stretch="Uniform" Stroke="{StaticResource TextSecondaryBrush}" StrokeThickness="1.5"
+                    Fill="Transparent" HorizontalAlignment="Center" VerticalAlignment="Center"
+                    Data="M8,15 C8,15 1,10.5 1,5.8 C1,3 3,1.3 5.4,1.3 C6.9,1.3 7.7,2.1 8,2.6 C8.3,2.1 9.1,1.3 10.6,1.3 C13,1.3 15,3 15,5.8 C15,10.5 8,15 8,15 Z"/>
+            </Grid>
           </StackPanel>
 
           <!-- Transport + progress -->
