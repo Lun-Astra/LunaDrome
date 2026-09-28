@@ -175,6 +175,36 @@
       </Grid>
     </DataTemplate>
 
+    <!-- The same row on a phone (MainPage.Compact.cs swaps it in): smaller thumbnail, the length
+         under the title, just a check for "in library", so the title keeps some room. -->
+    <DataTemplate x:Key="YtTrackCompactTemplate">
+      <Grid Margin="0,2" Padding="0,6" Background="Transparent" ColumnSpacing="10">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto"/>
+          <ColumnDefinition Width="*"/>
+          <ColumnDefinition Width="Auto"/>
+          <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+        <Border Grid.Column="0" Width="48" Height="27" CornerRadius="4" VerticalAlignment="Center" Background="{StaticResource RaisedBrush}">
+          <Image Source="{Binding Thumbnail}" Stretch="UniformToFill" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+        </Border>
+        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+          <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis" FontSize="13"/>
+          <TextBlock FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" Margin="0,2,0,0">
+            <Run Text="{Binding DurationDisplay}"/><Run Text="  "/><Run Text="{Binding Subtitle}"/>
+          </TextBlock>
+        </StackPanel>
+        <Grid Grid.Column="2" Width="18" Height="18" VerticalAlignment="Center"
+              Visibility="{Binding InLibrary, Converter={StaticResource BoolToVisibility}}" ToolTipService.ToolTip="Already in your library">
+          <Ellipse Fill="{StaticResource AccentBrush}"/>
+          <Path Stroke="{StaticResource OnAccentBrush}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                Data="M5,9.2 L8,12 L13,6.2"/>
+        </Grid>
+        <Button Grid.Column="3" Content="Download" Style="{StaticResource TextButtonStyle}" Padding="10,5" FontSize="12"
+                Tag="{Binding}" Click="YtTrackDownload_Click" VerticalAlignment="Center"/>
+      </Grid>
+    </DataTemplate>
+
     <!-- "Download via SpotiDrome": a YouTube Music album card (click to see its tracks). -->
     <!-- A Button (not a Tapped panel) so it also works from the keyboard / screen readers. -->
     <DataTemplate x:Key="YtAlbumCardTemplate">
@@ -1495,14 +1525,19 @@
             </Grid>
 
             <!-- Short notice over the pages (a download finished, ...), with an optional action. -->
-            <Border x:Name="ToastBar" Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,12"
+            <Border x:Name="ToastBar" Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="12,0,12,12"
                     Padding="18,10" CornerRadius="8" Background="{StaticResource RaisedBrush}"
                     BorderBrush="{StaticResource BorderBrush2}" BorderThickness="1" MaxWidth="560">
-              <StackPanel Orientation="Horizontal" Spacing="14">
-                <TextBlock x:Name="ToastText" VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="400"/>
-                <Button x:Name="ToastActionButton" Visibility="Collapsed" Style="{StaticResource PrimaryButtonStyle}" Padding="14,6" MinHeight="30"
+              <!-- A Grid, not a horizontal StackPanel: the text wraps within the screen on a phone. -->
+              <Grid ColumnSpacing="14">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="*"/>
+                  <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Name="ToastText" VerticalAlignment="Center" TextWrapping="Wrap"/>
+                <Button x:Name="ToastActionButton" Grid.Column="1" Visibility="Collapsed" Style="{StaticResource PrimaryButtonStyle}" Padding="14,6" MinHeight="30"
                         VerticalAlignment="Center" Click="ToastAction_Click"/>
-              </StackPanel>
+              </Grid>
             </Border>
           </Grid>
 
@@ -1595,26 +1630,34 @@
 
         <!-- ===== Full-screen player (click the now-playing title) ===== -->
         <Grid x:Name="FullScreenPlayerOverlay" Background="{StaticResource BackgroundBrush}" Visibility="Collapsed">
-          <Grid Margin="80,40,80,60">
+          <!-- Desktop: cover + title on the left, the tabs on the right. Phone (MainPage.Compact.cs):
+               a small cover + title row on top, the tabs filling the rest below it. -->
+          <Grid x:Name="FullScreenLayoutGrid" Margin="80,40,80,60">
+            <Grid.RowDefinitions>
+              <RowDefinition Height="Auto"/>
+              <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
             <Grid.ColumnDefinitions>
               <ColumnDefinition Width="*"/>
-              <ColumnDefinition Width="60"/>
-              <ColumnDefinition Width="*"/>
+              <ColumnDefinition x:Name="FullScreenGapColumn" Width="60"/>
+              <ColumnDefinition x:Name="FullScreenSideColumn" Width="*"/>
             </Grid.ColumnDefinitions>
 
-            <StackPanel Grid.Column="0" HorizontalAlignment="Center" VerticalAlignment="Center">
-              <Grid Width="360" Height="360">
+            <StackPanel x:Name="FullScreenNowPanel" Grid.Column="0" Grid.RowSpan="2" HorizontalAlignment="Center" VerticalAlignment="Center">
+              <Grid x:Name="FullScreenArtBox" Width="360" Height="360">
                 <Border CornerRadius="12" Background="{StaticResource RaisedBrush}"/>
                 <Border x:Name="FullScreenArt" CornerRadius="12"/>
               </Grid>
-              <TextBlock x:Name="FullScreenTitleText" FontSize="24" FontWeight="Bold" Margin="0,28,0,0"
-                         HorizontalAlignment="Center" TextAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="360"/>
-              <Border Background="Transparent" Margin="0,8,0,0" HorizontalAlignment="Center" controls:Motion.ClickableText="True" Tapped="NowPlayingArtist_Tapped" ToolTipService.ToolTip="Go to artist">
-                <TextBlock x:Name="FullScreenArtistText" FontSize="16" Foreground="{StaticResource TextSecondaryBrush}" TextAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="360"/>
-              </Border>
+              <StackPanel x:Name="FullScreenTextPanel" Margin="0,28,0,0" VerticalAlignment="Center">
+                <TextBlock x:Name="FullScreenTitleText" FontSize="24" FontWeight="Bold"
+                           HorizontalAlignment="Center" TextAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="360"/>
+                <Border x:Name="FullScreenArtistLink" Background="Transparent" Margin="0,8,0,0" HorizontalAlignment="Center" controls:Motion.ClickableText="True" Tapped="NowPlayingArtist_Tapped" ToolTipService.ToolTip="Go to artist">
+                  <TextBlock x:Name="FullScreenArtistText" FontSize="16" Foreground="{StaticResource TextSecondaryBrush}" TextAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="360"/>
+                </Border>
+              </StackPanel>
             </StackPanel>
 
-            <Grid Grid.Column="2">
+            <Grid x:Name="FullScreenSidePanel" Grid.Column="2" Grid.RowSpan="2">
               <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
@@ -1654,12 +1697,15 @@
                 <Grid x:Name="VisualizerPanelView" Visibility="Collapsed">
                   <!-- Drawn directly with SkiaSharp (see VisualizerCanvas) - a XAML Path rebuilt every frame was too slow on Uno. -->
                   <controls:VisualizerCanvas x:Name="VisualizerCanvas"/>
+                  <!-- Android has no audio capture for it yet (Services/LoopbackCapture.Android.cs). -->
+                  <TextBlock x:Name="VisualizerUnavailableText" Visibility="Collapsed" TextWrapping="Wrap"
+                             Text="The visualizer isn't available on Android yet." Foreground="{StaticResource TextSecondaryBrush}"/>
                 </Grid>
               </Grid>
             </Grid>
           </Grid>
 
-          <Button Content="✕" Width="34" Height="34" FontSize="13" Margin="24"
+          <Button x:Name="FullScreenCloseButton" Content="✕" Width="34" Height="34" FontSize="13" Margin="24"
                   HorizontalAlignment="Right" VerticalAlignment="Top"
                   Click="CloseFullScreenPlayer_Click" ToolTipService.ToolTip="Close"/>
         </Grid>
@@ -1747,7 +1793,7 @@
 
           <!-- Now playing -->
           <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-            <Grid Width="56" Height="56">
+            <Grid x:Name="NowPlayingArtBox" Width="56" Height="56">
               <Border CornerRadius="6" Background="{StaticResource RaisedBrush}"/>
               <Border x:Name="NowPlayingArt" CornerRadius="6"/>
             </Grid>

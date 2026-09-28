@@ -25,6 +25,8 @@ public sealed partial class MainPage
         // Android draws the app edge-to-edge, under the status bar and the navigation bar;
         // keep the whole page inside the visible area instead.
         Uno.UI.Toolkit.VisibleBoundsPadding.SetPaddingMask(PageRoot, Uno.UI.Toolkit.VisibleBoundsPadding.PaddingMask.All);
+        VisualizerUnavailableText.Visibility = Visibility.Visible;
+        VisualizerCanvas.Visibility = Visibility.Collapsed;
 #endif
     }
 
@@ -45,11 +47,15 @@ public sealed partial class MainPage
         Canvas.SetZIndex(CompactMenuButton, 20);   // stays above the open menu, so ✕ can close it
         PageArea.Margin = new Thickness(0);
 
-        // Sidebar: its own column on desktop, an overlay panel over the page in compact mode.
+        // Sidebar: its own column on desktop; on a phone the "More" menu, covering the whole page
+        // (a narrow panel over a half-visible page looked broken). Home / Artists / Albums /
+        // Tracks are in the bottom bar already, so the menu leaves them out.
         Grid.SetColumnSpan(SidebarPane, compact ? 4 : 1);
-        SidebarPane.HorizontalAlignment = compact ? HorizontalAlignment.Left : HorizontalAlignment.Stretch;
-        SidebarPane.Width = compact ? 240 : double.NaN;
-        SidebarPane.Padding = compact ? new Thickness(8, 46, 8, 8) : new Thickness(0);
+        SidebarPane.HorizontalAlignment = HorizontalAlignment.Stretch;
+        SidebarPane.Width = double.NaN;
+        SidebarPane.Padding = compact ? new Thickness(16, 52, 16, 8) : new Thickness(0);
+        NavHome.Visibility = NavArtists.Visibility = NavAlbums.Visibility = NavSongs.Visibility =
+            compact ? Visibility.Collapsed : Visibility.Visible;
         SidebarPane.Background = compact ? (Brush)Application.Current.Resources["PanelBrush"] : null;
         Canvas.SetZIndex(SidebarPane, compact ? 10 : 0);
         _compactSidebarOpen = false;
@@ -90,22 +96,69 @@ public sealed partial class MainPage
                     label.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
         }
 
+        // Full-screen player: cover + title as a row on top, Queue / Lyrics / Visualizer below it
+        // (side by side they need ~900px).
+        FullScreenLayoutGrid.Margin = compact ? new Thickness(16, 60, 16, 12) : new Thickness(80, 40, 80, 60);
+        FullScreenGapColumn.Width = new GridLength(compact ? 0 : 60);
+        FullScreenSideColumn.Width = compact ? new GridLength(0) : new GridLength(1, GridUnitType.Star);
+        Grid.SetRow(FullScreenNowPanel, 0);
+        Grid.SetRowSpan(FullScreenNowPanel, compact ? 1 : 2);
+        Grid.SetColumnSpan(FullScreenNowPanel, compact ? 3 : 1);
+        FullScreenNowPanel.Orientation = compact ? Orientation.Horizontal : Orientation.Vertical;
+        FullScreenNowPanel.HorizontalAlignment = compact ? HorizontalAlignment.Left : HorizontalAlignment.Center;
+        FullScreenNowPanel.Margin = compact ? new Thickness(0, 0, 0, 16) : new Thickness(0);
+        FullScreenArtBox.Width = FullScreenArtBox.Height = compact ? 88 : 360;
+        FullScreenTextPanel.Margin = compact ? new Thickness(14, 0, 0, 0) : new Thickness(0, 28, 0, 0);
+        FullScreenTitleText.FontSize = compact ? 18 : 24;
+        FullScreenArtistText.FontSize = compact ? 14 : 16;
+        FullScreenArtistLink.Margin = compact ? new Thickness(0, 4, 0, 0) : new Thickness(0, 8, 0, 0);
+        var textAlign = compact ? HorizontalAlignment.Left : HorizontalAlignment.Center;
+        FullScreenTitleText.HorizontalAlignment = FullScreenArtistLink.HorizontalAlignment = textAlign;
+        FullScreenTitleText.TextAlignment = FullScreenArtistText.TextAlignment = compact ? TextAlignment.Left : TextAlignment.Center;
+        if (!compact)
+            FullScreenTitleText.MaxWidth = FullScreenArtistText.MaxWidth = 360;
+        Grid.SetColumn(FullScreenSidePanel, compact ? 0 : 2);
+        Grid.SetColumnSpan(FullScreenSidePanel, compact ? 3 : 1);
+        Grid.SetRow(FullScreenSidePanel, compact ? 1 : 0);
+        Grid.SetRowSpan(FullScreenSidePanel, compact ? 1 : 2);
+        FullScreenCloseButton.Margin = new Thickness(compact ? 12 : 24);
+
         // Playback bar: now-playing info + transport controls only.
         PlaybackBarBorder.Padding = compact ? new Thickness(10, 8, 10, 8) : new Thickness(24, 12, 24, 12);
         PlayInfoColumn.Width = compact ? GridLength.Auto : new GridLength(300);
         PlayExtraColumn.Width = new GridLength(compact ? 0 : 200);
         PlayExtraPanel.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
-        NowPlayingTextPanel.MaxWidth = compact ? 120 : 220;
+        NowPlayingArtBox.Width = NowPlayingArtBox.Height = compact ? 44 : 56;
+        NowPlayingTextPanel.Margin = compact ? new Thickness(10, 0, 0, 0) : new Thickness(12, 0, 0, 0);
+        if (!compact)
+        {
+            NowPlayingTextPanel.MaxWidth = 220;
+            PreviousButton.Visibility = Visibility.Visible;
+        }
         PlayControlsPanel.Margin = compact ? new Thickness(8, 0, 0, 0) : new Thickness(24, 0, 24, 0);
         // Only previous / play-pause / next (+ queue) fit next to the now-playing info on a phone.
         var extras = compact ? Visibility.Collapsed : Visibility.Visible;
         StopButton.Visibility = ShuffleButton.Visibility = RepeatButton.Visibility = extras;
+
+        // "Download via SpotiDrome": the desktop rows (64px thumbnail, badge text, length column)
+        // leave a phone's title a few letters.
+        SpotiDromeSection.Padding = compact ? new Thickness(12, 12, 12, 12) : new Thickness(20, 16, 20, 16);
+        var ytTemplate = (DataTemplate)Resources[compact ? "YtTrackCompactTemplate" : "YtTrackTemplate"];
+        YtSongsList.ItemTemplate = YtVideosList.ItemTemplate = ytTemplate;
     }
 
     /// <summary>Track lists: the title column fills what the time + favorite columns leave.</summary>
     private void UpdateCompactWidths(double width)
     {
         ((Controls.TrackColumnLayout)Resources["TrackColumns"]).SetCompact(true, width - 150);
+        // Playback bar: the controls (~180px) and the cover/heart keep their size, the title gets
+        // the rest. Narrow phones (~360px) drop Previous so the title stays readable.
+        PreviousButton.Visibility = width < 380 ? Visibility.Collapsed : Visibility.Visible;
+        var controlsWidth = width < 380 ? 145 : 181;
+        NowPlayingTextPanel.MaxWidth = Math.Max(60, width - 20 - 44 - 10 - 36 - 8 - controlsWidth - 4);
+
+        // Full-screen player title next to its 88px cover (16px margins, 14px gap).
+        FullScreenTitleText.MaxWidth = FullScreenArtistText.MaxWidth = Math.Max(100, width - 32 - 88 - 14);
     }
 
     private void UpdateCompactSidebar()
@@ -148,7 +201,7 @@ public sealed partial class MainPage
     /// <summary>Called from Nav_Checked, so the bar also follows navigation from elsewhere.</summary>
     private void OnCompactNavigated(string tag)
     {
-        _compactNavTag = tag is "Home" or "Artists" or "Albums" or "Songs" ? tag : "More";
+        _compactNavTag = tag is "Home" or "Search" or "Artists" or "Albums" or "Songs" ? tag : "More";
         UpdateCompactNavHighlight(_compactNavTag);
     }
 
