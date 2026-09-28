@@ -1,6 +1,10 @@
 <Project Sdk="Uno.Sdk">
   <PropertyGroup>
-    <TargetFrameworks>net10.0-desktop;net10.0-android</TargetFrameworks>
+    <TargetFrameworks>net10.0-desktop</TargetFrameworks>
+    <!-- Android is opt-in (-p:EnableAndroid=true, see .github/workflows/android.yml): as a
+         default target it would make every desktop build restore the Android workload/runtime
+         packs too, which the Windows/Linux release runners (and a plain desktop dev setup) lack. -->
+    <TargetFrameworks Condition="'$(EnableAndroid)' == 'true'">$(TargetFrameworks);net10.0-android</TargetFrameworks>
 
     <OutputType>Exe</OutputType>
     <UnoSingleProject>true</UnoSingleProject>
