@@ -1837,7 +1837,10 @@ public sealed partial class MainPage : Page
             ? Visibility.Collapsed
             : Visibility.Visible;
         if (FullScreenPlayerOverlay.Visibility == Visibility.Visible)
+        {
             Motion.FadeIn(FullScreenPlayerOverlay);
+            ScrollLyricsToActive(animate: false);
+        }
         UpdateVisualizerCaptureState();
     }
 
@@ -1928,7 +1931,10 @@ public sealed partial class MainPage : Page
         UpdateVisualizerCaptureState();
 
         if (panel == "Lyrics")
+        {
             await LoadLyricsForCurrentSongAsync();
+            ScrollLyricsToActive(animate: false);
+        }
     }
 
     private void QueueList_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
@@ -2098,6 +2104,8 @@ public sealed partial class MainPage : Page
             _lyricsAreSynced = synced;
         }
 
+        foreach (var line in _lyricsLines)
+            line.IsDimmed = _lyricsAreSynced;
         LyricsList.ItemsSource = _lyricsLines;
         LyricsPlaceholder.Text = "No lyrics found for this track.";
         LyricsPlaceholder.Visibility = _lyricsLines.Count > 0 ? Visibility.Collapsed : Visibility.Visible;
@@ -2124,13 +2132,17 @@ public sealed partial class MainPage : Page
         }
 
         _sideLyricIndex = int.MinValue;
+        foreach (var line in _lyricsLines)
+            line.IsActive = false;
         UpdateSideLyrics(_loadedEntry == _current ? _player.PlaybackSession.Position : _pendingSeek);
+        ScrollLyricsToActive(animate: false);
     }
 
+    // Synced lyrics: follows playback in both the side panel (previous / current / next) and
+    // the full-screen Lyrics tab (the current line highlighted and kept in view).
     private void UpdateSideLyrics(TimeSpan position)
     {
-        if (QueueSidePanel.Visibility != Visibility.Visible || !_lyricsAreSynced
-            || _lyricsLines.Count == 0 || _lyricsSongId != _current?.Song.Id)
+        if (!_lyricsAreSynced || _lyricsLines.Count == 0 || _lyricsSongId != _current?.Song.Id)
             return;
 
         // Last line that has started (-1 = before the first one).
@@ -2140,10 +2152,62 @@ public sealed partial class MainPage : Page
         if (index == _sideLyricIndex)
             return;
 
+        if (_sideLyricIndex >= 0 && _sideLyricIndex < _lyricsLines.Count)
+            _lyricsLines[_sideLyricIndex].IsActive = false;
+        if (index >= 0)
+            _lyricsLines[index].IsActive = true;
         _sideLyricIndex = index;
+        ScrollLyricsToActive(animate: true);
         SideLyricPrev.Text = index >= 1 ? _lyricsLines[index - 1].Text : "";
         SideLyricCurrent.Text = index >= 0 ? _lyricsLines[index].Text : "";
         SideLyricNext.Text = index + 1 < _lyricsLines.Count ? _lyricsLines[index + 1].Text : "";
+    }
+
+    private DateTime _lyricsUserScrolledAt = DateTime.MinValue;
+
+    // Scrolling or touching the list yourself pauses the follow-along for a few seconds.
+    private void LyricsList_UserScrolled(object sender, PointerRoutedEventArgs e) => _lyricsUserScrolledAt = DateTime.UtcNow;
+
+    /// <summary>Keeps the full-screen Lyrics tab's active line in the middle of the list.</summary>
+    private void ScrollLyricsToActive(bool animate)
+    {
+        if (!_lyricsAreSynced || _sideLyricIndex < 0 || _sideLyricIndex >= _lyricsLines.Count
+            || FullScreenPlayerOverlay.Visibility != Visibility.Visible || LyricsPanelView.Visibility != Visibility.Visible
+            || DateTime.UtcNow - _lyricsUserScrolledAt < TimeSpan.FromSeconds(4))
+            return;
+
+        var line = _lyricsLines[_sideLyricIndex];
+        // After layout: a row that's far off-screen has no container yet until it's scrolled to.
+        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        {
+            if (LyricsList.ContainerFromItem(line) is not FrameworkElement row)
+            {
+                LyricsList.ScrollIntoView(line, ScrollIntoViewAlignment.Leading);
+                LyricsList.UpdateLayout();
+                if (LyricsList.ContainerFromItem(line) is not FrameworkElement laidOut)
+                    return;
+                row = laidOut;
+                animate = false;
+            }
+            if (FindDescendant<ScrollViewer>(LyricsList) is not { } scroller)
+                return;
+            var top = row.TransformToVisual(scroller).TransformPoint(new Windows.Foundation.Point(0, 0)).Y + scroller.VerticalOffset;
+            var target = Math.Max(0, top - (scroller.ViewportHeight - row.ActualHeight) / 2);
+            scroller.ChangeView(null, target, null, !animate);
+        });
+    }
+
+    private static T? FindDescendant<T>(DependencyObject root) where T : class
+    {
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is T match)
+                return match;
+            if (FindDescendant<T>(child) is { } deeper)
+                return deeper;
+        }
+        return null;
     }
 
     // Synced lyrics: double-click a line to jump there.
