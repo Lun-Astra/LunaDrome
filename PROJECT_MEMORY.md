@@ -532,3 +532,6 @@ Luna is hopping off for the night. Current state of the app, for picking this ba
 - Download via SpotiDrome: compact rows (`YtTrackCompactTemplate`), and the download toast wraps within the screen.
 - The playback bar fits ~360px phones (44px cover, title width from the window width, Previous hidden below 380px).
 - Android launcher icon + splash: the LunaDrome moon on #141517 (was Uno's default logo).
+
+### v3.6.2: album card years — 2026-09-28
+- Album cards (search, Albums, genres) have fixed line heights, and the grids use MinItemHeight 224 (artist search 150). UniformGridLayout sizes every row from one card, so a card without a year, or Android's taller font, cut off the year line on the others.
