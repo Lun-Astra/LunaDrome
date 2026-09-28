@@ -27,37 +27,52 @@ public static partial class LrcLibClient
     {
         try
         {
-            // Exact match first (LRCLIB matches duration within a couple of seconds), then search.
-            var query = $"api/get?artist_name={Uri.EscapeDataString(artist)}&track_name={Uri.EscapeDataString(title)}"
-                        + $"&album_name={Uri.EscapeDataString(album)}&duration={durationSeconds}";
-            using var response = await Http.GetAsync(query);
-            if (response.IsSuccessStatusCode)
-            {
-                using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-                if (FromRecord(doc.RootElement) is { Lines.Count: > 0 } found)
-                    return found;
-            }
-            else if (response.StatusCode != HttpStatusCode.NotFound)
-            {
-                return (new(), false);
-            }
-
-            var search = $"api/search?artist_name={Uri.EscapeDataString(artist)}&track_name={Uri.EscapeDataString(title)}";
-            using var results = JsonDocument.Parse(await Http.GetStringAsync(search));
-            (List<LyricLine> Lines, bool Synced)? plainFallback = null;
-            foreach (var record in results.RootElement.EnumerateArray())
-            {
-                // Skip versions whose length is way off (live cuts, extended mixes).
-                if (durationSeconds > 0 && record.TryGetProperty("duration", out var d) && d.ValueKind == JsonValueKind.Number
-                    && Math.Abs(d.GetDouble() - durationSeconds) > 5)
-                    continue;
-
-                if (FromRecord(record) is { Lines.Count: > 0 } candidate)
+            // #20: library tags often don't match LRCLIB's spelling - several artists joined
+            // ("A, B"), "(feat. X)" / "(Official Video)" / "- Remastered" in the title, or a
+            // YouTube-style "Artist - Title". Try the tags as they are first, then cleaned-up
+            // variants; exact lookups (album + duration) before searches.
+            var artists = ArtistVariants(artist);
+            var titles = TitleVariants(title, artists);
+            foreach (var t in titles)
+                foreach (var a in artists)
                 {
-                    if (candidate.Synced)
-                        return candidate;
-                    plainFallback ??= candidate;
+                    var query = $"api/get?artist_name={Uri.EscapeDataString(a)}&track_name={Uri.EscapeDataString(t)}"
+                                + $"&album_name={Uri.EscapeDataString(album)}&duration={durationSeconds}";
+                    using var response = await Http.GetAsync(query);
+                    if (response.IsSuccessStatusCode)
+                    {
+                        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+                        if (FromRecord(doc.RootElement) is { Lines.Count: > 0 } found)
+                            return found;
+                    }
+                    else if (response.StatusCode != HttpStatusCode.NotFound)
+                    {
+                        return (new(), false);   // rate limited / down: don't hammer it
+                    }
                 }
+
+            (List<LyricLine> Lines, bool Synced)? plainFallback = null;
+            var searches = titles.Select(t => $"api/search?artist_name={Uri.EscapeDataString(artists[^1])}&track_name={Uri.EscapeDataString(t)}")
+                .Append($"api/search?q={Uri.EscapeDataString(artists[^1] + " " + titles[^1])}");
+            foreach (var search in searches)
+            {
+                using var results = JsonDocument.Parse(await Http.GetStringAsync(search));
+                foreach (var record in results.RootElement.EnumerateArray())
+                {
+                    // Skip versions whose length is way off (live cuts, extended mixes).
+                    if (durationSeconds > 0 && record.TryGetProperty("duration", out var d) && d.ValueKind == JsonValueKind.Number
+                        && Math.Abs(d.GetDouble() - durationSeconds) > 5)
+                        continue;
+
+                    if (FromRecord(record) is { Lines.Count: > 0 } candidate)
+                    {
+                        if (candidate.Synced)
+                            return candidate;
+                        plainFallback ??= candidate;
+                    }
+                }
+                if (plainFallback != null)
+                    break;
             }
             return plainFallback ?? (new(), false);
         }
@@ -65,6 +80,32 @@ public static partial class LrcLibClient
         {
             return (new(), false);
         }
+    }
+
+    /// <summary>The artist as tagged, then just the first of several ("A, B" / "A & B" / "A x B").</summary>
+    private static List<string> ArtistVariants(string artist)
+    {
+        var list = new List<string> { artist.Trim() };
+        var primary = Regex.Split(artist, @",|&| x | feat\.? | ft\.? ", RegexOptions.IgnoreCase)[0].Trim();
+        if (primary.Length > 0 && !list.Contains(primary, StringComparer.OrdinalIgnoreCase))
+            list.Add(primary);
+        return list;
+    }
+
+    /// <summary>The title as tagged, then without packaging such as "(feat. X)", "(Official Video)",
+    /// "[Lyrics]" or "- Remastered 2011", then with an "Artist - " prefix removed.</summary>
+    private static List<string> TitleVariants(string title, List<string> artists)
+    {
+        var list = new List<string> { title.Trim() };
+        var cleaned = Regex.Replace(title,
+            @"\s*[\(\[][^\)\]]*(feat\.?|ft\.?|with |official|video|audio|lyric|visuali[sz]er|remaster|hd|4k|mv)[^\)\]]*[\)\]]",
+            "", RegexOptions.IgnoreCase);
+        cleaned = Regex.Replace(cleaned, @"\s+-\s+(\d{4}\s+)?remaster(ed)?.*$", "", RegexOptions.IgnoreCase).Trim();
+        foreach (var candidate in new[] { cleaned }
+                     .Concat(artists.Select(a => cleaned.StartsWith(a + " - ", StringComparison.OrdinalIgnoreCase) ? cleaned[(a.Length + 3)..].Trim() : "")))
+            if (candidate.Length > 0 && !list.Contains(candidate, StringComparer.OrdinalIgnoreCase))
+                list.Add(candidate);
+        return list;
     }
 
     private static (List<LyricLine> Lines, bool Synced)? FromRecord(JsonElement record)

@@ -558,11 +558,73 @@ public sealed partial class MainPage
         ttlRow.Children.Add(ttlBox);
         ttlRow.Children.Add(createButton);
 
-        var content = new StackPanel { Spacing = 12, Width = 420 };
+        // #19: the links that are still valid, each with a Delete button.
+        var invitesHeader = new TextBlock { Text = "Active links", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(0, 8, 0, 0) };
+        var invitesList = new StackPanel { Spacing = 6 };
+
+        async Task RefreshInvitesAsync()
+        {
+            invitesList.Children.Clear();
+            List<JamInvite> invites;
+            try { invites = await _jam.Client.ListInvitesAsync(); }
+            catch (Exception ex)
+            {
+                invitesList.Children.Add(new TextBlock { Text = $"Couldn't load the links: {ex.Message}", Style = (Style)Resources["SettingsHintStyle"], TextWrapping = TextWrapping.Wrap });
+                return;
+            }
+            if (invites.Count == 0)
+            {
+                invitesList.Children.Add(new TextBlock { Text = "No active links.", Style = (Style)Resources["SettingsHintStyle"] });
+                return;
+            }
+            foreach (var invite in invites.OrderBy(i => i.ExpiresAt))
+            {
+                var expires = DateTimeOffset.FromUnixTimeSeconds((long)invite.ExpiresAt).ToLocalTime();
+                var row = new Grid { ColumnSpacing = 8 };
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                row.Children.Add(new TextBlock
+                {
+                    VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis,
+                    Text = $"…{invite.Token[Math.Max(0, invite.Token.Length - 6)..]}  ·  expires {expires:ddd HH:mm}",
+                });
+                var delete = new Button { Content = "Delete", Style = (Style)Application.Current.Resources["TextButtonStyle"] };
+                var armed = false;
+                delete.Click += async (_, _) =>
+                {
+                    // Click twice: the first click arms it (no native confirm dialogs).
+                    if (!armed)
+                    {
+                        armed = true;
+                        delete.Content = "Click again to delete";
+                        return;
+                    }
+                    delete.IsEnabled = false;
+                    try
+                    {
+                        await _jam.Client.RevokeInviteAsync(invite.Token);
+                        status.Text = "Link deleted - it no longer works.";
+                    }
+                    catch (Exception ex)
+                    {
+                        status.Text = $"Couldn't delete the link: {ex.Message}";
+                    }
+                    await RefreshInvitesAsync();
+                };
+                Grid.SetColumn(delete, 1);
+                row.Children.Add(delete);
+                invitesList.Children.Add(row);
+            }
+        }
+
+        var content = new StackPanel { Spacing = 12, MaxWidth = 420 };
         content.Children.Add(status);
         content.Children.Add(ttlRow);
         content.Children.Add(linkRow);
         content.Children.Add(qr);
+        content.Children.Add(invitesHeader);
+        content.Children.Add(invitesList);
+        _ = RefreshInvitesAsync();
 
         createButton.Click += async (_, _) =>
         {
@@ -577,6 +639,7 @@ public sealed partial class MainPage
                 qr.Visibility = Visibility.Visible;
                 CopyToClipboard(link);
                 status.Text = "Link copied. Send it to your friends, or let them scan the code.";
+                await RefreshInvitesAsync();
             }
             catch (Exception ex)
             {

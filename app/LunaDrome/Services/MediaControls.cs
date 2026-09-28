@@ -32,8 +32,11 @@ public static class MediaControls
         {
             if (OperatingSystem.IsWindows())
                 return SmtcMediaControls.TryCreate();
+#if !ANDROID
+            // MPRIS (D-Bus) is Linux-desktop only; not compiled into the Android app.
             if (OperatingSystem.IsLinux())
                 return MprisMediaControls.TryCreate();
+#endif
         }
         catch (Exception ex)
         {

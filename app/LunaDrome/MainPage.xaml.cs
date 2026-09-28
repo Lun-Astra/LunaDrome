@@ -105,6 +105,7 @@ public sealed partial class MainPage : Page
         _loopback = new LoopbackCapture(_spectrum);
         _prefetcher = new TrackPrefetcher(_client);
         this.InitializeComponent();
+        InitCompactLayout();
         Loaded += (_, _) => EnsureMediaControls();
         Unloaded += (_, _) =>
         {
@@ -668,6 +669,7 @@ public sealed partial class MainPage : Page
 
     private void Nav_Checked(object sender, RoutedEventArgs e)
     {
+        CloseCompactSidebar();
         if (!_initialized || _suppressNavEvents || sender is not RadioButton { Tag: string tag })
             return;
 
@@ -1383,6 +1385,30 @@ public sealed partial class MainPage : Page
         AddMenuItem(flyout, "Play album last", () => QueueSongsLast(_albumSongsRaw));
         flyout.ShowAt(row, e.GetPosition(row));
         e.Handled = true;
+    }
+
+    private void UpdateNowPlayingFavorite(Song song)
+    {
+        NowPlayingFavoriteHeart.Fill = (Brush)new FavoriteFillConverter().Convert(song.IsFavorited, typeof(Brush), null!, "");
+        ToolTipService.SetToolTip(NowPlayingFavorite, song.IsFavorited ? "Remove from favorites" : "Add to favorites");
+    }
+
+    private async void NowPlayingFavorite_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        e.Handled = true;
+        if (_current?.Song is not { } song)
+            return;
+        try
+        {
+            if (song.IsFavorited)
+                await _client.UnstarSongAsync(song.Id);
+            else
+                await _client.StarSongAsync(song.Id);
+            song.IsFavorited = !song.IsFavorited;
+            if (_current?.Song == song)
+                UpdateNowPlayingFavorite(song);
+        }
+        catch { /* best-effort, like the list hearts */ }
     }
 
     private async void TrackFavorite_Tapped(object sender, TappedRoutedEventArgs e)
@@ -2289,6 +2315,7 @@ public sealed partial class MainPage : Page
         {
             NowPlayingText.Text = "Nothing playing";
             NowPlayingSubText.Text = "";
+            NowPlayingFavorite.Visibility = Visibility.Collapsed;
             NowPlayingArt.Background = null;
             FullScreenTitleText.Text = "";
             FullScreenArtistText.Text = "";
@@ -2305,6 +2332,8 @@ public sealed partial class MainPage : Page
         var song = entry.Song;
         NowPlayingText.Text = song.Title;
         NowPlayingSubText.Text = song.ArtistName;
+        NowPlayingFavorite.Visibility = Visibility.Visible;
+        UpdateNowPlayingFavorite(song);
         SetImage(NowPlayingArt, song.CoverArtUrl ?? _client.GetCoverArtUrl(song.AlbumId, 240));
         FullScreenTitleText.Text = song.Title;
         FullScreenArtistText.Text = song.ArtistName;
@@ -2614,6 +2643,7 @@ public sealed partial class MainPage : Page
         var position = session.Position;
         var duration = session.NaturalDuration;
 
+        SyncWithPlayerState(session, position, duration);
         CheckForStall(position, duration);
         PrefetchNext();
 
@@ -2659,6 +2689,51 @@ public sealed partial class MainPage : Page
 
         if (GetNextEntry() is { } next && next.Song.Id != _loadedEntry.Song.Id)
             _prefetcher.Prefetch(next.Song.Id, keepSongId: _loadedEntry.Song.Id);
+    }
+
+    // ----- Keeping the icon in sync with the player (#21, #18) -----
+    // The play/pause icon and _isPlaying used to follow only our own Play/Pause calls; the
+    // player's real state was just logged. When the player changed state by itself (media keys
+    // or the OS while the window wasn't focused, or reaching the end without raising
+    // MediaEnded) the icon showed "paused" while it played (#21), or playback stopped at the end
+    // of a track instead of moving on (#18). Checked on every progress tick.
+    private int _pausedTicks;
+
+    private void SyncWithPlayerState(MediaPlaybackSession session, TimeSpan position, TimeSpan duration)
+    {
+        if (JamOwnsPlayback || _current == null || _loadedEntry != _current || _endedEntry == _loadedEntry)
+        {
+            _pausedTicks = 0;
+            return;
+        }
+        var state = session.PlaybackState;
+        if (state == MediaPlaybackState.Playing)
+        {
+            _pausedTicks = 0;
+            if (!_isPlaying)
+            {
+                Log("player is playing while we showed paused - syncing the icon");
+                SetPlaying(true);
+            }
+            return;
+        }
+        if (!_isPlaying || state is MediaPlaybackState.Opening or MediaPlaybackState.Buffering)
+        {
+            _pausedTicks = 0;
+            return;
+        }
+        // We think it's playing, but the player is paused/stopped.
+        if (duration > TimeSpan.Zero && position >= duration - TimeSpan.FromSeconds(1))
+        {
+            Log("track reached its end without MediaEnded - moving on");
+            OnMediaEnded();
+        }
+        else if (++_pausedTicks >= 3)   // ~1.2s: not just the moment between Play() and playing
+        {
+            _pausedTicks = 0;
+            Log($"player paused by itself at {position} - syncing the icon");
+            SetPlaying(false);
+        }
     }
 
     // ----- Stall watchdog (#11) -----

@@ -60,6 +60,7 @@ Grab the latest build from the [Releases](https://github.com/Lun-Astra/LunaDrome
 - **Windows:** `LunaDrome-Setup-<version>.exe` - per-user install (no admin), Start menu +
   optional desktop shortcut, uninstall from Apps & features.
 - **Debian / Ubuntu:** `sudo apt install ./lunadrome_<version>_amd64.deb` (pulls in VLC libraries).
+- **Android:** `LunaDrome-<version>-android.apk` - open it on the phone and allow installing apps from your browser/file manager when asked. Phones get a compact layout (☰ menu); no visualizer on Android yet.
 - **Other Linux (x64):** extract `LunaDrome-<version>-linux-x64.tar.gz`, run `./install.sh`
   (or `sudo ./install.sh --system`); needs libvlc, and `parec` for the visualizer.
 
