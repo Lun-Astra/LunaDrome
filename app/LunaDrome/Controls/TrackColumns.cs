@@ -26,6 +26,29 @@ public sealed class TrackColumnLayout : INotifyPropertyChanged
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
+    private (double Title, double Time, double Genre)? _desktopWidths;
+
+    /// <summary>Phones: the title column fills the width and the genre column is hidden (0 wide,
+    /// which the draggable Set() doesn't allow). Switching back restores the desktop widths.</summary>
+    public void SetCompact(bool compact, double titleWidth)
+    {
+        if (compact)
+        {
+            _desktopWidths ??= (_titleWidth, _timeWidth, _genreWidth);
+            _titleWidth = Math.Max(MinWidth, titleWidth);
+            _genreWidth = 0;
+        }
+        else if (_desktopWidths is { } d)
+        {
+            (_titleWidth, _timeWidth, _genreWidth) = d;
+            _desktopWidths = null;
+        }
+        else
+            return;
+        foreach (var name in new[] { nameof(TitleWidth), nameof(TimeWidth), nameof(GenreWidth) })
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+    }
+
     private void Set(ref double field, double value, [CallerMemberName] string? name = null)
     {
         value = Math.Max(MinWidth, value);

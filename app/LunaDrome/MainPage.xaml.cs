@@ -286,11 +286,20 @@ public sealed partial class MainPage : Page
     private void BuildSettingsChoices()
     {
         ThemeOptions.Children.Clear();
-        var darkRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-        var lightRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-        ThemeOptions.Children.Add(darkRow);
-        ThemeOptions.Children.Add(lightRow);
-        foreach (var theme in Themes.ThemeNames)
+        // Dark themes on one row, light on the next; on a phone at most 3 per row so they wrap.
+        var perRow = IsCompact ? 3 : int.MaxValue;
+        var rows = new Dictionary<bool, StackPanel>();
+        StackPanel RowFor(bool light)
+        {
+            if (!rows.TryGetValue(light, out var row) || row.Children.Count >= perRow)
+            {
+                row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+                rows[light] = row;
+                ThemeOptions.Children.Add(row);
+            }
+            return row;
+        }
+        foreach (var theme in Themes.ThemeNames.OrderBy(Themes.IsLight))
         {
             var chip = new Border
             {
@@ -301,7 +310,7 @@ public sealed partial class MainPage : Page
                 Background = (Brush)Application.Current.Resources["RaisedBrush"],
                 Child = new TextBlock { Text = theme },
             };
-            (Themes.IsLight(theme) ? lightRow : darkRow).Children.Add(ChoiceButton(chip, theme, () => _prefs.Theme = theme));
+            RowFor(Themes.IsLight(theme)).Children.Add(ChoiceButton(chip, theme, () => _prefs.Theme = theme));
         }
 
         AccentOptions.Children.Clear();
@@ -645,8 +654,9 @@ public sealed partial class MainPage : Page
         _jam?.SetWatching(false);
     }
 
-    private static void ShowPage(UIElement page)
+    private void ShowPage(UIElement page)
     {
+        CloseCompactSidebar();   // any page opened from the phone menu closes it
         page.Visibility = Visibility.Visible;
         Motion.FadeIn(page);
     }

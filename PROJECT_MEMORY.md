@@ -516,3 +516,6 @@ Luna is hopping off for the night. Current state of the app, for picking this ba
 - **Compact layout** (`MainPage.Compact.cs`, below 700px): ☰ overlay sidebar, full-width queue panel, playback bar with info + previous/play/next + queue, smaller margins; on Android the page keeps clear of the status/navigation bars (`VisibleBoundsPadding`, #22).
 - **#21/#18** play/pause icon and track ends follow the player's real state (`SyncWithPlayerState`); **#20** LRCLIB lookups try primary-artist / cleaned-title variants; **#19** Jam share dialog lists active links with Delete; **#17** favorite heart in the playback bar.
 - Made from the LXC session (no local build); checked with the release + Android workflow dry runs on dev. Not verified in the running desktop app - Luna to test.
+
+### v3.5.1: phone layout fixes — 2026-09-28
+- Found by running the desktop build in a phone-sized (412x915) Xvfb screen on the LXC and going through every page (no KVM there, so no Android emulator): the ☰/✕ button now stays above the open menu; the menu closes whenever a page opens (`ShowPage`); the Home hero card and album header get compact sizes (album Next/Last icon-only); track lists show title + time only on phones (`TrackColumnLayout.SetCompact`, genre hidden); Settings theme chips wrap 3 per row. Desktop layout checked unchanged at 1280x800.
