@@ -186,6 +186,6 @@ public class LunaMediaService : MediaBrowserServiceCompat
             description.SetIconUri(Android.Net.Uri.Parse(item.ArtUrl));
         int flags = (item.Browsable ? MediaBrowserCompat.MediaItem.FlagBrowsable : 0)
             | (item.Playable ? MediaBrowserCompat.MediaItem.FlagPlayable : 0);
-        return new MediaBrowserCompat.MediaItem(description.Build(), flags);
+        return new MediaBrowserCompat.MediaItem(description.Build()!, flags);
     }
 }
