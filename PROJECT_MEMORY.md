@@ -525,3 +525,10 @@ Luna is hopping off for the night. Current state of the app, for picking this ba
 - **Bottom navigation bar on phones (#25):** Home/Search/Albums/Artists/Tracks/More; More opens the full menu.
 - **Visualizer follows the theme accent (#23):** `Themes.CurrentAccent`.
 - **"Playback failed" cleared once playback runs (#24).**
+
+### v3.6.1: phone layout round 2 + Android icon — 2026-09-28
+- Full-screen player on phones: a small cover + title row, with Queue / Lyrics / Visualizer below (the desktop side-by-side layout was cut off). The Android visualizer tab says it isn't available there yet.
+- The More menu covers the whole page and leaves out what the bottom bar has; the bottom bar highlights Search on search results.
+- Download via SpotiDrome: compact rows (`YtTrackCompactTemplate`), and the download toast wraps within the screen.
+- The playback bar fits ~360px phones (44px cover, title width from the window width, Previous hidden below 380px).
+- Android launcher icon + splash: the LunaDrome moon on #141517 (was Uno's default logo).

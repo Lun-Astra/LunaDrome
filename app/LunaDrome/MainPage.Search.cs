@@ -58,6 +58,7 @@ public sealed partial class MainPage
         ClearSidebarSelection();
         HideAllPages();
         ShowPage(SearchPage);
+        OnCompactNavigated("Search");
         SearchPage.ChangeView(null, 0, null, true);
 
         _searchQuery = query;
