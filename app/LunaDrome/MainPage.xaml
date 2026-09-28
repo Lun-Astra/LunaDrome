@@ -562,7 +562,7 @@
                 </Button>
               </Grid>
               <!-- Library search (3.0); with SpotiDrome set up, also offers downloads. Enter searches. -->
-              <Grid Margin="0,0,0,12">
+              <Grid x:Name="SidebarSearchGrid" Margin="0,0,0,12">
                 <TextBox x:Name="GlobalSearchBox" PlaceholderText="Search" Padding="10,6,34,6" KeyDown="GlobalSearchBox_KeyDown"
                          AutomationProperties.Name="Search"/>
                 <!-- Magnifier: same as pressing Enter. -->
@@ -633,9 +633,22 @@
             <!-- Search (3.0): the library first; with SpotiDrome configured, "Download via
                  SpotiDrome" below it (opened automatically when the library has nothing). -->
             <ScrollViewer x:Name="SearchPage" Visibility="Collapsed" controls:WheelScroll.Enabled="True" VerticalScrollBarVisibility="Auto">
-              <StackPanel Margin="0,0,16,24" Spacing="6">
+              <StackPanel x:Name="SearchPageContent" Margin="0,0,16,24" Spacing="6">
+                <!-- Phones: the search box lives here (the Search tab opens this page); on desktop
+                     it's the one in the sidebar. -->
+                <Grid x:Name="PageSearchGrid" Visibility="Collapsed" Margin="0,0,0,10">
+                  <TextBox x:Name="PageSearchBox" PlaceholderText="Songs, albums, artists" Padding="12,9,40,9" FontSize="15"
+                           KeyDown="GlobalSearchBox_KeyDown" AutomationProperties.Name="Search"/>
+                  <Button Width="34" Height="34" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,3,0"
+                          Style="{StaticResource IconButtonStyle}" Click="GlobalSearchButton_Click"
+                          AutomationProperties.Name="Run search">
+                    <Path Width="15" Height="15" Stretch="Uniform" Stroke="{StaticResource TextSecondaryBrush}" StrokeThickness="1.8"
+                          StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                          Data="M6,1 A5,5 0 1 1 5.99,1 M9.6,9.6 L13,13"/>
+                  </Button>
+                </Grid>
                 <TextBlock x:Name="SearchHeaderText" FontSize="28" FontWeight="Bold" TextTrimming="CharacterEllipsis"/>
-                <TextBlock x:Name="SearchLibraryStatusText" Foreground="{StaticResource TextSecondaryBrush}" Visibility="Collapsed"/>
+                <TextBlock x:Name="SearchLibraryStatusText" Foreground="{StaticResource TextSecondaryBrush}" Visibility="Collapsed" TextWrapping="Wrap"/>
 
                 <StackPanel x:Name="SearchArtistsSection" Visibility="Collapsed">
                   <TextBlock Text="Artists" FontSize="20" FontWeight="Bold" Margin="0,12,0,0"/>

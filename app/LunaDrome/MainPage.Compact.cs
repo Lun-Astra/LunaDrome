@@ -56,6 +56,10 @@ public sealed partial class MainPage
         SidebarPane.Padding = compact ? new Thickness(16, 52, 16, 8) : new Thickness(0);
         NavHome.Visibility = NavArtists.Visibility = NavAlbums.Visibility = NavSongs.Visibility =
             compact ? Visibility.Collapsed : Visibility.Visible;
+        // Search is its own tab on a phone, with the box on the Search page.
+        SidebarSearchGrid.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        PageSearchGrid.Visibility = compact ? Visibility.Visible : Visibility.Collapsed;
+        SearchPageContent.Margin = compact ? new Thickness(0, 0, 0, 16) : new Thickness(0, 0, 16, 24);
         SidebarPane.Background = compact ? (Brush)Application.Current.Resources["PanelBrush"] : null;
         Canvas.SetZIndex(SidebarPane, compact ? 10 : 0);
         _compactSidebarOpen = false;
@@ -203,10 +207,9 @@ public sealed partial class MainPage
                 UpdateCompactSidebar();
                 break;
             case "Search":
-                _compactSidebarOpen = true;
-                UpdateCompactSidebar();
-                UpdateCompactNavHighlight("Search");
-                GlobalSearchBox.Focus(FocusState.Programmatic);
+                // Its own page (it used to open the More menu, i.e. the same page as More).
+                CloseCompactSidebar();
+                OpenSearchPage();
                 break;
             default:
                 var nav = tag switch { "Artists" => NavArtists, "Albums" => NavAlbums, "Songs" => NavSongs, _ => NavHome };

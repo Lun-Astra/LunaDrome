@@ -44,11 +44,40 @@ public sealed partial class MainPage
 
     private async void GlobalSearchButton_Click(object sender, RoutedEventArgs e) => await SubmitSearchAsync();
 
+    // The sidebar's box on desktop, the Search page's own box on a phone (MainPage.Compact.cs).
+    private TextBox ActiveSearchBox => IsCompact ? PageSearchBox : GlobalSearchBox;
+
     private async Task SubmitSearchAsync()
     {
-        var query = GlobalSearchBox.Text.Trim();
+        var query = ActiveSearchBox.Text.Trim();
         if (query.Length > 0)
             await RunSearchAsync(query);
+    }
+
+    /// <summary>Phone Search tab: the search page with its box focused - the last results if
+    /// there were any, else an empty page with a hint.</summary>
+    private void OpenSearchPage()
+    {
+        if (SearchPage.Visibility != Visibility.Visible)
+        {
+            FullScreenPlayerOverlay.Visibility = Visibility.Collapsed;
+            UpdateVisualizerCaptureState();
+            ClearSidebarSelection();
+            HideAllPages();
+            ShowPage(SearchPage);
+        }
+        OnCompactNavigated("Search");
+        if (_searchQuery.Length == 0)
+        {
+            SearchHeaderText.Text = "Search";
+            SearchLibraryStatusText.Text = _spotiDrome.IsConfigured
+                ? "Find songs, albums and artists in your library, or download them via SpotiDrome."
+                : "Find songs, albums and artists in your library.";
+            SearchLibraryStatusText.Visibility = Visibility.Visible;
+        }
+        // After the page's first layout; focusing a box that isn't on screen yet does nothing.
+        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+            () => PageSearchBox.Focus(FocusState.Programmatic));
     }
 
     private async Task RunSearchAsync(string query)
@@ -62,6 +91,7 @@ public sealed partial class MainPage
         SearchPage.ChangeView(null, 0, null, true);
 
         _searchQuery = query;
+        GlobalSearchBox.Text = PageSearchBox.Text = query;   // both boxes show what was searched
         var token = ++_searchToken;
         SearchHeaderText.Text = $"Results for “{query}”";
 
