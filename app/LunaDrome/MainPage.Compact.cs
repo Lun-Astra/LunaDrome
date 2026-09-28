@@ -16,6 +16,11 @@ public sealed partial class MainPage
     private void InitCompactLayout()
     {
         SizeChanged += (_, e) => ApplyCompactLayout(e.NewSize.Width < CompactWidth);
+#if ANDROID
+        // Android draws the app edge-to-edge, under the status bar and the navigation bar;
+        // keep the whole page inside the visible area instead.
+        Uno.UI.Toolkit.VisibleBoundsPadding.SetPaddingMask(PageRoot, Uno.UI.Toolkit.VisibleBoundsPadding.PaddingMask.All);
+#endif
     }
 
     private bool IsCompact => _compact == true;
@@ -56,6 +61,9 @@ public sealed partial class MainPage
         PlayExtraPanel.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
         NowPlayingTextPanel.MaxWidth = compact ? 120 : 220;
         PlayControlsPanel.Margin = compact ? new Thickness(8, 0, 0, 0) : new Thickness(24, 0, 24, 0);
+        // Only previous / play-pause / next (+ queue) fit next to the now-playing info on a phone.
+        var extras = compact ? Visibility.Collapsed : Visibility.Visible;
+        StopButton.Visibility = ShuffleButton.Visibility = RepeatButton.Visibility = extras;
     }
 
     private void UpdateCompactSidebar()

@@ -464,7 +464,7 @@
   </Page.Resources>
 
 
-  <Grid>
+  <Grid x:Name="PageRoot">
     <!-- ================= Login ================= -->
     <Grid x:Name="LoginPanel">
       <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Width="320" Spacing="6">
