@@ -49,6 +49,8 @@
   </ItemGroup>
   <ItemGroup Condition="$(TargetFramework.Contains('android'))">
     <Compile Remove="Services\LoopbackCapture.cs" />
+    <!-- Linux media keys over D-Bus (Tmds.DBus comes with Uno's desktop runtime only). -->
+    <Compile Remove="Services\MprisMediaControls.cs" />
   </ItemGroup>
 
   <!-- The Uno SDK doesn't stamp a version into the assembly, so embed the display version as
