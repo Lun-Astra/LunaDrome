@@ -539,3 +539,6 @@ Luna is hopping off for the night. Current state of the app, for picking this ba
 ### v3.6.3: artist page + Search tab on phones — 2026-09-28
 - The artist page on phones gets the album header's compact treatment (88px photo, 24px name, icon-only Next/Last) and the smaller album cards, two per row. The artist-page and Home cards have fixed line heights (the year was also clipped on desktop).
 - The phone Search tab is its own page with its own search box (`PageSearchBox`, focused, keeps the last results) instead of opening the More menu; the More menu has no search box on phones.
+
+### v3.6.4: lyrics follow along — 2026-09-28
+- Full-screen Lyrics tab with synced lyrics: the line being sung is shown in the accent colour and bold, the other lines are dimmed, and the list keeps the current line in the middle (paused for 4s after the user scrolls). `LyricLine` is INPC (IsActive / IsDimmed / NormalOpacity); `ScrollLyricsToActive()` centres the row through the ListView's ScrollViewer. Plain lyrics are unchanged.

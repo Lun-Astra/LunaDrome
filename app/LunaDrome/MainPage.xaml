@@ -1700,10 +1700,18 @@
                 <Grid x:Name="LyricsPanelView" Visibility="Collapsed">
                   <TextBlock x:Name="LyricsPlaceholder" Text="No lyrics found for this track." TextWrapping="Wrap"
                              Foreground="{StaticResource TextSecondaryBrush}" Visibility="Collapsed"/>
-                  <ListView x:Name="LyricsList" SelectionMode="Single" DoubleTapped="LyricsList_DoubleTapped">
+                  <!-- Synced lyrics: the line being sung is highlighted (accent, bold) and kept
+                       in the middle while it plays; the other lines are dimmed. -->
+                  <ListView x:Name="LyricsList" SelectionMode="None" IsItemClickEnabled="False" DoubleTapped="LyricsList_DoubleTapped"
+                            PointerWheelChanged="LyricsList_UserScrolled" PointerPressed="LyricsList_UserScrolled">
                     <ListView.ItemTemplate>
                       <DataTemplate>
-                        <TextBlock Text="{Binding Text}" TextWrapping="Wrap" Margin="0,4"/>
+                        <Grid Margin="0,5">
+                          <TextBlock Text="{Binding Text}" TextWrapping="Wrap" FontSize="15" Opacity="{Binding NormalOpacity}"/>
+                          <TextBlock Text="{Binding Text}" TextWrapping="Wrap" FontSize="15" FontWeight="Bold"
+                                     Foreground="{StaticResource AccentBrush}"
+                                     Visibility="{Binding IsActive, Converter={StaticResource BoolToVisibility}}"/>
+                        </Grid>
                       </DataTemplate>
                     </ListView.ItemTemplate>
                   </ListView>

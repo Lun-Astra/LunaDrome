@@ -60,10 +60,32 @@ public class Song
     public Song Clone() => (Song)MemberwiseClone();
 }
 
-public class LyricLine
+public class LyricLine : System.ComponentModel.INotifyPropertyChanged
 {
     public TimeSpan Start { get; set; }
     public string Text { get; set; } = "";
+
+    private bool _isActive, _isDimmed;
+
+    /// <summary>The line being sung right now (synced lyrics only) - shown highlighted.</summary>
+    public bool IsActive
+    {
+        get => _isActive;
+        set { if (_isActive != value) { _isActive = value; Changed(nameof(IsActive)); Changed(nameof(NormalOpacity)); } }
+    }
+
+    /// <summary>Synced lyrics dim every line but the active one; plain lyrics stay fully readable.</summary>
+    public bool IsDimmed
+    {
+        get => _isDimmed;
+        set { if (_isDimmed != value) { _isDimmed = value; Changed(nameof(NormalOpacity)); } }
+    }
+
+    /// <summary>Opacity of the normal rendition (the highlighted one takes over while active).</summary>
+    public double NormalOpacity => _isActive ? 0 : _isDimmed ? 0.5 : 1;
+
+    public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
+    private void Changed(string name) => PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(name));
 }
 
 public class Playlist
