@@ -1,6 +1,6 @@
 <Project Sdk="Uno.Sdk">
   <PropertyGroup>
-    <TargetFrameworks>net10.0-desktop</TargetFrameworks>
+    <TargetFrameworks>net10.0-desktop;net10.0-android</TargetFrameworks>
 
     <OutputType>Exe</OutputType>
     <UnoSingleProject>true</UnoSingleProject>
@@ -8,7 +8,7 @@
     <!-- Display name -->
     <ApplicationTitle>LunaDrome</ApplicationTitle>
     <!-- App Identifier -->
-    <ApplicationId>com.companyname.lunadrome</ApplicationId>
+    <ApplicationId>com.lunastra.lunadrome</ApplicationId>
     <!-- Versions -->
     <ApplicationDisplayVersion>3.4.0</ApplicationDisplayVersion>
     <ApplicationVersion>2</ApplicationVersion>
@@ -41,8 +41,14 @@
     <ProjectReference Include="..\..\src\LunaDrome.Core\LunaDrome.Core.csproj" />
   </ItemGroup>
 
-  <ItemGroup>
+  <!-- The visualizer's audio capture (WASAPI loopback / PulseAudio) is desktop-only. On
+       Android a no-op LoopbackCapture.Android.cs takes its place (no visualizer there yet). -->
+  <ItemGroup Condition="!$(TargetFramework.Contains('android'))">
     <PackageReference Include="NAudio.Wasapi" />
+    <Compile Remove="Services\LoopbackCapture.Android.cs" />
+  </ItemGroup>
+  <ItemGroup Condition="$(TargetFramework.Contains('android'))">
+    <Compile Remove="Services\LoopbackCapture.cs" />
   </ItemGroup>
 
   <!-- The Uno SDK doesn't stamp a version into the assembly, so embed the display version as
