@@ -519,3 +519,9 @@ Luna is hopping off for the night. Current state of the app, for picking this ba
 
 ### v3.5.1: phone layout fixes — 2026-09-28
 - Found by running the desktop build in a phone-sized (412x915) Xvfb screen on the LXC and going through every page (no KVM there, so no Android emulator): the ☰/✕ button now stays above the open menu; the menu closes whenever a page opens (`ShowPage`); the Home hero card and album header get compact sizes (album Next/Last icon-only); track lists show title + time only on phones (`TrackColumnLayout.SetCompact`, genre hidden); Settings theme chips wrap 3 per row. Desktop layout checked unchanged at 1280x800.
+
+### v3.6.0: Android Auto + media controls — 2026-09-28
+- **Android Auto (#26):** `Platforms/Android/AndroidMediaControls.cs` (a MediaSessionCompat behind `IMediaControls`, with a MediaStyle notification and lock-screen controls, headset/Bluetooth buttons and seek) and `LunaMediaService.cs` (a MediaBrowserServiceCompat, run as a mediaPlayback foreground service while playing). `MainPage.Android.cs` provides the browse tree through `AndroidAutoBridge`: Recently played / Recently added / Most played / Playlists → album/playlist → tracks, plus voice search. Auto needs the app running and logged in. Sideloaded APKs need "Unknown sources" in Android Auto's developer settings. Xamarin.AndroidX.Media 1.7.1.2; **minSdk 23**.
+- **Bottom navigation bar on phones (#25):** Home/Search/Albums/Artists/Tracks/More; More opens the full menu.
+- **Visualizer follows the theme accent (#23):** `Themes.CurrentAccent`.
+- **"Playback failed" cleared once playback runs (#24).**

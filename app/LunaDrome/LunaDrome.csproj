@@ -16,7 +16,7 @@
     <!-- AndroidX Media (Android Auto, #26) needs Android 6+. -->
     <SupportedOSPlatformVersion Condition="$(TargetFramework.Contains('android'))">23.0</SupportedOSPlatformVersion>
     <!-- Versions -->
-    <ApplicationDisplayVersion>3.5.1</ApplicationDisplayVersion>
+    <ApplicationDisplayVersion>3.6.0</ApplicationDisplayVersion>
     <ApplicationVersion>2</ApplicationVersion>
     <!-- Package Publisher -->
     <ApplicationPublisher>LunaDrome</ApplicationPublisher>
