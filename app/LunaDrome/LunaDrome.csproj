@@ -55,6 +55,8 @@
     <Compile Remove="Services\LoopbackCapture.cs" />
     <!-- Linux media keys over D-Bus (Tmds.DBus comes with Uno's desktop runtime only). -->
     <Compile Remove="Services\MprisMediaControls.cs" />
+    <!-- MediaSessionCompat / MediaBrowserServiceCompat: notification controls + Android Auto (#26). -->
+    <PackageReference Include="Xamarin.AndroidX.Media" />
   </ItemGroup>
 
   <!-- The Uno SDK doesn't stamp a version into the assembly, so embed the display version as

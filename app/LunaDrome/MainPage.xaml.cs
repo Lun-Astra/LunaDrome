@@ -2527,6 +2527,9 @@ public sealed partial class MainPage : Page
             return;
 
         _mediaControls.CommandReceived += command => DispatcherQueue.TryEnqueue(() => HandleMediaCommand(command));
+#if ANDROID
+        ConnectAndroidAuto();
+#endif
         if (_current != null)
         {
             SetCurrent(_current);

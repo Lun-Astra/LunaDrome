@@ -30,10 +30,12 @@ public static class MediaControls
     {
         try
         {
+#if ANDROID
+            // Notification / lock screen / Android Auto; MPRIS (D-Bus) isn't compiled in there.
+            return AndroidMediaControls.Create();
+#else
             if (OperatingSystem.IsWindows())
                 return SmtcMediaControls.TryCreate();
-#if !ANDROID
-            // MPRIS (D-Bus) is Linux-desktop only; not compiled into the Android app.
             if (OperatingSystem.IsLinux())
                 return MprisMediaControls.TryCreate();
 #endif
