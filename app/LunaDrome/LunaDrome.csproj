@@ -13,6 +13,8 @@
     <ApplicationTitle>LunaDrome</ApplicationTitle>
     <!-- App Identifier -->
     <ApplicationId>com.lunastra.lunadrome</ApplicationId>
+    <!-- AndroidX Media (Android Auto, #26) needs Android 6+. -->
+    <SupportedOSPlatformVersion Condition="$(TargetFramework.Contains('android'))">23.0</SupportedOSPlatformVersion>
     <!-- Versions -->
     <ApplicationDisplayVersion>3.5.1</ApplicationDisplayVersion>
     <ApplicationVersion>2</ApplicationVersion>
