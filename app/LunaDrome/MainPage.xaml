@@ -119,12 +119,14 @@
           </Border>
         </Grid>
         <Border Background="Transparent" Margin="2,8,0,0" HorizontalAlignment="Left" controls:Motion.ClickableText="True" Tag="{Binding}" Tapped="CardAlbumText_Tapped">
-          <TextBlock Text="{Binding Name}" FontSize="12" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" MaxWidth="140"/>
+          <TextBlock Text="{Binding Name}" FontSize="12" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" MaxWidth="140" Height="18"/>
         </Border>
         <Border Background="Transparent" Margin="2,2,0,0" HorizontalAlignment="Left" controls:Motion.ClickableText="True" Tag="{Binding}" Tapped="CardArtistText_Tapped">
-          <TextBlock Text="{Binding ArtistName}" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" MaxWidth="140"/>
+          <TextBlock Text="{Binding ArtistName}" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" MaxWidth="140" Height="16"/>
         </Border>
-        <TextBlock Text="{Binding Year}" FontSize="11" Margin="2,2,0,0" Foreground="{StaticResource TextSecondaryBrush}"/>
+        <!-- Fixed line heights: the grid sizes every row from one card, so a card without a year
+             (or a taller Android font) made the year line of the others get cut off. -->
+        <TextBlock Text="{Binding Year}" FontSize="11" Margin="2,2,0,0" Foreground="{StaticResource TextSecondaryBrush}" Height="16"/>
       </StackPanel>
     </DataTemplate>
 
@@ -639,7 +641,7 @@
                   <TextBlock Text="Artists" FontSize="20" FontWeight="Bold" Margin="0,12,0,0"/>
                   <muxc:ItemsRepeater x:Name="SearchArtistsList" ItemTemplate="{StaticResource SearchArtistTemplate}">
                     <muxc:ItemsRepeater.Layout>
-                      <muxc:UniformGridLayout MinItemWidth="130" MinItemHeight="140" ItemsStretch="None" MinColumnSpacing="0" MinRowSpacing="0"/>
+                      <muxc:UniformGridLayout MinItemWidth="130" MinItemHeight="150" ItemsStretch="None" MinColumnSpacing="0" MinRowSpacing="0"/>
                     </muxc:ItemsRepeater.Layout>
                   </muxc:ItemsRepeater>
                 </StackPanel>
@@ -648,7 +650,7 @@
                   <TextBlock Text="Albums" FontSize="20" FontWeight="Bold" Margin="0,12,0,0"/>
                   <muxc:ItemsRepeater x:Name="SearchAlbumsList" ItemTemplate="{StaticResource LargeAlbumCardTemplate}">
                     <muxc:ItemsRepeater.Layout>
-                      <muxc:UniformGridLayout MinItemWidth="162" MinItemHeight="200" ItemsStretch="None" MinColumnSpacing="0" MinRowSpacing="0"/>
+                      <muxc:UniformGridLayout MinItemWidth="162" MinItemHeight="224" ItemsStretch="None" MinColumnSpacing="0" MinRowSpacing="0"/>
                     </muxc:ItemsRepeater.Layout>
                   </muxc:ItemsRepeater>
                 </StackPanel>
@@ -725,7 +727,7 @@
                           <StackPanel x:Name="YtAlbumsSection" Visibility="Collapsed">
                             <muxc:ItemsRepeater x:Name="YtAlbumsList" ItemTemplate="{StaticResource YtAlbumCardTemplate}">
                               <muxc:ItemsRepeater.Layout>
-                                <muxc:UniformGridLayout MinItemWidth="162" MinItemHeight="218" ItemsStretch="None" MinColumnSpacing="0" MinRowSpacing="0"/>
+                                <muxc:UniformGridLayout MinItemWidth="162" MinItemHeight="224" ItemsStretch="None" MinColumnSpacing="0" MinRowSpacing="0"/>
                               </muxc:ItemsRepeater.Layout>
                             </muxc:ItemsRepeater>
                           </StackPanel>
@@ -1377,7 +1379,7 @@
               <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" controls:WheelScroll.Enabled="True">
                 <muxc:ItemsRepeater x:Name="AllAlbumsList" ItemTemplate="{StaticResource LargeAlbumCardTemplate}">
                   <muxc:ItemsRepeater.Layout>
-                    <muxc:UniformGridLayout MinItemWidth="162" MinItemHeight="200" ItemsStretch="None"
+                    <muxc:UniformGridLayout MinItemWidth="162" MinItemHeight="224" ItemsStretch="None"
                                             MinColumnSpacing="0" MinRowSpacing="0"/>
                   </muxc:ItemsRepeater.Layout>
                 </muxc:ItemsRepeater>
@@ -1476,7 +1478,7 @@
               <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" controls:WheelScroll.Enabled="True">
                 <muxc:ItemsRepeater x:Name="GenreAlbumsList" ItemTemplate="{StaticResource LargeAlbumCardTemplate}">
                   <muxc:ItemsRepeater.Layout>
-                    <muxc:UniformGridLayout MinItemWidth="162" MinItemHeight="200" ItemsStretch="None"
+                    <muxc:UniformGridLayout MinItemWidth="162" MinItemHeight="224" ItemsStretch="None"
                                             MinColumnSpacing="0" MinRowSpacing="0"/>
                   </muxc:ItemsRepeater.Layout>
                 </muxc:ItemsRepeater>
