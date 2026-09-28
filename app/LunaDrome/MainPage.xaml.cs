@@ -143,7 +143,11 @@ public sealed partial class MainPage : Page
             DispatcherQueue.TryEnqueue(() =>
             {
                 SetPlaying(false);
-                NowPlayingSubText.Text = $"Playback failed: {e.ErrorMessage}";
+                // #24: the player sometimes reports a (message-less) failure and just keeps
+                // playing; SyncWithPlayerState clears this again once it's really playing.
+                _showingPlaybackError = true;
+                NowPlayingSubText.Text = string.IsNullOrWhiteSpace(e.ErrorMessage)
+                    ? "Playback failed" : $"Playback failed: {e.ErrorMessage}";
             });
         };
         _player.MediaOpened += (_, _) =>
@@ -682,6 +686,7 @@ public sealed partial class MainPage : Page
         CloseCompactSidebar();
         if (!_initialized || _suppressNavEvents || sender is not RadioButton { Tag: string tag })
             return;
+        OnCompactNavigated(tag);
 
         FullScreenPlayerOverlay.Visibility = Visibility.Collapsed;
         UpdateVisualizerCaptureState();
@@ -2342,6 +2347,7 @@ public sealed partial class MainPage : Page
         var song = entry.Song;
         NowPlayingText.Text = song.Title;
         NowPlayingSubText.Text = song.ArtistName;
+        _showingPlaybackError = false;
         NowPlayingFavorite.Visibility = Visibility.Visible;
         UpdateNowPlayingFavorite(song);
         SetImage(NowPlayingArt, song.CoverArtUrl ?? _client.GetCoverArtUrl(song.AlbumId, 240));
@@ -2521,6 +2527,9 @@ public sealed partial class MainPage : Page
             return;
 
         _mediaControls.CommandReceived += command => DispatcherQueue.TryEnqueue(() => HandleMediaCommand(command));
+#if ANDROID
+        ConnectAndroidAuto();
+#endif
         if (_current != null)
         {
             SetCurrent(_current);
@@ -2708,6 +2717,7 @@ public sealed partial class MainPage : Page
     // MediaEnded) the icon showed "paused" while it played (#21), or playback stopped at the end
     // of a track instead of moving on (#18). Checked on every progress tick.
     private int _pausedTicks;
+    private bool _showingPlaybackError;
 
     private void SyncWithPlayerState(MediaPlaybackSession session, TimeSpan position, TimeSpan duration)
     {
@@ -2720,6 +2730,12 @@ public sealed partial class MainPage : Page
         if (state == MediaPlaybackState.Playing)
         {
             _pausedTicks = 0;
+            if (_showingPlaybackError)
+            {
+                Log("player recovered after a reported failure - clearing the error");
+                _showingPlaybackError = false;
+                NowPlayingSubText.Text = _current.Song.ArtistName;
+            }
             if (!_isPlaying)
             {
                 Log("player is playing while we showed paused - syncing the icon");

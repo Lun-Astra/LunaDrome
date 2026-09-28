@@ -13,6 +13,8 @@
     <ApplicationTitle>LunaDrome</ApplicationTitle>
     <!-- App Identifier -->
     <ApplicationId>com.lunastra.lunadrome</ApplicationId>
+    <!-- AndroidX Media (Android Auto, #26) needs Android 6+. -->
+    <SupportedOSPlatformVersion Condition="$(TargetFramework.Contains('android'))">23.0</SupportedOSPlatformVersion>
     <!-- Versions -->
     <ApplicationDisplayVersion>3.5.1</ApplicationDisplayVersion>
     <ApplicationVersion>2</ApplicationVersion>
@@ -55,6 +57,8 @@
     <Compile Remove="Services\LoopbackCapture.cs" />
     <!-- Linux media keys over D-Bus (Tmds.DBus comes with Uno's desktop runtime only). -->
     <Compile Remove="Services\MprisMediaControls.cs" />
+    <!-- MediaSessionCompat / MediaBrowserServiceCompat: notification controls + Android Auto (#26). -->
+    <PackageReference Include="Xamarin.AndroidX.Media" />
   </ItemGroup>
 
   <!-- The Uno SDK doesn't stamp a version into the assembly, so embed the display version as

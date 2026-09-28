@@ -85,6 +85,9 @@ public static class Themes
     // Brush -> role, captured once from the untouched (Dark) resources.
     private static List<(SolidColorBrush Brush, Role Role)>? s_brushes;
 
+    /// <summary>The accent color in use (after <see cref="Apply"/>), e.g. for the visualizer.</summary>
+    public static Color CurrentAccent { get; private set; } = Color.FromArgb(0xFF, 0xFF, 0xFF, 0xFF);
+
     public static void Apply(string theme, string accent)
     {
         s_brushes ??= CaptureBrushes();
@@ -93,6 +96,7 @@ public static class Themes
         var colored = TryAccentColor(accent, out var accentColor);
         if (!colored)
             accentColor = palette.NeutralAccent;
+        CurrentAccent = accentColor;
         // The preset colors are all bright, so dark content on them reads best.
         var onAccent = !colored ? palette.OnNeutralAccent
             : Accents.ContainsKey(accent) ? C(0xFF141517) : OnColor(accentColor);

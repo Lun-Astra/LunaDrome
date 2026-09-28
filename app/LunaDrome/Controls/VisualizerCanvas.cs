@@ -36,6 +36,7 @@ public sealed class VisualizerCanvas : SKCanvasElement
 
     private readonly SKPaint _fill = new() { IsAntialias = true, Style = SKPaintStyle.Fill };
     private float _fillShaderHeight = -1;
+    private SKColor _fillColor = SKColors.White;
 
     /// <summary>Hand over this frame's (temporally smoothed) band levels, 0..1, and redraw.</summary>
     public void SetLevels(float[] smoothedBands)
@@ -107,14 +108,19 @@ public sealed class VisualizerCanvas : SKCanvasElement
 
         // Filled area under the curve: white 40% at the top fading to transparent at the bottom
         // (same gradient as the WPF Path.Fill), then the 2px white outline on top.
-        if (Math.Abs(_fillShaderHeight - height) > 0.5f)
+        // #23: drawn in the accent color picked in Settings (white for the neutral accent).
+        var accent = Themes.CurrentAccent;
+        var color = new SKColor(accent.R, accent.G, accent.B);
+        if (Math.Abs(_fillShaderHeight - height) > 0.5f || color != _fillColor)
         {
             _fill.Shader?.Dispose();
             _fill.Shader = SKShader.CreateLinearGradient(
                 new SKPoint(0, 0), new SKPoint(0, height),
-                new[] { new SKColor(255, 255, 255, 0x66), new SKColor(255, 255, 255, 0) },
+                new[] { color.WithAlpha(0x66), color.WithAlpha(0) },
                 SKShaderTileMode.Clamp);
             _fillShaderHeight = height;
+            _fillColor = color;
+            _stroke.Color = color;
         }
 
         canvas.DrawPath(_path, _fill);

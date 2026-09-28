@@ -9,5 +9,6 @@
   </ItemGroup>
   <ItemGroup>
     <PackageVersion Include="NAudio.Wasapi" Version="3.1.0" />
+    <PackageVersion Include="Xamarin.AndroidX.Media" Version="1.7.1.2" />
   </ItemGroup>
 </Project>
