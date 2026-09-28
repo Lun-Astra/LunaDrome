@@ -14,7 +14,7 @@
     <!-- App Identifier -->
     <ApplicationId>com.lunastra.lunadrome</ApplicationId>
     <!-- Versions -->
-    <ApplicationDisplayVersion>3.5.0</ApplicationDisplayVersion>
+    <ApplicationDisplayVersion>3.5.1</ApplicationDisplayVersion>
     <ApplicationVersion>2</ApplicationVersion>
     <!-- Package Publisher -->
     <ApplicationPublisher>LunaDrome</ApplicationPublisher>
