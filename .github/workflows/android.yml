@@ -60,6 +60,7 @@ jobs:
         with:
           name: android
           path: dist/*.apk
+          retention-days: 1
       - if: github.ref_type == 'tag'
         uses: softprops/action-gh-release@v2
         with:
