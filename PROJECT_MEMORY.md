@@ -542,3 +542,8 @@ Luna is hopping off for the night. Current state of the app, for picking this ba
 
 ### v3.6.4: lyrics follow along — 2026-09-28
 - Full-screen Lyrics tab with synced lyrics: the line being sung is shown in the accent colour and bold, the other lines are dimmed, and the list keeps the current line in the middle (paused for 4s after the user scrolls). `LyricLine` is INPC (IsActive / IsDimmed / NormalOpacity); `ScrollLyricsToActive()` centres the row through the ListView's ScrollViewer. Plain lyrics are unchanged.
+
+### Scroll hitch every 10s while playing (dev, not released) — 2026-09-29
+- Luna: scrolling "sometimes" lags. Cause found: `ProgressTimer_Tick` calls `SaveQueueState()` every 25 ticks (~10s) while playing, and it serialized the whole queue + preferences to JSON and wrote both files on the UI thread. Measured with a 5000-song queue: 48 ms per save on the calling thread (about 3 dropped frames); now 3 ms.
+- `StateFileWriter` (Core) writes a file now or in the background (write-then-rename). Per file, the newest save wins: each save takes a sequence number, and an older background save that finishes late is dropped. The periodic tick uses `SaveQueueState(background: true)`: the song clones and prefs JSON are made on the UI thread, then serialize + write run off it. Exit / sign-out / update keep the synchronous save.
+- Not verified in Luna's running app yet. If scrolling still hitches, the older maximized-Home frame cost (~57 ms/frame, see the 2026-09-24 investigation) is the next suspect.

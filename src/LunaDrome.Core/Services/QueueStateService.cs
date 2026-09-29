@@ -42,6 +42,20 @@ public static class QueueStateService
 
     public static void Save(QueueState state)
     {
+        var snapshot = Snapshot(state);
+        StateFileWriter.Write(StatePath, () => JsonSerializer.Serialize(snapshot));
+    }
+
+    /// <summary>For the periodic save while playing: the copy is made here, the JSON + disk write
+    /// happen off the UI thread.</summary>
+    public static void SaveInBackground(QueueState state, Action<Exception>? onError = null)
+    {
+        var snapshot = Snapshot(state);
+        StateFileWriter.WriteInBackground(StatePath, () => JsonSerializer.Serialize(snapshot), onError);
+    }
+
+    private static QueueState Snapshot(QueueState state)
+    {
         // Cover art URLs carry the Subsonic auth token + salt (a replayable credential) - never
         // write them to disk; they're rebuilt from AlbumId after loading.
         var songs = state.Songs.Select(s =>
@@ -51,7 +65,7 @@ public static class QueueStateService
             return copy;
         }).ToList();
 
-        var json = JsonSerializer.Serialize(new QueueState
+        return new QueueState
         {
             ServerUrl = state.ServerUrl,
             Username = state.Username,
@@ -60,13 +74,7 @@ public static class QueueStateService
             PositionSeconds = state.PositionSeconds,
             Shuffled = state.Shuffled,
             RepeatMode = state.RepeatMode,
-            UnshuffledOrder = state.UnshuffledOrder,
-        });
-
-        Directory.CreateDirectory(Path.GetDirectoryName(StatePath)!);
-        // Write-then-rename so a crash mid-write can't leave a truncated queue.json behind.
-        var temp = StatePath + ".tmp";
-        File.WriteAllText(temp, json);
-        File.Move(temp, StatePath, overwrite: true);
+            UnshuffledOrder = state.UnshuffledOrder?.ToList(),
+        };
     }
 }
