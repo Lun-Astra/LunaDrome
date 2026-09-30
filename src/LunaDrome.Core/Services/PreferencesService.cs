@@ -56,9 +56,19 @@ public static class PreferencesService
     {
         try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(PreferencesPath)!);
-            File.WriteAllText(PreferencesPath, JsonSerializer.Serialize(preferences, new JsonSerializerOptions { WriteIndented = true }));
+            var json = Serialize(preferences);
+            StateFileWriter.Write(PreferencesPath, () => json);
         }
         catch { /* best-effort: a read-only profile just means preferences don't stick */ }
     }
+
+    /// <summary>Serialized here (the object belongs to the UI thread), written in the background.</summary>
+    public static void SaveInBackground(Preferences preferences)
+    {
+        var json = Serialize(preferences);
+        StateFileWriter.WriteInBackground(PreferencesPath, () => json);
+    }
+
+    private static string Serialize(Preferences preferences) =>
+        JsonSerializer.Serialize(preferences, new JsonSerializerOptions { WriteIndented = true });
 }

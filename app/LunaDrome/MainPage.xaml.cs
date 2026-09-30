@@ -2735,7 +2735,7 @@ public sealed partial class MainPage : Page
         {
             _saveTickCounter = 0;
             if (_isPlaying)
-                SaveQueueState();
+                SaveQueueState(background: true);
         }
 
         UpdateJamProgress();
@@ -2886,9 +2886,13 @@ public sealed partial class MainPage : Page
     // ----- Queue persistence (#12) -----
 
     // Also saves preferences (the volume changes without a Settings click).
-    public void SaveQueueState()
+    // background: the periodic save while playing; the JSON + disk write happen off the UI thread.
+    public void SaveQueueState(bool background = false)
     {
-        PreferencesService.Save(_prefs);
+        if (background)
+            PreferencesService.SaveInBackground(_prefs);
+        else
+            PreferencesService.Save(_prefs);
         if (!_signedIn)
             return;
 
@@ -2900,7 +2904,7 @@ public sealed partial class MainPage : Page
                 ? _player.PlaybackSession.Position
                 : _pendingSeek;
 
-            QueueStateService.Save(new QueueState
+            var state = new QueueState
             {
                 ServerUrl = _client.ServerUrl,
                 Username = _client.Username,
@@ -2910,7 +2914,11 @@ public sealed partial class MainPage : Page
                 Shuffled = _isShuffled,
                 RepeatMode = (int)_repeatMode,
                 UnshuffledOrder = _unshuffledOrder?.Where(indexOf.ContainsKey).Select(q => indexOf[q]).ToList(),
-            });
+            };
+            if (background)
+                QueueStateService.SaveInBackground(state, ex => Log($"saving the queue failed: {ex.Message}"));
+            else
+                QueueStateService.Save(state);
         }
         catch (Exception ex)
         {
