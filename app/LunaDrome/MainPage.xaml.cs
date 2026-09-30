@@ -1572,8 +1572,15 @@ public sealed partial class MainPage : Page
         shuffle.Click += (_, _) => PlayTrackView(key, shuffle: true);
         flyout.Items.Add(play);
         flyout.Items.Add(shuffle);
+        flyout.Items.Add(new MenuFlyoutSeparator());
+        AddMenuItem(flyout, "Play next", () => { if (TrackViewSongs(key) is { } songs) QueueSongsNext(songs); });
+        AddMenuItem(flyout, "Add to queue", () => { if (TrackViewSongs(key) is { } songs) AddToQueue(songs); });
         flyout.ShowAt(button);
     }
+
+    // The list as shown (search + sort applied).
+    private List<Song>? TrackViewSongs(string key) =>
+        _trackViews[key].List.ItemsSource is List<Song> { Count: > 0 } songs ? songs.ToList() : null;
 
     private void PlayTrackView(string key, bool shuffle)
     {
@@ -1755,10 +1762,58 @@ public sealed partial class MainPage : Page
         if ((e.OriginalSource as FrameworkElement)?.DataContext is not Playlist playlist)
             return;
 
-        var flyout = new MenuFlyout();
+        var flyout = PlaylistQueueMenu(playlist);
+        flyout.Items.Add(new MenuFlyoutSeparator());
         AddMenuItem(flyout, "Delete playlist", async () => await DeletePlaylistAsync(playlist));
         flyout.ShowAt(PlaylistsList, e.GetPosition(PlaylistsList));
         e.Handled = true;
+    }
+
+    // Right-click (long-press on a phone) on a Home playlist card.
+    private void HomePlaylistCard_RightTapped(object sender, RightTappedRoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: Playlist playlist } card)
+            return;
+
+        PlaylistQueueMenu(playlist).ShowAt(card, e.GetPosition(card));
+        e.Handled = true;
+    }
+
+    // Play / Shuffle / Play next / Add to queue for a whole playlist, without opening it.
+    private MenuFlyout PlaylistQueueMenu(Playlist playlist)
+    {
+        var flyout = new MenuFlyout();
+        AddMenuItem(flyout, "Play", async () => { if (await LoadPlaylistSongsAsync(playlist) is { } songs) PlayQueueFrom(songs, 0); });
+        AddMenuItem(flyout, "Shuffle", async () =>
+        {
+            if (await LoadPlaylistSongsAsync(playlist) is { } songs)
+                PlayQueueFrom(songs.OrderBy(_ => _random.Next()).ToList(), 0);
+        });
+        AddMenuItem(flyout, "Play next", async () => { if (await LoadPlaylistSongsAsync(playlist) is { } songs) QueueSongsNext(songs); });
+        AddMenuItem(flyout, "Add to queue", async () =>
+        {
+            if (await LoadPlaylistSongsAsync(playlist) is { } songs)
+            {
+                AddToQueue(songs);
+                ShowToast($"Added {songs.Count} songs from \"{playlist.Name}\" to the queue");
+            }
+        });
+        return flyout;
+    }
+
+    private async Task<List<Song>?> LoadPlaylistSongsAsync(Playlist playlist)
+    {
+        try
+        {
+            var songs = await _client.GetPlaylistSongsAsync(playlist.Id);
+            PopulateSongArt(songs);
+            return songs.Count > 0 ? songs : null;
+        }
+        catch (Exception ex)
+        {
+            await ShowErrorAsync($"Failed to load playlist: {ex.Message}");
+            return null;
+        }
     }
 
     private async void NewPlaylistButton_Click(object sender, RoutedEventArgs e)

@@ -1139,7 +1139,7 @@
                       <ItemsControl.ItemTemplate>
                         <DataTemplate>
                           <StackPanel Width="{Binding CardWidth, Source={StaticResource HomeLayout}}" Background="Transparent"
-                                      Tag="{Binding}" Tapped="HomePlaylistCard_Tapped">
+                                      Tag="{Binding}" Tapped="HomePlaylistCard_Tapped" RightTapped="HomePlaylistCard_RightTapped">
                             <Border CornerRadius="6" Background="{StaticResource RaisedBrush}"
                                     Width="{Binding CardWidth, Source={StaticResource HomeLayout}}"
                                     Height="{Binding CardWidth, Source={StaticResource HomeLayout}}">

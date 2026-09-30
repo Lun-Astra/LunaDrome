@@ -20,7 +20,8 @@ public static class WheelScroll
 {
     public const double PixelsPerNotch = 140;
 
-    // Fraction of the remaining distance covered per ~16ms frame: 0.25 = ~95% there in 10 frames.
+    // Fraction of the remaining distance covered per 60Hz frame (scaled for other frame times):
+    // 0.25 = ~95% there after 10 frames' worth of time (~170ms).
     private const double Easing = 0.25;
 
     public static readonly DependencyProperty EnabledProperty =
@@ -66,19 +67,26 @@ public static class WheelScroll
     }
 
     /// <summary>Per-ScrollViewer glide toward an accumulated wheel target.</summary>
+    /// <remarks>
+    /// Stepped once per rendered frame (CompositionTarget.Rendering), with the easing scaled by the
+    /// time since the last frame. It used to step on a 16ms DispatcherTimer with a fixed 25% per
+    /// tick; Windows timers are ~15.6ms-grained, so that fired every 15.6 or 31.2ms, unevenly, and
+    /// the view moved in uneven jumps at 30-60 steps a second on a 180Hz screen. Rendering is only
+    /// subscribed while a glide runs: a permanent handler keeps Uno's Skia host redrawing at the
+    /// monitor's refresh rate (see the visualizer timer in MainPage).
+    /// </remarks>
     private sealed class Smoother
     {
+        private const double FrameMs = 1000.0 / 60;   // Easing is defined per 60Hz frame
+
         private readonly ScrollViewer _scrollViewer;
-        private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromMilliseconds(16) };
+        private readonly System.Diagnostics.Stopwatch _clock = new();
         private double _position;
         private double _target;
+        private double _lastFrameMs;
         private bool _animating;
 
-        public Smoother(ScrollViewer scrollViewer)
-        {
-            _scrollViewer = scrollViewer;
-            _timer.Tick += (_, _) => Step();
-        }
+        public Smoother(ScrollViewer scrollViewer) => _scrollViewer = scrollViewer;
 
         public void Add(double delta)
         {
@@ -90,23 +98,34 @@ public static class WheelScroll
             if (!_animating)
             {
                 _animating = true;
-                Step();
-                _timer.Start();
+                _clock.Restart();
+                _lastFrameMs = 0;
+                CompositionTarget.Rendering += OnRendering;
+                Step(1);
             }
         }
 
-        private void Step()
+        private void OnRendering(object? sender, object e)
+        {
+            var now = _clock.Elapsed.TotalMilliseconds;
+            // Capped so a long stall doesn't turn into one big jump.
+            var frames = Math.Clamp((now - _lastFrameMs) / FrameMs, 0, 4);
+            _lastFrameMs = now;
+            Step(frames);
+        }
+
+        private void Step(double frames)
         {
             var remaining = _target - _position;
             if (Math.Abs(remaining) < 0.5)
             {
                 _position = _target;
-                _timer.Stop();
+                CompositionTarget.Rendering -= OnRendering;
                 _animating = false;
             }
             else
             {
-                _position += remaining * Easing;
+                _position += remaining * (1 - Math.Pow(1 - Easing, frames));
             }
 
             _scrollViewer.ChangeView(null, _position, null, true);
