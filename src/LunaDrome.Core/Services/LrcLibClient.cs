@@ -23,6 +23,9 @@ public static partial class LrcLibClient
         return http;
     }
 
+    private const double SyncedToleranceSec = 2;
+    private const double PlainToleranceSec = 5;
+
     public static async Task<(List<LyricLine> Lines, bool Synced)> GetLyricsAsync(string artist, string title, string album, int durationSeconds)
     {
         try
@@ -51,7 +54,13 @@ public static partial class LrcLibClient
                     }
                 }
 
+            // Synced lyrics are timed to one specific recording: a version a few seconds longer
+            // or shorter (a music video's intro, a radio edit) puts every line off by that much.
+            // So synced lyrics are only taken within SyncedToleranceSec of this file, the closest
+            // one wins; anything else (up to PlainToleranceSec) is still fine as plain text.
             (List<LyricLine> Lines, bool Synced)? plainFallback = null;
+            (List<LyricLine> Lines, bool Synced)? bestSynced = null;
+            var bestDiff = double.MaxValue;
             var searches = titles.Select(t => $"api/search?artist_name={Uri.EscapeDataString(artists[^1])}&track_name={Uri.EscapeDataString(t)}")
                 .Append($"api/search?q={Uri.EscapeDataString(artists[^1] + " " + titles[^1])}");
             foreach (var search in searches)
@@ -59,18 +68,25 @@ public static partial class LrcLibClient
                 using var results = JsonDocument.Parse(await Http.GetStringAsync(search));
                 foreach (var record in results.RootElement.EnumerateArray())
                 {
+                    var diff = durationSeconds > 0 && record.TryGetProperty("duration", out var d) && d.ValueKind == JsonValueKind.Number
+                        ? Math.Abs(d.GetDouble() - durationSeconds)
+                        : 0;
                     // Skip versions whose length is way off (live cuts, extended mixes).
-                    if (durationSeconds > 0 && record.TryGetProperty("duration", out var d) && d.ValueKind == JsonValueKind.Number
-                        && Math.Abs(d.GetDouble() - durationSeconds) > 5)
+                    if (diff > PlainToleranceSec || FromRecord(record) is not { Lines.Count: > 0 } candidate)
                         continue;
 
-                    if (FromRecord(record) is { Lines.Count: > 0 } candidate)
+                    if (candidate.Synced && diff <= SyncedToleranceSec)
                     {
-                        if (candidate.Synced)
-                            return candidate;
-                        plainFallback ??= candidate;
+                        if (diff < bestDiff)
+                            (bestSynced, bestDiff) = (candidate, diff);
+                    }
+                    else
+                    {
+                        plainFallback ??= (candidate.Lines, false);
                     }
                 }
+                if (bestSynced != null)
+                    return bestSynced.Value;
                 if (plainFallback != null)
                     break;
             }

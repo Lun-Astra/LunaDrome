@@ -123,6 +123,7 @@ public sealed partial class MainPage : Page
             ["PlaylistTracks"] = new() { List = PlaylistSongsList, Search = PlaylistTrackSearchBox, SortButton = PlaylistTrackSortButton, DirectionButton = PlaylistTrackSortDirectionButton },
         };
 
+        _lyricsTimer.Tick += LyricsTimer_Tick;
         _progressTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(400) };
         _progressTimer.Tick += ProgressTimer_Tick;
         _progressTimer.Start();
@@ -2133,6 +2134,8 @@ public sealed partial class MainPage : Page
             LyricsList.ItemsSource = null;
             LyricsPlaceholder.Text = "Nothing playing.";
             LyricsPlaceholder.Visibility = Visibility.Visible;
+            _lyricsTimer.Stop();
+            UpdateLyricsOffsetBar();
             ShowSideLyrics();
             return;
         }
@@ -2161,6 +2164,12 @@ public sealed partial class MainPage : Page
 
         foreach (var line in _lyricsLines)
             line.IsDimmed = _lyricsAreSynced;
+        _lyricsOffset = _prefs.LyricsOffsets.TryGetValue(song.Id, out var offset) ? offset : 0;
+        UpdateLyricsOffsetBar();
+        if (_lyricsAreSynced && _lyricsLines.Count > 0)
+            _lyricsTimer.Start();
+        else
+            _lyricsTimer.Stop();
         LyricsList.ItemsSource = _lyricsLines;
         LyricsPlaceholder.Text = "No lyrics found for this track.";
         LyricsPlaceholder.Visibility = _lyricsLines.Count > 0 ? Visibility.Collapsed : Visibility.Visible;
@@ -2200,6 +2209,7 @@ public sealed partial class MainPage : Page
         if (!_lyricsAreSynced || _lyricsLines.Count == 0 || _lyricsSongId != _current?.Song.Id)
             return;
 
+        position -= TimeSpan.FromSeconds(_lyricsOffset);
         // Last line that has started (-1 = before the first one).
         var index = -1;
         for (var i = 0; i < _lyricsLines.Count && _lyricsLines[i].Start <= position; i++)
@@ -2219,6 +2229,53 @@ public sealed partial class MainPage : Page
     }
 
     private DateTime _lyricsUserScrolledAt = DateTime.MinValue;
+
+    // The progress timer (400ms) also moves the highlight, but a line could light up up to
+    // 0.4s late. While synced lyrics are on screen this keeps it within ~0.1s; it does nothing
+    // otherwise, and only runs while the song has synced lyrics.
+    private readonly DispatcherTimer _lyricsTimer = new() { Interval = TimeSpan.FromMilliseconds(100) };
+
+    private void LyricsTimer_Tick(object? sender, object e)
+    {
+        var onScreen = (FullScreenPlayerOverlay.Visibility == Visibility.Visible && LyricsPanelView.Visibility == Visibility.Visible)
+                       || (QueueSidePanel.Visibility == Visibility.Visible && SideLyricsPanel.Visibility == Visibility.Visible);
+        if (!onScreen || !_isPlaying || JamOwnsPlayback || _loadedEntry == null || _loadedEntry != _current)
+            return;
+        UpdateSideLyrics(_player.PlaybackSession.Position);
+    }
+
+    // Per-song lyrics offset (seconds, positive = lyrics later): the file is often not the exact
+    // recording the synced lyrics were timed to (a music video's intro, another edit).
+    private double _lyricsOffset;
+    private const double LyricsOffsetStep = 0.5;
+
+    private void LyricsEarlier_Click(object sender, RoutedEventArgs e) => SetLyricsOffset(_lyricsOffset - LyricsOffsetStep);
+
+    private void LyricsLater_Click(object sender, RoutedEventArgs e) => SetLyricsOffset(_lyricsOffset + LyricsOffsetStep);
+
+    private void LyricsOffsetReset_Click(object sender, RoutedEventArgs e) => SetLyricsOffset(0);
+
+    private void SetLyricsOffset(double seconds)
+    {
+        if (_lyricsSongId == null)
+            return;
+        _lyricsOffset = Math.Round(Math.Clamp(seconds, -30, 30), 1);
+        if (_lyricsOffset == 0)
+            _prefs.LyricsOffsets.Remove(_lyricsSongId);
+        else
+            _prefs.LyricsOffsets[_lyricsSongId] = _lyricsOffset;
+        PreferencesService.Save(_prefs);
+        UpdateLyricsOffsetBar();
+        UpdateSideLyrics(_loadedEntry == _current ? _player.PlaybackSession.Position : _pendingSeek);
+        ScrollLyricsToActive(animate: true);
+    }
+
+    private void UpdateLyricsOffsetBar()
+    {
+        LyricsOffsetBar.Visibility = _lyricsAreSynced && _lyricsLines.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        LyricsOffsetText.Text = _lyricsOffset == 0 ? "In sync" : $"{_lyricsOffset:+0.0;-0.0} s";
+        LyricsOffsetReset.Visibility = _lyricsOffset == 0 ? Visibility.Collapsed : Visibility.Visible;
+    }
 
     // Scrolling or touching the list yourself pauses the follow-along for a few seconds.
     private void LyricsList_UserScrolled(object sender, PointerRoutedEventArgs e) => _lyricsUserScrolledAt = DateTime.UtcNow;
@@ -2271,7 +2328,8 @@ public sealed partial class MainPage : Page
         if (!_lyricsAreSynced || (e.OriginalSource as FrameworkElement)?.DataContext is not LyricLine line)
             return;
 
-        _player.PlaybackSession.Position = line.Start;
+        var target = line.Start + TimeSpan.FromSeconds(_lyricsOffset);
+        _player.PlaybackSession.Position = target < TimeSpan.Zero ? TimeSpan.Zero : target;
     }
 
     // ================= Visualizer =================
