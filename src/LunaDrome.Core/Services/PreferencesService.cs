@@ -18,6 +18,10 @@ public class Preferences
 
     public double Volume { get; set; } = 0.8;
 
+    /// <summary>Synced-lyrics offset per song id, in seconds (positive = lyrics later), set with
+    /// the Earlier / Later buttons in the Lyrics tab.</summary>
+    public Dictionary<string, double> LyricsOffsets { get; set; } = new();
+
     /// <summary>SpotiDrome web address (http://host:8080); empty = "Download via SpotiDrome" hidden.</summary>
     public string SpotiDromeUrl { get; set; } = "";
     /// <summary>SpotiDrome API key (encrypted with CredentialProtector), created in SpotiDrome > Settings > Access.</summary>
