@@ -559,3 +559,7 @@ Luna is hopping off for the night. Current state of the app, for picking this ba
 - Per-song offset: Earlier / Later (0.5s steps, ±30s) + Reset above the synced lyrics in the full-screen Lyrics tab; stored in `Preferences.LyricsOffsets` (song id → seconds, positive = lyrics later) and applied in UpdateSideLyrics and double-click-to-seek. Tested in the Linux rig: it's saved, survives a restart, and Reset removes it (note: xdotool needs press-pause-release for Uno buttons).
 - LrcLibClient searches: synced lyrics only within 2s of the file (SyncedToleranceSec), the closest wins; a synced result 2-5s off is used as plain text. api/get already matches on duration server-side. Checked against LRCLIB: Creep (237s video), Numb, Faint and Call Me still get synced lyrics.
 - Not testable in the rig: the 100ms highlight during actual playback (the rig has no audio playback).
+
+### #27 volume slider + mouse wheel (dev, not released) — 2026-10-02
+- Issue #27 (justifrusti): the mouse wheel over the volume slider now changes the volume by `Preferences.VolumeScrollStep` percent per notch (default 5, 1-25), snapped to that step grid; touchpad deltas accumulate to whole notches (120); the event is marked handled so the page doesn't scroll. The handler is added with handledEventsToo (the Slider may eat the wheel).
+- Settings > Playback: "Volume step for the mouse wheel" NumberBox (inline spin buttons, typed values). Tested in the rig (spin buttons and typed value both saved); the wheel itself isn't testable there (xdotool wheel doesn't reach the app).

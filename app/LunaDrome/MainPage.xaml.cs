@@ -133,6 +133,8 @@ public sealed partial class MainPage : Page
         InitJam();
         VolumeSlider.Value = Math.Clamp(_prefs.Volume, 0, 1);
         _player.Volume = VolumeSlider.Value;
+        // handledEventsToo: the Slider may handle the wheel itself without moving.
+        VolumeSlider.AddHandler(PointerWheelChangedEvent, new PointerEventHandler(VolumeSlider_PointerWheelChanged), true);
         _player.MediaEnded += (_, _) => DispatcherQueue.TryEnqueue(OnMediaEnded);
 
         // Playback failures used to be silent (e.g. Linux: libvlc missing/unusable -> the play
@@ -273,6 +275,7 @@ public sealed partial class MainPage : Page
         else
             AccentColorPicker.Visibility = Visibility.Collapsed;
         PrefetchCheck.IsChecked = _prefs.PrefetchNextTrack;
+        VolumeStepBox.Value = Math.Clamp(_prefs.VolumeScrollStep, 1, 25);
         ResumeQueueCheck.IsChecked = _prefs.ResumeQueueOnStartup;
         OnlineLyricsCheck.IsChecked = _prefs.OnlineLyrics;
         AutoUpdateCheck.IsChecked = _prefs.CheckForUpdates;
@@ -2792,6 +2795,37 @@ public sealed partial class MainPage : Page
         _player.Pause();
         _player.PlaybackSession.Position = TimeSpan.Zero;
         SetPlaying(false);
+    }
+
+    // #27: the mouse wheel over the volume slider changes the volume by VolumeScrollStep percent
+    // per notch. Touchpads send small deltas; they add up to whole notches (120 = one notch).
+    private int _volumeWheelRemainder;
+
+    private void VolumeSlider_PointerWheelChanged(object sender, PointerRoutedEventArgs e)
+    {
+        var props = e.GetCurrentPoint(VolumeSlider).Properties;
+        e.Handled = true;   // don't scroll the page behind it
+        if (props.IsHorizontalMouseWheel)
+            return;
+
+        _volumeWheelRemainder += props.MouseWheelDelta;
+        var notches = _volumeWheelRemainder / 120;
+        if (notches == 0)
+            return;
+        _volumeWheelRemainder -= notches * 120;
+
+        var step = Math.Clamp(_prefs.VolumeScrollStep, 1, 25) / 100.0;
+        // Snap to the step grid, so 5% steps land on 45%, 50%... even from 47%.
+        var target = Math.Round((VolumeSlider.Value + notches * step) / step) * step;
+        VolumeSlider.Value = Math.Clamp(target, 0, 1);
+    }
+
+    private void VolumeStepBox_ValueChanged(NumberBox sender, NumberBoxValueChangedEventArgs args)
+    {
+        if (!_initialized || double.IsNaN(args.NewValue))
+            return;
+        _prefs.VolumeScrollStep = (int)Math.Clamp(Math.Round(args.NewValue), 1, 25);
+        PreferencesService.Save(_prefs);
     }
 
     private void VolumeSlider_ValueChanged(object sender, RangeBaseValueChangedEventArgs e)
