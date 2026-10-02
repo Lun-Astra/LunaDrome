@@ -18,6 +18,9 @@ public class Preferences
 
     public double Volume { get; set; } = 0.8;
 
+    /// <summary>Volume change per mouse-wheel notch over the volume slider, in percent (#27).</summary>
+    public int VolumeScrollStep { get; set; } = 5;
+
     /// <summary>Synced-lyrics offset per song id, in seconds (positive = lyrics later), set with
     /// the Earlier / Later buttons in the Lyrics tab.</summary>
     public Dictionary<string, double> LyricsOffsets { get; set; } = new();
