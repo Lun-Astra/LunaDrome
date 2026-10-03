@@ -18,6 +18,9 @@ public class Preferences
 
     public double Volume { get; set; } = 0.8;
 
+    /// <summary>Streaming quality (#28): converted by Navidrome for anything but Original.</summary>
+    public StreamQuality StreamQuality { get; set; } = StreamQuality.Original;
+
     /// <summary>Volume change per mouse-wheel notch over the volume slider, in percent (#27).</summary>
     public int VolumeScrollStep { get; set; } = 5;
 

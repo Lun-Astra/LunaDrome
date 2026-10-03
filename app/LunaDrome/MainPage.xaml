@@ -911,6 +911,11 @@
                       <TextBlock Style="{StaticResource SettingsHintStyle}" Text="Brings back the queue and position from last time, paused."/>
                     </StackPanel>
                     <StackPanel>
+                      <TextBlock Text="Streaming quality" Margin="0,0,0,8"/>
+                      <StackPanel x:Name="QualityOptions" Spacing="8"/>
+                      <TextBlock Style="{StaticResource SettingsHintStyle}" Text="Lower quality uses much less data (about 2 MB instead of 30-40 MB for a 3-minute song). Navidrome converts each song on the server when it's played. Takes effect from the next song."/>
+                    </StackPanel>
+                    <StackPanel>
                       <StackPanel Orientation="Horizontal" Spacing="10">
                         <TextBlock Text="Volume step for the mouse wheel" VerticalAlignment="Center"/>
                         <NumberBox x:Name="VolumeStepBox" Minimum="1" Maximum="25" SmallChange="1" Width="120"
@@ -1753,6 +1758,126 @@
             </Grid>
           </Grid>
 
+          <!-- #29: the phone's now-playing screen, Spotify-like: big cover, title + heart, progress,
+               large play button, lyrics card. Shown instead of FullScreenLayoutGrid on phones; the
+               queue button and the lyrics card switch to the Queue / Lyrics tabs (MainPage.Compact.cs).
+               It mirrors the playback bar's state (SyncCompactPlayer). -->
+          <Grid x:Name="CompactPlayerView" Visibility="Collapsed" Padding="20,8,20,16" RowSpacing="12">
+            <Grid.RowDefinitions>
+              <RowDefinition Height="Auto"/>
+              <RowDefinition Height="*"/>
+              <RowDefinition Height="Auto"/>
+              <RowDefinition Height="Auto"/>
+              <RowDefinition Height="Auto"/>
+              <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <Grid Grid.Row="0">
+              <Button Style="{StaticResource IconButtonStyle}" Width="40" Height="40" HorizontalAlignment="Left"
+                      Click="CloseFullScreenPlayer_Click" AutomationProperties.Name="Close" ToolTipService.ToolTip="Close">
+                <Path Width="16" Height="9" Stretch="Uniform" Stroke="{StaticResource TextPrimaryBrush}" StrokeThickness="2"
+                      Data="M1,1 L8,8 L15,1"/>
+              </Button>
+              <TextBlock Text="NOW PLAYING" FontSize="11" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center"
+                         Foreground="{StaticResource TextSecondaryBrush}"/>
+              <Button Style="{StaticResource IconButtonStyle}" Width="40" Height="40" HorizontalAlignment="Right"
+                      Click="CompactShowQueue_Click" AutomationProperties.Name="Queue" ToolTipService.ToolTip="Queue">
+                <Path Width="18" Height="14" Stretch="Uniform" Stroke="{StaticResource TextPrimaryBrush}" StrokeThickness="1.8"
+                      Data="M1,2 L17,2 M1,7 L17,7 M1,12 L11,12"/>
+              </Button>
+            </Grid>
+
+            <Grid x:Name="CompactArtBox" Grid.Row="1" Width="320" Height="320" VerticalAlignment="Center">
+              <Border CornerRadius="8" Background="{StaticResource RaisedBrush}"/>
+              <Border x:Name="CompactArt" CornerRadius="8"/>
+            </Grid>
+
+            <Grid Grid.Row="2" ColumnSpacing="12">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+              </Grid.ColumnDefinitions>
+              <StackPanel VerticalAlignment="Center">
+                <TextBlock x:Name="CompactTitleText" FontSize="22" FontWeight="Bold" TextTrimming="CharacterEllipsis"/>
+                <Border Background="Transparent" HorizontalAlignment="Left" Margin="0,2,0,0" Tapped="NowPlayingArtist_Tapped">
+                  <TextBlock x:Name="CompactArtistText" FontSize="16" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis"/>
+                </Border>
+              </StackPanel>
+              <Grid x:Name="CompactFavorite" Grid.Column="1" Width="44" Height="44" Background="Transparent" VerticalAlignment="Center"
+                    Tapped="NowPlayingFavorite_Tapped" AutomationProperties.Name="Favorite">
+                <Path x:Name="CompactFavoriteHeart" Width="24" Height="22" Stretch="Uniform" StrokeThickness="1.8"
+                      Stroke="{StaticResource TextSecondaryBrush}"
+                      Data="M8,15 C8,15 1,10.5 1,5.8 C1,3 3,1.3 5.4,1.3 C6.9,1.3 7.7,2.1 8,2.6 C8.3,2.1 9.1,1.3 10.6,1.3 C13,1.3 15,3 15,5.8 C15,10.5 8,15 8,15 Z"/>
+              </Grid>
+            </Grid>
+
+            <StackPanel Grid.Row="3">
+              <Slider x:Name="CompactProgressSlider" Minimum="0" Maximum="1" Value="0" ValueChanged="CompactProgressSlider_ValueChanged"/>
+              <Grid>
+                <TextBlock x:Name="CompactElapsedText" Text="0:00" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}"/>
+                <TextBlock x:Name="CompactDurationText" Text="0:00" FontSize="12" HorizontalAlignment="Right" Foreground="{StaticResource TextSecondaryBrush}"/>
+              </Grid>
+            </StackPanel>
+
+            <Grid Grid.Row="4">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="*"/>
+              </Grid.ColumnDefinitions>
+              <Button Grid.Column="0" Style="{StaticResource IconButtonStyle}" Width="48" Height="48" HorizontalAlignment="Left"
+                      Click="ShuffleButton_Click" AutomationProperties.Name="Shuffle">
+                <Path x:Name="CompactShuffleIcon" Width="22" Height="19" Stretch="Uniform" StrokeThickness="1.8"
+                      Stroke="{StaticResource TextSecondaryBrush}" Data="M1,4 L6,4 L15,13 M11,13 L15,13 L15,9 M1,12 L6,12 L15,3 M11,3 L15,3 L15,7"/>
+              </Button>
+              <Button Grid.Column="1" Style="{StaticResource IconButtonStyle}" Width="52" Height="52" HorizontalAlignment="Center"
+                      Click="PreviousButton_Click" AutomationProperties.Name="Previous">
+                <Grid Width="22" Height="22">
+                  <Rectangle Width="3" Height="18" HorizontalAlignment="Left" Fill="{StaticResource TextPrimaryBrush}"/>
+                  <Polygon Points="20,2 6,11 20,20" Fill="{StaticResource TextPrimaryBrush}"/>
+                </Grid>
+              </Button>
+              <Button Grid.Column="2" Width="68" Height="68" CornerRadius="34" Style="{StaticResource PrimaryButtonStyle}"
+                      Click="PlayPauseButton_Click" AutomationProperties.Name="Play/Pause">
+                <Grid>
+                  <Polygon x:Name="CompactPlayIcon" Points="2,0 22,12 2,24" Fill="{StaticResource OnAccentBrush}" Margin="4,0,0,0"/>
+                  <Grid x:Name="CompactPauseIcon" Visibility="Collapsed">
+                    <Rectangle Width="6" Height="22" HorizontalAlignment="Left" Fill="{StaticResource OnAccentBrush}"/>
+                    <Rectangle Width="6" Height="22" Margin="12,0,0,0" HorizontalAlignment="Left" Fill="{StaticResource OnAccentBrush}"/>
+                  </Grid>
+                </Grid>
+              </Button>
+              <Button Grid.Column="3" Style="{StaticResource IconButtonStyle}" Width="52" Height="52" HorizontalAlignment="Center"
+                      Click="NextButton_Click" AutomationProperties.Name="Next">
+                <Grid Width="22" Height="22">
+                  <Polygon Points="2,2 16,11 2,20" Fill="{StaticResource TextPrimaryBrush}"/>
+                  <Rectangle Width="3" Height="18" HorizontalAlignment="Right" Fill="{StaticResource TextPrimaryBrush}"/>
+                </Grid>
+              </Button>
+              <Button Grid.Column="4" Style="{StaticResource IconButtonStyle}" Width="48" Height="48" HorizontalAlignment="Right"
+                      Click="RepeatButton_Click" AutomationProperties.Name="Repeat">
+                <Grid Width="22" Height="20">
+                  <Path x:Name="CompactRepeatIcon" Stroke="{StaticResource TextSecondaryBrush}" StrokeThickness="1.8" Stretch="Uniform"
+                        Width="18" Height="18" Data="M 12,3 A 6,6 0 1 1 4,3"/>
+                  <Polygon x:Name="CompactRepeatArrow" Points="12,0.5 16,3 12,5.5" Fill="{StaticResource TextSecondaryBrush}" HorizontalAlignment="Right"/>
+                  <TextBlock x:Name="CompactRepeatOneBadge" Text="1" FontSize="9" FontWeight="Bold" Visibility="Collapsed"
+                             HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Grid>
+              </Button>
+            </Grid>
+
+            <Border x:Name="CompactLyricsCard" Grid.Row="5" CornerRadius="10" Padding="16,12" Background="{StaticResource RaisedBrush}"
+                    Tapped="CompactLyricsCard_Tapped" Visibility="Collapsed">
+              <StackPanel Spacing="4">
+                <TextBlock Text="Lyrics" FontSize="13" FontWeight="Bold"/>
+                <TextBlock x:Name="CompactLyricCurrent" FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis"/>
+                <TextBlock x:Name="CompactLyricNext" FontSize="14" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis"/>
+              </StackPanel>
+            </Border>
+          </Grid>
+
           <Button x:Name="FullScreenCloseButton" Content="✕" Width="34" Height="34" FontSize="13" Margin="24"
                   HorizontalAlignment="Right" VerticalAlignment="Top"
                   Click="CloseFullScreenPlayer_Click" ToolTipService.ToolTip="Close"/>
@@ -1839,8 +1964,8 @@
             <ColumnDefinition x:Name="PlayExtraColumn" Width="200"/>
           </Grid.ColumnDefinitions>
 
-          <!-- Now playing -->
-          <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+          <!-- Now playing (on phones: swipe left / right for next / previous, #29) -->
+          <StackPanel x:Name="NowPlayingInfoPanel" Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Background="Transparent">
             <Grid x:Name="NowPlayingArtBox" Width="56" Height="56">
               <Border CornerRadius="6" Background="{StaticResource RaisedBrush}"/>
               <Border x:Name="NowPlayingArt" CornerRadius="6"/>

@@ -1,3 +1,5 @@
+using Microsoft.UI.Xaml.Controls.Primitives;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 
 namespace LunaDrome;
@@ -15,6 +17,7 @@ public sealed partial class MainPage
 
     private void InitCompactLayout()
     {
+        InitCompactPlayer();
         SizeChanged += (_, e) =>
         {
             ApplyCompactLayout(e.NewSize.Width < CompactWidth);
@@ -130,6 +133,11 @@ public sealed partial class MainPage
         Grid.SetRow(FullScreenSidePanel, compact ? 1 : 0);
         Grid.SetRowSpan(FullScreenSidePanel, compact ? 1 : 2);
         FullScreenCloseButton.Margin = new Thickness(compact ? 12 : 24);
+        UpdateCompactPlayerMode();
+        // #29: the phone's playback bar is a rounded card floating above the bottom navigation.
+        PlaybackBarBorder.Margin = compact ? new Thickness(8, 0, 8, 6) : new Thickness(0);
+        PlaybackBarBorder.CornerRadius = new CornerRadius(compact ? 10 : 0);
+        PlaybackBarBorder.BorderThickness = compact ? new Thickness(1) : new Thickness(0, 1, 0, 0);
 
         // Playback bar: now-playing info + transport controls only.
         PlaybackBarBorder.Padding = compact ? new Thickness(10, 8, 10, 8) : new Thickness(24, 12, 24, 12);
@@ -183,6 +191,145 @@ public sealed partial class MainPage
 
         // Full-screen player title next to its 88px cover (16px margins, 14px gap).
         FullScreenTitleText.MaxWidth = FullScreenArtistText.MaxWidth = Math.Max(100, width - 32 - 88 - 14);
+    }
+
+    // ----- #29: phone now-playing screen -----
+    // Queue / lyrics tabs shown instead of the Spotify-like player view.
+    private bool _compactPlayerTabs;
+    private bool _compactSeeking;
+
+    private void InitCompactPlayer()
+    {
+        FullScreenPlayerOverlay.RegisterPropertyChangedCallback(VisibilityProperty, (_, _) =>
+        {
+            if (FullScreenPlayerOverlay.Visibility == Visibility.Visible)
+                _compactPlayerTabs = false;   // always open on the player view
+            UpdateCompactPlayerMode();
+        });
+
+        CompactProgressSlider.AddHandler(PointerPressedEvent, new PointerEventHandler((_, _) =>
+        {
+            _isUserSeeking = true;
+            _compactSeeking = true;
+        }), true);
+        PointerEventHandler commit = (_, _) =>
+        {
+            if (!_compactSeeking)
+                return;
+            _compactSeeking = false;
+            ProgressSlider.Value = CompactProgressSlider.Value;   // CommitSeek works from the bar's slider
+            CommitSeek();
+        };
+        CompactProgressSlider.AddHandler(PointerReleasedEvent, commit, true);
+        CompactProgressSlider.AddHandler(PointerCaptureLostEvent, commit, true);
+
+        // The cover is as big as the space allows: the full width (minus the 20px margins), but
+        // short enough to leave room for the title, progress, controls and lyrics card.
+        CompactPlayerView.SizeChanged += (_, e) =>
+            CompactArtBox.Width = CompactArtBox.Height = Math.Clamp(Math.Min(e.NewSize.Width - 40, e.NewSize.Height - 400), 140, 480);
+
+        // Swipe the playback bar's now-playing info: left = next song, right = previous.
+        NowPlayingInfoPanel.ManipulationMode = ManipulationModes.TranslateX;
+        NowPlayingInfoPanel.RenderTransform = new TranslateTransform();
+        NowPlayingInfoPanel.ManipulationDelta += (_, e) =>
+        {
+            if (IsCompact)
+                ((TranslateTransform)NowPlayingInfoPanel.RenderTransform).X = Math.Clamp(e.Cumulative.Translation.X, -120, 120);
+        };
+        NowPlayingInfoPanel.ManipulationCompleted += (_, e) =>
+        {
+            ((TranslateTransform)NowPlayingInfoPanel.RenderTransform).X = 0;
+            if (!IsCompact || _current == null || JamOwnsPlayback)
+                return;
+            var dx = e.Cumulative.Translation.X;
+            if (dx <= -SwipeDistance)
+                PlayNext();
+            else if (dx >= SwipeDistance)
+                PlayPrevious();
+        };
+    }
+
+    private const double SwipeDistance = 70;
+
+    private void UpdateCompactPlayerMode()
+    {
+        var phonePlayer = IsCompact && FullScreenPlayerOverlay.Visibility == Visibility.Visible;
+        CompactPlayerView.Visibility = phonePlayer && !_compactPlayerTabs ? Visibility.Visible : Visibility.Collapsed;
+        FullScreenLayoutGrid.Visibility = phonePlayer && !_compactPlayerTabs ? Visibility.Collapsed : Visibility.Visible;
+        // On the player view its own ▾ closes it; on the tabs ✕ goes back to the player view.
+        FullScreenCloseButton.Visibility = CompactPlayerView.Visibility == Visibility.Visible ? Visibility.Collapsed : Visibility.Visible;
+        // Like Spotify, the open player covers the whole screen: no playback bar or bottom navigation.
+        PlaybackBarBorder.Visibility = phonePlayer ? Visibility.Collapsed : Visibility.Visible;
+        if (IsCompact)
+            CompactNavBar.Visibility = phonePlayer ? Visibility.Collapsed : Visibility.Visible;
+        if (CompactPlayerView.Visibility == Visibility.Visible)
+        {
+            SyncCompactPlayer();
+            if (_current != null && _lyricsSongId != _current.Song.Id)
+                _ = LoadLyricsForCurrentSongAsync();
+        }
+    }
+
+    private void CompactShowQueue_Click(object sender, RoutedEventArgs e) => ShowCompactPlayerTab(QueueTabButton);
+
+    private void CompactLyricsCard_Tapped(object sender, TappedRoutedEventArgs e) => ShowCompactPlayerTab(LyricsTabButton);
+
+    private void ShowCompactPlayerTab(RadioButton tab)
+    {
+        _compactPlayerTabs = true;
+        tab.IsChecked = true;
+        UpdateCompactPlayerMode();
+    }
+
+    /// <summary>Copies the playback bar's state into the phone player (cheap; called on state
+    /// changes and every progress tick) instead of updating both everywhere.</summary>
+    private void SyncCompactPlayer()
+    {
+        if (CompactPlayerView.Visibility != Visibility.Visible)
+            return;
+
+        CompactTitleText.Text = _current != null || JamOwnsPlayback ? NowPlayingText.Text : "Nothing playing";
+        CompactArtistText.Text = NowPlayingSubText.Text;
+        CompactArt.Background = FullScreenArt.Background ?? NowPlayingArt.Background;
+        CompactPlayIcon.Visibility = PlayIcon.Visibility;
+        CompactPauseIcon.Visibility = PauseIcon.Visibility;
+        CompactShuffleIcon.Stroke = ShuffleIconPath.Stroke;
+        CompactRepeatIcon.Stroke = RepeatIconPath.Stroke;
+        CompactRepeatArrow.Fill = RepeatArrowHead.Fill;
+        CompactRepeatOneBadge.Foreground = RepeatOneBadge.Foreground;
+        CompactRepeatOneBadge.Visibility = RepeatOneBadge.Visibility;
+        CompactFavorite.Visibility = NowPlayingFavorite.Visibility;
+        CompactFavoriteHeart.Fill = NowPlayingFavoriteHeart.Fill;
+        CompactFavoriteHeart.Stroke = NowPlayingFavoriteHeart.Stroke;
+        if (!_compactSeeking)
+        {
+            CompactProgressSlider.Maximum = ProgressSlider.Maximum;
+            CompactProgressSlider.Value = ProgressSlider.Value;
+            CompactElapsedText.Text = ElapsedText.Text;
+        }
+        CompactDurationText.Text = DurationText.Text;
+
+        var hasLyrics = _lyricsLines.Count > 0 && _lyricsSongId == _current?.Song.Id;
+        CompactLyricsCard.Visibility = hasLyrics ? Visibility.Visible : Visibility.Collapsed;
+        if (hasLyrics)
+        {
+            if (_lyricsAreSynced)
+            {
+                CompactLyricCurrent.Text = string.IsNullOrEmpty(SideLyricCurrent.Text) ? "♪" : SideLyricCurrent.Text;
+                CompactLyricNext.Text = SideLyricNext.Text;
+            }
+            else
+            {
+                CompactLyricCurrent.Text = _lyricsLines[0].Text;
+                CompactLyricNext.Text = _lyricsLines.Count > 1 ? _lyricsLines[1].Text : "";
+            }
+        }
+    }
+
+    private void CompactProgressSlider_ValueChanged(object sender, RangeBaseValueChangedEventArgs e)
+    {
+        if (_compactSeeking)
+            CompactElapsedText.Text = FormatTime(TimeSpan.FromSeconds(e.NewValue));
     }
 
     private void UpdateCompactSidebar()

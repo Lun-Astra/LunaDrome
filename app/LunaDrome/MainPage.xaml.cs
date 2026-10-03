@@ -131,6 +131,7 @@ public sealed partial class MainPage : Page
         Themes.Apply(_prefs.Theme, _prefs.Accent);
         InitSearch();
         InitJam();
+        _client.StreamQuality = _prefs.StreamQuality;
         VolumeSlider.Value = Math.Clamp(_prefs.Volume, 0, 1);
         _player.Volume = VolumeSlider.Value;
         // handledEventsToo: the Slider may handle the wheel itself without moving.
@@ -319,6 +320,36 @@ public sealed partial class MainPage : Page
                 Child = new TextBlock { Text = theme },
             };
             RowFor(Themes.IsLight(theme)).Children.Add(ChoiceButton(chip, theme, () => _prefs.Theme = theme));
+        }
+
+        // Streaming quality chips (#28), same look as the theme chips.
+        QualityOptions.Children.Clear();
+        StackPanel? qualityRow = null;
+        foreach (var (quality, label, detail) in StreamQualityChoices)
+        {
+            if (qualityRow == null || qualityRow.Children.Count >= (IsCompact ? 3 : int.MaxValue))
+            {
+                qualityRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+                QualityOptions.Children.Add(qualityRow);
+            }
+            var selected = _prefs.StreamQuality == quality;
+            var chip = new Border
+            {
+                Padding = new Thickness(14, 6, 14, 6),
+                CornerRadius = new CornerRadius(6),
+                BorderThickness = new Thickness(selected ? 2 : 1),
+                BorderBrush = (Brush)Application.Current.Resources[selected ? "AccentBrush" : "BorderBrush2"],
+                Background = (Brush)Application.Current.Resources["RaisedBrush"],
+                Child = new StackPanel
+                {
+                    Children =
+                    {
+                        new TextBlock { Text = label },
+                        new TextBlock { Text = detail, FontSize = 11, Foreground = (Brush)Application.Current.Resources["TextSecondaryBrush"] },
+                    },
+                },
+            };
+            qualityRow.Children.Add(ChoiceButton(chip, $"{label} ({detail})", () => SetStreamQuality(quality)));
         }
 
         AccentOptions.Children.Clear();
@@ -1410,6 +1441,7 @@ public sealed partial class MainPage : Page
     {
         NowPlayingFavoriteHeart.Fill = (Brush)new FavoriteFillConverter().Convert(song.IsFavorited, typeof(Brush), null!, "");
         ToolTipService.SetToolTip(NowPlayingFavorite, song.IsFavorited ? "Remove from favorites" : "Add to favorites");
+        SyncCompactPlayer();
     }
 
     private async void NowPlayingFavorite_Tapped(object sender, TappedRoutedEventArgs e)
@@ -1968,6 +2000,13 @@ public sealed partial class MainPage : Page
 
     private void CloseFullScreenPlayer_Click(object sender, RoutedEventArgs e)
     {
+        // #29: on a phone, ✕ on the queue / lyrics tabs goes back to the player view first.
+        if (IsCompact && _compactPlayerTabs)
+        {
+            _compactPlayerTabs = false;
+            UpdateCompactPlayerMode();
+            return;
+        }
         FullScreenPlayerOverlay.Visibility = Visibility.Collapsed;
         UpdateVisualizerCaptureState();
     }
@@ -2177,6 +2216,7 @@ public sealed partial class MainPage : Page
         LyricsPlaceholder.Text = "No lyrics found for this track.";
         LyricsPlaceholder.Visibility = _lyricsLines.Count > 0 ? Visibility.Collapsed : Visibility.Visible;
         ShowSideLyrics();
+        SyncCompactPlayer();   // #29: show / fill the phone player's lyrics card
     }
 
     private int _sideLyricIndex = int.MinValue;
@@ -2229,6 +2269,7 @@ public sealed partial class MainPage : Page
         SideLyricPrev.Text = index >= 1 ? _lyricsLines[index - 1].Text : "";
         SideLyricCurrent.Text = index >= 0 ? _lyricsLines[index].Text : "";
         SideLyricNext.Text = index + 1 < _lyricsLines.Count ? _lyricsLines[index + 1].Text : "";
+        SyncCompactPlayer();   // #29: the phone player's lyrics card
     }
 
     private DateTime _lyricsUserScrolledAt = DateTime.MinValue;
@@ -2241,7 +2282,8 @@ public sealed partial class MainPage : Page
     private void LyricsTimer_Tick(object? sender, object e)
     {
         var onScreen = (FullScreenPlayerOverlay.Visibility == Visibility.Visible && LyricsPanelView.Visibility == Visibility.Visible)
-                       || (QueueSidePanel.Visibility == Visibility.Visible && SideLyricsPanel.Visibility == Visibility.Visible);
+                       || (QueueSidePanel.Visibility == Visibility.Visible && SideLyricsPanel.Visibility == Visibility.Visible)
+                       || CompactPlayerView.Visibility == Visibility.Visible;
         if (!onScreen || !_isPlaying || JamOwnsPlayback || _loadedEntry == null || _loadedEntry != _current)
             return;
         UpdateSideLyrics(_player.PlaybackSession.Position);
@@ -2537,9 +2579,11 @@ public sealed partial class MainPage : Page
         SetImage(FullScreenArt, _client.GetCoverArtUrl(song.AlbumId, 720));
         ScrollQueuesTo(entry);
         ShowSideLyrics(); // hides the previous song's lyrics until the new ones load
+        SyncCompactPlayer();
         _mediaControls?.SetTrack(song, _client.GetCoverArtUrl(song.AlbumId, 480));
 
-        if (LyricsPanelView.Visibility == Visibility.Visible || QueueSidePanel.Visibility == Visibility.Visible)
+        if (LyricsPanelView.Visibility == Visibility.Visible || QueueSidePanel.Visibility == Visibility.Visible
+            || CompactPlayerView.Visibility == Visibility.Visible)
             await LoadLyricsForCurrentSongAsync();
     }
 
@@ -2557,6 +2601,7 @@ public sealed partial class MainPage : Page
         PlayIcon.Visibility = playing ? Visibility.Collapsed : Visibility.Visible;
         PauseIcon.Visibility = playing ? Visibility.Visible : Visibility.Collapsed;
         _mediaControls?.SetPlaybackState(_current == null && !JamOwnsPlayback ? null : playing);
+        SyncCompactPlayer();
     }
 
     // Shuffle reorders the queue itself instead of picking a random entry on every Next: the
@@ -2588,8 +2633,11 @@ public sealed partial class MainPage : Page
             ScrollQueuesTo(_current);
     }
 
-    private void UpdateShuffleIcon() =>
+    private void UpdateShuffleIcon()
+    {
         ShuffleIconPath.Stroke = (Brush)Application.Current.Resources[_isShuffled ? "AccentBrush" : "TextSecondaryBrush"];
+        SyncCompactPlayer();
+    }
 
     private void RepeatButton_Click(object sender, RoutedEventArgs e)
     {
@@ -2609,6 +2657,7 @@ public sealed partial class MainPage : Page
         RepeatArrowHead.Fill = brush;
         RepeatOneBadge.Foreground = brush;
         RepeatOneBadge.Visibility = _repeatMode == RepeatMode.One ? Visibility.Visible : Visibility.Collapsed;
+        SyncCompactPlayer();
     }
 
     // One rule for the Next button and auto-advance: the following queue entry, wrapping to the
@@ -2820,6 +2869,27 @@ public sealed partial class MainPage : Page
         VolumeSlider.Value = Math.Clamp(target, 0, 1);
     }
 
+    private static readonly (StreamQuality Quality, string Label, string Detail)[] StreamQualityChoices =
+    {
+        (StreamQuality.Original, "Original", "as on the server"),
+        (StreamQuality.VeryHigh, "Very high", "MP3 320 kbit/s"),
+        (StreamQuality.High, "High", "Opus 160 kbit/s"),
+        (StreamQuality.Normal, "Normal", "Opus 96 kbit/s"),
+        (StreamQuality.Low, "Low", "Opus 24 kbit/s"),
+    };
+
+    // Saved by ChoiceButton afterwards.
+    private void SetStreamQuality(StreamQuality quality)
+    {
+        if (quality == _prefs.StreamQuality)
+            return;
+        _prefs.StreamQuality = quality;
+        _client.StreamQuality = quality;
+        // A prefetched next song is in the old quality; fetch it again in the new one.
+        _prefetcher.Clear(_loadedEntry?.Song.Id);
+        UpdateCacheSizeText();
+    }
+
     private void VolumeStepBox_ValueChanged(NumberBox sender, NumberBoxValueChangedEventArgs args)
     {
         if (!_initialized || double.IsNaN(args.NewValue))
@@ -2875,6 +2945,7 @@ public sealed partial class MainPage : Page
 
         SyncWithPlayerState(session, position, duration);
         CheckForStall(position, duration);
+        SyncCompactPlayer();   // #29: progress + state of the phone player (no-op when hidden)
         PrefetchNext();
 
         // Keep queue.json fresh while playing (~every 10s) so even a crash resumes close by.
