@@ -582,7 +582,7 @@ Luna is hopping off for the night. Current state of the app, for picking this ba
 - `ApplyBarToolTips(compact)`: removes the bottom bar's tooltips on phones (title, artist, heart, previous/play/next/queue) and puts them back on desktop.
 - Tested in the rig at 412x915: an empty spot / title opens the player only with a song; play/next buttons don't; no tooltip on hover. The back button itself needs a real Android device.
 
-### #29 swipe a song row to queue it, Android only (dev, not released) — 2026-10-03
+### v3.8.2: #29 swipe a song row to queue it, Android only — 2026-10-03
 - Luna: the swipes should only be on the Android build. `Controls/SwipeToQueue` (attached `Enabled` on TrackRowTemplate + AlbumTrackRowTemplate roots): a swipe right ≥80px adds the row's Song via the static `Swiped` event → `AddToQueue` + toast "Added to queue: …". Only on Android (OperatingSystem.IsAndroid) and only for touch pointers.
 - Deliberately raw pointer tracking, not ManipulationMode: no pointer capture, nothing marked handled (handledEventsToo listeners), so the list keeps its vertical touch scrolling; a swipe starts only when dx > 16 and dx > 2·|dy|, vertical movement first cancels it, and PointerCaptureLost (the list taking the pointer to scroll) / Canceled resets. The row follows the finger up to 120px.
 - The playback bar swipe (next/previous) is now Android-only as well.
