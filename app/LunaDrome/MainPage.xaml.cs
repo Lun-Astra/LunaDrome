@@ -131,6 +131,7 @@ public sealed partial class MainPage : Page
         Themes.Apply(_prefs.Theme, _prefs.Accent);
         InitSearch();
         InitJam();
+        _client.StreamQuality = _prefs.StreamQuality;
         VolumeSlider.Value = Math.Clamp(_prefs.Volume, 0, 1);
         _player.Volume = VolumeSlider.Value;
         // handledEventsToo: the Slider may handle the wheel itself without moving.
@@ -319,6 +320,36 @@ public sealed partial class MainPage : Page
                 Child = new TextBlock { Text = theme },
             };
             RowFor(Themes.IsLight(theme)).Children.Add(ChoiceButton(chip, theme, () => _prefs.Theme = theme));
+        }
+
+        // Streaming quality chips (#28), same look as the theme chips.
+        QualityOptions.Children.Clear();
+        StackPanel? qualityRow = null;
+        foreach (var (quality, label, detail) in StreamQualityChoices)
+        {
+            if (qualityRow == null || qualityRow.Children.Count >= (IsCompact ? 3 : int.MaxValue))
+            {
+                qualityRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+                QualityOptions.Children.Add(qualityRow);
+            }
+            var selected = _prefs.StreamQuality == quality;
+            var chip = new Border
+            {
+                Padding = new Thickness(14, 6, 14, 6),
+                CornerRadius = new CornerRadius(6),
+                BorderThickness = new Thickness(selected ? 2 : 1),
+                BorderBrush = (Brush)Application.Current.Resources[selected ? "AccentBrush" : "BorderBrush2"],
+                Background = (Brush)Application.Current.Resources["RaisedBrush"],
+                Child = new StackPanel
+                {
+                    Children =
+                    {
+                        new TextBlock { Text = label },
+                        new TextBlock { Text = detail, FontSize = 11, Foreground = (Brush)Application.Current.Resources["TextSecondaryBrush"] },
+                    },
+                },
+            };
+            qualityRow.Children.Add(ChoiceButton(chip, $"{label} ({detail})", () => SetStreamQuality(quality)));
         }
 
         AccentOptions.Children.Clear();
@@ -2818,6 +2849,27 @@ public sealed partial class MainPage : Page
         // Snap to the step grid, so 5% steps land on 45%, 50%... even from 47%.
         var target = Math.Round((VolumeSlider.Value + notches * step) / step) * step;
         VolumeSlider.Value = Math.Clamp(target, 0, 1);
+    }
+
+    private static readonly (StreamQuality Quality, string Label, string Detail)[] StreamQualityChoices =
+    {
+        (StreamQuality.Original, "Original", "as on the server"),
+        (StreamQuality.VeryHigh, "Very high", "MP3 320 kbit/s"),
+        (StreamQuality.High, "High", "Opus 160 kbit/s"),
+        (StreamQuality.Normal, "Normal", "Opus 96 kbit/s"),
+        (StreamQuality.Low, "Low", "Opus 24 kbit/s"),
+    };
+
+    // Saved by ChoiceButton afterwards.
+    private void SetStreamQuality(StreamQuality quality)
+    {
+        if (quality == _prefs.StreamQuality)
+            return;
+        _prefs.StreamQuality = quality;
+        _client.StreamQuality = quality;
+        // A prefetched next song is in the old quality; fetch it again in the new one.
+        _prefetcher.Clear(_loadedEntry?.Song.Id);
+        UpdateCacheSizeText();
     }
 
     private void VolumeStepBox_ValueChanged(NumberBox sender, NumberBoxValueChangedEventArgs args)

@@ -911,6 +911,11 @@
                       <TextBlock Style="{StaticResource SettingsHintStyle}" Text="Brings back the queue and position from last time, paused."/>
                     </StackPanel>
                     <StackPanel>
+                      <TextBlock Text="Streaming quality" Margin="0,0,0,8"/>
+                      <StackPanel x:Name="QualityOptions" Spacing="8"/>
+                      <TextBlock Style="{StaticResource SettingsHintStyle}" Text="Lower quality uses much less data (about 2 MB instead of 30-40 MB for a 3-minute song). Navidrome converts each song on the server when it's played. Takes effect from the next song."/>
+                    </StackPanel>
+                    <StackPanel>
                       <StackPanel Orientation="Horizontal" Spacing="10">
                         <TextBlock Text="Volume step for the mouse wheel" VerticalAlignment="Center"/>
                         <NumberBox x:Name="VolumeStepBox" Minimum="1" Maximum="25" SmallChange="1" Width="120"

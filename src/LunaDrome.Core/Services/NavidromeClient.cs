@@ -10,6 +10,16 @@ namespace LunaDrome.Core.Services;
 /// Minimal Subsonic-API client targeting Navidrome. Handles token auth,
 /// browsing (artists/albums/songs), and building stream URLs for playback.
 /// </summary>
+/// <summary>Streaming quality (#28), like Spotify's: Original is the file as it is on the server.</summary>
+public enum StreamQuality
+{
+    Original,   // the file as is (FLAC in this library)
+    VeryHigh,   // MP3 320 kbit/s
+    High,       // Opus 160 kbit/s
+    Normal,     // Opus 96 kbit/s
+    Low,        // Opus 24 kbit/s
+}
+
 public class NavidromeClient
 {
     private const string ClientId = "musicplayer";
@@ -367,7 +377,27 @@ public class NavidromeClient
     public Task ScrobbleAsync(string songId) =>
         _http.GetStringAsync(BuildUrl("scrobble.view", ("id", songId), ("submission", "true")));
 
-    public string GetStreamUrl(string songId) => BuildUrl("stream.view", ("id", songId));
+    /// <summary>Quality for playback, prefetch and downloads (#28). Navidrome converts on the fly
+    /// (ffmpeg on the server) for anything but Original.</summary>
+    public StreamQuality StreamQuality { get; set; } = StreamQuality.Original;
+
+    /// <param name="forPlayback">Adds estimateContentLength for a converted stream: without it
+    /// there's no Content-Length and no byte ranges, so the player can't seek. Downloads must not
+    /// use it: on a song's first conversion the estimate is too big, and an HTTP client then fails
+    /// with "response ended prematurely" when the real (shorter) stream ends.</param>
+    public string GetStreamUrl(string songId, bool forPlayback = true) => StreamQuality switch
+    {
+        StreamQuality.VeryHigh => Converted(songId, "mp3", 320, forPlayback),
+        StreamQuality.High => Converted(songId, "opus", 160, forPlayback),
+        StreamQuality.Normal => Converted(songId, "opus", 96, forPlayback),
+        StreamQuality.Low => Converted(songId, "opus", 24, forPlayback),
+        _ => BuildUrl("stream.view", ("id", songId)),
+    };
+
+    private string Converted(string songId, string format, int kbps, bool estimateLength) => estimateLength
+        ? BuildUrl("stream.view", ("id", songId), ("format", format), ("maxBitRate", kbps.ToString()),
+                   ("estimateContentLength", "true"))
+        : BuildUrl("stream.view", ("id", songId), ("format", format), ("maxBitRate", kbps.ToString()));
 
     /// <summary>
     /// Copies a track's stream (the same URL playback uses, so the same transcoding) into
@@ -375,7 +405,7 @@ public class NavidromeClient
     /// </summary>
     public async Task DownloadStreamAsync(string songId, Stream destination, CancellationToken cancellationToken)
     {
-        using var response = await _http.GetAsync(GetStreamUrl(songId), HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        using var response = await _http.GetAsync(GetStreamUrl(songId, forPlayback: false), HttpCompletionOption.ResponseHeadersRead, cancellationToken);
         response.EnsureSuccessStatusCode();
 
         // Subsonic reports errors (e.g. missing file) as a 200 with a JSON/XML body, not audio.
