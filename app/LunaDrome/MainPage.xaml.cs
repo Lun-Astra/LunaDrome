@@ -124,6 +124,12 @@ public sealed partial class MainPage : Page
         };
 
         _lyricsTimer.Tick += LyricsTimer_Tick;
+        // #29, Android: swiping a song row to the right adds it to the queue (Controls/SwipeToQueue).
+        Controls.SwipeToQueue.Swiped += song =>
+        {
+            AddToQueue(new List<Song> { song });
+            ShowToast($"Added to queue: {song.Title}");
+        };
         _progressTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(400) };
         _progressTimer.Tick += ProgressTimer_Tick;
         _progressTimer.Start();

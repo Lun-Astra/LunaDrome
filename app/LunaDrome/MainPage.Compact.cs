@@ -230,7 +230,10 @@ public sealed partial class MainPage
         CompactPlayerView.SizeChanged += (_, e) =>
             CompactArtBox.Width = CompactArtBox.Height = Math.Clamp(Math.Min(e.NewSize.Width - 40, e.NewSize.Height - 400), 140, 480);
 
-        // Swipe the playback bar's now-playing info: left = next song, right = previous.
+        // Swipe the playback bar's now-playing info: left = next song, right = previous. Android
+        // only (like swiping a song row to queue it): on desktop a mouse drag there did it too.
+        if (!OperatingSystem.IsAndroid())
+            return;
         NowPlayingInfoPanel.ManipulationMode = ManipulationModes.TranslateX;
         NowPlayingInfoPanel.RenderTransform = new TranslateTransform();
         NowPlayingInfoPanel.ManipulationDelta += (_, e) =>
