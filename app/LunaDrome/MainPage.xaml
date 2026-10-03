@@ -1955,7 +1955,7 @@
         </Grid>
       </Border>
 
-      <Border Grid.Row="1" x:Name="PlaybackBarBorder" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush2}"
+      <Border Grid.Row="1" x:Name="PlaybackBarBorder" Tapped="PlaybackBar_Tapped" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush2}"
               BorderThickness="0,1,0,0" Padding="24,12">
         <Grid>
           <Grid.ColumnDefinitions>
@@ -1971,10 +1971,10 @@
               <Border x:Name="NowPlayingArt" CornerRadius="6"/>
             </Grid>
             <StackPanel x:Name="NowPlayingTextPanel" VerticalAlignment="Center" Margin="12,0,0,0" MaxWidth="220">
-              <Border Background="Transparent" HorizontalAlignment="Left" controls:Motion.ClickableText="True" Tapped="NowPlayingText_Tapped" ToolTipService.ToolTip="Show/hide Queue, Lyrics, Visualizer">
+              <Border x:Name="NowPlayingTitleLink" Background="Transparent" HorizontalAlignment="Left" controls:Motion.ClickableText="True" Tapped="NowPlayingText_Tapped" ToolTipService.ToolTip="Show/hide Queue, Lyrics, Visualizer">
                 <TextBlock x:Name="NowPlayingText" FontWeight="SemiBold" Text="Nothing playing" FontSize="12" TextTrimming="CharacterEllipsis"/>
               </Border>
-              <Border Background="Transparent" Margin="0,2,0,0" HorizontalAlignment="Left" controls:Motion.ClickableText="True" Tapped="NowPlayingArtist_Tapped" ToolTipService.ToolTip="Go to artist">
+              <Border x:Name="NowPlayingArtistLink" Background="Transparent" Margin="0,2,0,0" HorizontalAlignment="Left" controls:Motion.ClickableText="True" Tapped="NowPlayingArtist_Tapped" ToolTipService.ToolTip="Go to artist">
                 <TextBlock x:Name="NowPlayingSubText" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis"/>
               </Border>
             </StackPanel>

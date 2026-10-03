@@ -64,7 +64,7 @@ public sealed partial class MainPage
             UpdateVisualizerCaptureState();
             ClearSidebarSelection();
             HideAllPages();
-            ShowPage(SearchPage);
+            ShowPage(SearchPage, OpenSearchPage);
         }
         OnCompactNavigated("Search");
         if (_searchQuery.Length == 0)
@@ -86,7 +86,7 @@ public sealed partial class MainPage
         UpdateVisualizerCaptureState();
         ClearSidebarSelection();
         HideAllPages();
-        ShowPage(SearchPage);
+        ShowPage(SearchPage, OpenSearchPage);
         OnCompactNavigated("Search");
         SearchPage.ChangeView(null, 0, null, true);
 
@@ -452,7 +452,7 @@ public sealed partial class MainPage
         UpdateVisualizerCaptureState();
         ClearSidebarSelection();
         HideAllPages();
-        ShowPage(DownloadsPage);
+        ShowPage(DownloadsPage, ShowDownloadsPage);
     }
 
     private async void DownloadAction_Click(object sender, RoutedEventArgs e)

@@ -264,7 +264,7 @@ public sealed partial class MainPage : Page
         ClearSidebarSelection();
         HideAllPages();
         RefreshSettingsPage();
-        ShowPage(SettingsPage);
+        ShowPage(SettingsPage, () => SettingsButton_Click(this, new RoutedEventArgs()));
         SettingsPage.ChangeView(null, 0, null, true);
     }
 
@@ -693,8 +693,9 @@ public sealed partial class MainPage : Page
         _jam?.SetWatching(false);
     }
 
-    private void ShowPage(UIElement page)
+    private void ShowPage(UIElement page, Action? reopen = null)
     {
+        RecordPage(reopen);
         CloseCompactSidebar();   // any page opened from the phone menu closes it
         page.Visibility = Visibility.Visible;
         Motion.FadeIn(page);
@@ -734,15 +735,15 @@ public sealed partial class MainPage : Page
         switch (tag)
         {
             case "Home":
-                ShowPage(HomePage);
+                ShowPage(HomePage, () => Reselect(NavHome));
                 _ = LoadHomeAsync();
                 break;
             case "Artists":
                 ArtistsList.SelectedItem = null;
-                ShowPage(ArtistsPage);
+                ShowPage(ArtistsPage, () => Reselect(NavArtists));
                 break;
             case "Albums":
-                ShowPage(AlbumsPage);
+                ShowPage(AlbumsPage, () => Reselect(NavAlbums));
                 if (!_albumsPageLoaded)
                 {
                     _albumsPageLoaded = true;
@@ -750,7 +751,7 @@ public sealed partial class MainPage : Page
                 }
                 break;
             case "Songs":
-                ShowPage(SongsPage);
+                ShowPage(SongsPage, () => Reselect(NavSongs));
                 if (!_songsPageLoaded)
                 {
                     _songsPageLoaded = true;
@@ -758,7 +759,7 @@ public sealed partial class MainPage : Page
                 }
                 break;
             case "Genres":
-                ShowPage(GenresPage);
+                ShowPage(GenresPage, () => Reselect(NavGenres));
                 if (!_genresPageLoaded)
                 {
                     _genresPageLoaded = true;
@@ -907,15 +908,18 @@ public sealed partial class MainPage : Page
 
     private async void GenreCard_Tapped(object sender, TappedRoutedEventArgs e)
     {
-        if (sender is not FrameworkElement { Tag: Genre genre })
-            return;
+        if (sender is FrameworkElement { Tag: Genre genre })
+            await OpenGenreAsync(genre);
+    }
 
+    private async Task OpenGenreAsync(Genre genre)
+    {
         FullScreenPlayerOverlay.Visibility = Visibility.Collapsed;
         ClearSidebarSelection();
         HideAllPages();
         GenreAlbumsHeader.Text = genre.Name.ToUpperInvariant();
         GenreAlbumsList.ItemsSource = null;
-        ShowPage(GenreAlbumsPage);
+        ShowPage(GenreAlbumsPage, () => _ = OpenGenreAsync(genre));
 
         try
         {
@@ -1126,7 +1130,7 @@ public sealed partial class MainPage : Page
         FullScreenPlayerOverlay.Visibility = Visibility.Collapsed;
         UpdateVisualizerCaptureState();
         HideAllPages();
-        ShowPage(ArtistDetailPage);
+        ShowPage(ArtistDetailPage, () => _ = NavigateToArtistAsync(artistId, fallbackName));
         ClearSidebarSelection();
         ArtistDetailPage.ChangeView(null, 0, null, true);
 
@@ -1316,7 +1320,7 @@ public sealed partial class MainPage : Page
         FullScreenPlayerOverlay.Visibility = Visibility.Collapsed;
         UpdateVisualizerCaptureState();
         HideAllPages();
-        ShowPage(AlbumPage);
+        ShowPage(AlbumPage, () => _ = OpenAlbumAsync(album));
         ClearSidebarSelection();
         AlbumPage.ChangeView(null, 0, null, true);
 
@@ -1773,7 +1777,11 @@ public sealed partial class MainPage : Page
         UpdateVisualizerCaptureState();
         ClearSidebarSelection(keepPlaylist: true);
         HideAllPages();
-        ShowPage(PlaylistsPage);
+        ShowPage(PlaylistsPage, () =>
+        {
+            PlaylistsList.SelectedItem = null;
+            PlaylistsList.SelectedItem = _playlists.FirstOrDefault(p => p.Id == playlist.Id) ?? playlist;
+        });
 
         _currentPlaylist = playlist;
         PlaylistTracksHeader.Text = playlist.Name.ToUpperInvariant();
@@ -1924,6 +1932,8 @@ public sealed partial class MainPage : Page
 
     private void NowPlayingText_Tapped(object sender, TappedRoutedEventArgs e)
     {
+        if (IsCompact)
+            return;   // the whole bar opens the player on a phone (PlaybackBar_Tapped)
         FullScreenPlayerOverlay.Visibility = FullScreenPlayerOverlay.Visibility == Visibility.Visible
             ? Visibility.Collapsed
             : Visibility.Visible;
@@ -2013,6 +2023,8 @@ public sealed partial class MainPage : Page
 
     private async void NowPlayingArtist_Tapped(object sender, TappedRoutedEventArgs e)
     {
+        if (IsCompact && sender == NowPlayingArtistLink)
+            return;   // phone: tapping the bar opens the player instead (PlaybackBar_Tapped)
         e.Handled = true;
         if (_current?.Song is { } song)
             await NavigateToArtistAsync(song.ArtistId, song.ArtistName);
