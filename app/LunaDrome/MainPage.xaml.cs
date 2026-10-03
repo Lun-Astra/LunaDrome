@@ -1441,6 +1441,7 @@ public sealed partial class MainPage : Page
     {
         NowPlayingFavoriteHeart.Fill = (Brush)new FavoriteFillConverter().Convert(song.IsFavorited, typeof(Brush), null!, "");
         ToolTipService.SetToolTip(NowPlayingFavorite, song.IsFavorited ? "Remove from favorites" : "Add to favorites");
+        SyncCompactPlayer();
     }
 
     private async void NowPlayingFavorite_Tapped(object sender, TappedRoutedEventArgs e)
@@ -1999,6 +2000,13 @@ public sealed partial class MainPage : Page
 
     private void CloseFullScreenPlayer_Click(object sender, RoutedEventArgs e)
     {
+        // #29: on a phone, ✕ on the queue / lyrics tabs goes back to the player view first.
+        if (IsCompact && _compactPlayerTabs)
+        {
+            _compactPlayerTabs = false;
+            UpdateCompactPlayerMode();
+            return;
+        }
         FullScreenPlayerOverlay.Visibility = Visibility.Collapsed;
         UpdateVisualizerCaptureState();
     }
@@ -2208,6 +2216,7 @@ public sealed partial class MainPage : Page
         LyricsPlaceholder.Text = "No lyrics found for this track.";
         LyricsPlaceholder.Visibility = _lyricsLines.Count > 0 ? Visibility.Collapsed : Visibility.Visible;
         ShowSideLyrics();
+        SyncCompactPlayer();   // #29: show / fill the phone player's lyrics card
     }
 
     private int _sideLyricIndex = int.MinValue;
@@ -2260,6 +2269,7 @@ public sealed partial class MainPage : Page
         SideLyricPrev.Text = index >= 1 ? _lyricsLines[index - 1].Text : "";
         SideLyricCurrent.Text = index >= 0 ? _lyricsLines[index].Text : "";
         SideLyricNext.Text = index + 1 < _lyricsLines.Count ? _lyricsLines[index + 1].Text : "";
+        SyncCompactPlayer();   // #29: the phone player's lyrics card
     }
 
     private DateTime _lyricsUserScrolledAt = DateTime.MinValue;
@@ -2272,7 +2282,8 @@ public sealed partial class MainPage : Page
     private void LyricsTimer_Tick(object? sender, object e)
     {
         var onScreen = (FullScreenPlayerOverlay.Visibility == Visibility.Visible && LyricsPanelView.Visibility == Visibility.Visible)
-                       || (QueueSidePanel.Visibility == Visibility.Visible && SideLyricsPanel.Visibility == Visibility.Visible);
+                       || (QueueSidePanel.Visibility == Visibility.Visible && SideLyricsPanel.Visibility == Visibility.Visible)
+                       || CompactPlayerView.Visibility == Visibility.Visible;
         if (!onScreen || !_isPlaying || JamOwnsPlayback || _loadedEntry == null || _loadedEntry != _current)
             return;
         UpdateSideLyrics(_player.PlaybackSession.Position);
@@ -2568,9 +2579,11 @@ public sealed partial class MainPage : Page
         SetImage(FullScreenArt, _client.GetCoverArtUrl(song.AlbumId, 720));
         ScrollQueuesTo(entry);
         ShowSideLyrics(); // hides the previous song's lyrics until the new ones load
+        SyncCompactPlayer();
         _mediaControls?.SetTrack(song, _client.GetCoverArtUrl(song.AlbumId, 480));
 
-        if (LyricsPanelView.Visibility == Visibility.Visible || QueueSidePanel.Visibility == Visibility.Visible)
+        if (LyricsPanelView.Visibility == Visibility.Visible || QueueSidePanel.Visibility == Visibility.Visible
+            || CompactPlayerView.Visibility == Visibility.Visible)
             await LoadLyricsForCurrentSongAsync();
     }
 
@@ -2588,6 +2601,7 @@ public sealed partial class MainPage : Page
         PlayIcon.Visibility = playing ? Visibility.Collapsed : Visibility.Visible;
         PauseIcon.Visibility = playing ? Visibility.Visible : Visibility.Collapsed;
         _mediaControls?.SetPlaybackState(_current == null && !JamOwnsPlayback ? null : playing);
+        SyncCompactPlayer();
     }
 
     // Shuffle reorders the queue itself instead of picking a random entry on every Next: the
@@ -2619,8 +2633,11 @@ public sealed partial class MainPage : Page
             ScrollQueuesTo(_current);
     }
 
-    private void UpdateShuffleIcon() =>
+    private void UpdateShuffleIcon()
+    {
         ShuffleIconPath.Stroke = (Brush)Application.Current.Resources[_isShuffled ? "AccentBrush" : "TextSecondaryBrush"];
+        SyncCompactPlayer();
+    }
 
     private void RepeatButton_Click(object sender, RoutedEventArgs e)
     {
@@ -2640,6 +2657,7 @@ public sealed partial class MainPage : Page
         RepeatArrowHead.Fill = brush;
         RepeatOneBadge.Foreground = brush;
         RepeatOneBadge.Visibility = _repeatMode == RepeatMode.One ? Visibility.Visible : Visibility.Collapsed;
+        SyncCompactPlayer();
     }
 
     // One rule for the Next button and auto-advance: the following queue entry, wrapping to the
@@ -2927,6 +2945,7 @@ public sealed partial class MainPage : Page
 
         SyncWithPlayerState(session, position, duration);
         CheckForStall(position, duration);
+        SyncCompactPlayer();   // #29: progress + state of the phone player (no-op when hidden)
         PrefetchNext();
 
         // Keep queue.json fresh while playing (~every 10s) so even a crash resumes close by.
