@@ -389,7 +389,7 @@
 
     <!-- Album page track row (Feishin): # / TITLE / duration / heart. -->
     <DataTemplate x:Key="AlbumTrackRowTemplate">
-      <Border Height="40" CornerRadius="4" Background="Transparent" Tag="{Binding}"
+      <Border Height="40" CornerRadius="4" Background="Transparent" Tag="{Binding}" controls:SwipeToQueue.Enabled="True"
               controls:Motion.HoverBackground="{StaticResource RaisedBrush}"
               DoubleTapped="AlbumTrackRow_DoubleTapped" RightTapped="AlbumTrackRow_RightTapped">
         <Grid>
@@ -420,7 +420,7 @@
     <!-- Track row: TITLE (40px art + title + clickable artist) / TIME / GENRE, widths from the
          shared, drag-resizable TrackColumns layout. -->
     <DataTemplate x:Key="TrackRowTemplate">
-      <StackPanel Orientation="Horizontal" Background="Transparent">
+      <StackPanel Orientation="Horizontal" Background="Transparent" controls:SwipeToQueue.Enabled="True">
         <StackPanel Orientation="Horizontal" Width="{Binding TitleWidth, Source={StaticResource TrackColumns}}"
                     Padding="6,0,6,0">
           <Border Width="40" Height="40" CornerRadius="4" Margin="0,0,10,0" Background="{StaticResource RaisedBrush}">
