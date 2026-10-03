@@ -11,6 +11,19 @@ public sealed partial class MainPage
 {
     private readonly Dictionary<string, List<Song>> _autoTrackLists = new();
 
+    // Android's back button / gesture: one step back (player, menu, queue, previous page). With
+    // nothing left it sends the app to the background like the home button, so playback keeps
+    // going, instead of closing it.
+    private void ConnectBackButton()
+    {
+        Windows.UI.Core.SystemNavigationManager.GetForCurrentView().BackRequested += (_, e) =>
+        {
+            e.Handled = true;
+            if (!HandleBack())
+                (Uno.UI.ContextHelper.Current as Android.App.Activity)?.MoveTaskToBack(true);
+        };
+    }
+
     private void ConnectAndroidAuto()
     {
         AndroidAutoBridge.Browse = BrowseForAutoAsync;

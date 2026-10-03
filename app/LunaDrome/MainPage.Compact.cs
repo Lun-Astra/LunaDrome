@@ -28,6 +28,7 @@ public sealed partial class MainPage
         // Android draws the app edge-to-edge, under the status bar and the navigation bar;
         // keep the whole page inside the visible area instead.
         Uno.UI.Toolkit.VisibleBoundsPadding.SetPaddingMask(PageRoot, Uno.UI.Toolkit.VisibleBoundsPadding.PaddingMask.All);
+        ConnectBackButton();
         VisualizerUnavailableText.Visibility = Visibility.Visible;
         VisualizerCanvas.Visibility = Visibility.Collapsed;
 #endif
@@ -134,6 +135,7 @@ public sealed partial class MainPage
         Grid.SetRowSpan(FullScreenSidePanel, compact ? 1 : 2);
         FullScreenCloseButton.Margin = new Thickness(compact ? 12 : 24);
         UpdateCompactPlayerMode();
+        ApplyBarToolTips(compact);
         // #29: the phone's playback bar is a rounded card floating above the bottom navigation.
         PlaybackBarBorder.Margin = compact ? new Thickness(8, 0, 8, 6) : new Thickness(0);
         PlaybackBarBorder.CornerRadius = new CornerRadius(compact ? 10 : 0);

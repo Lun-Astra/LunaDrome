@@ -55,7 +55,7 @@ public sealed partial class MainPage
 
     private void ShowJamPage()
     {
-        ShowPage(JamPage);
+        ShowPage(JamPage, ShowJamPage);
         _jam.SetWatching(true);
         RenderJamPage();
         _jam.PollSoon();
