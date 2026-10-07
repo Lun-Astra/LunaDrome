@@ -19,7 +19,7 @@
     <UnoIconBackgroundColor>#141517</UnoIconBackgroundColor>
     <UnoSplashScreenColor>#141517</UnoSplashScreenColor>
     <!-- Versions -->
-    <ApplicationDisplayVersion>3.8.2</ApplicationDisplayVersion>
+    <ApplicationDisplayVersion>3.8.3</ApplicationDisplayVersion>
     <ApplicationVersion>2</ApplicationVersion>
     <!-- Package Publisher -->
     <ApplicationPublisher>LunaDrome</ApplicationPublisher>
@@ -49,6 +49,11 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\LunaDrome.Core\LunaDrome.Core.csproj" />
   </ItemGroup>
+
+  <!-- -p:SwipeTrace=true (the Android emulator UI test): log every swipe touch event to logcat. -->
+  <PropertyGroup Condition="'$(SwipeTrace)' == 'true'">
+    <DefineConstants>$(DefineConstants);SWIPE_TRACE</DefineConstants>
+  </PropertyGroup>
 
   <!-- The visualizer's audio capture (WASAPI loopback / PulseAudio) is desktop-only. On
        Android a no-op LoopbackCapture.Android.cs takes its place (no visualizer there yet). -->
