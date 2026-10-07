@@ -19,6 +19,7 @@ public sealed partial class MainPage
         Windows.UI.Core.SystemNavigationManager.GetForCurrentView().BackRequested += (_, e) =>
         {
             e.Handled = true;
+            Controls.SwipeToQueue.Trace("BACK");
             if (!HandleBack())
                 (Uno.UI.ContextHelper.Current as Android.App.Activity)?.MoveTaskToBack(true);
         };
