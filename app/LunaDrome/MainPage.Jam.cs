@@ -1,3 +1,4 @@
+using LunaDrome.Controls;
 using LunaDrome.Core.Models;
 using LunaDrome.Core.Services;
 using Microsoft.UI.Xaml.Input;
@@ -29,6 +30,12 @@ public sealed partial class MainPage
     private string _jamHistorySignature = "";
     private string? _jamArtShown;
     private List<JamSearchResult> _jamSearchResults = new();
+
+    // #31: starting to play an empty jam takes the local queue along (the playing song at its
+    // position + what's next). These jam items stay linked to their local queue entries: removing
+    // one on either side removes the other, and leaving the jam continues from where it got.
+    private const int MaxJamTakeover = 25;
+    private readonly Dictionary<string, QueueEntry> _jamTakenOver = new();
 
     private bool JamOwnsPlayback => _jamOwnsPlayer;
 
@@ -82,6 +89,7 @@ public sealed partial class MainPage
 
     private void OnJamStateChanged()
     {
+        FollowTakenOverQueue();
         if (JamOwnsPlayback)
             SyncJamPlayback();
         if (JamPage.Visibility == Visibility.Visible)
@@ -129,6 +137,7 @@ public sealed partial class MainPage
         // Hand the player over from the local queue, remembering where it was.
         if (_loadedEntry != null && _loadedEntry == _current && _endedEntry != _loadedEntry)
             _pendingSeek = _player.PlaybackSession.Position;
+        await TakeQueueIntoJamAsync();
         _player.Pause();
         _loadedEntry = null;
         _jamOwnsPlayer = true;
@@ -137,6 +146,89 @@ public sealed partial class MainPage
         _mediaControls?.SetCanGoPreviousNext(false, true);
         UpdateJamNav();
         OnJamStateChanged();
+    }
+
+    /// <summary>An empty jam gets the local queue: the playing song (at its position) and what's
+    /// next, up to <see cref="MaxJamTakeover"/> songs. Requests then play before them.</summary>
+    private async Task TakeQueueIntoJamAsync()
+    {
+        _jamTakenOver.Clear();
+        if (_current == null)
+            return;
+        try
+        {
+            var state = await _jam.Client.GetStateAsync();
+            if (state.NowPlaying != null || state.Queue.Count > 0)
+                return; // the jam has its own songs already
+            var entries = _queue.Skip(QueueIndex).Take(MaxJamTakeover).ToList();
+            var added = await _jam.Client.AddLibraryBatchAsync(entries.Select(q => q.Song.Id).ToList(),
+                JamRequesterName, _pendingSeek.TotalSeconds);
+            // Link each jam item to its entry (a song can be in the queue twice; the jam adds it once).
+            var unlinked = entries.ToList();
+            foreach (var (itemId, songId) in added)
+            {
+                var entry = unlinked.FirstOrDefault(q => q.Song.Id == songId);
+                if (entry == null)
+                    continue;
+                unlinked.Remove(entry);
+                _jamTakenOver[itemId] = entry;
+            }
+            Log($"jam: took over {added.Count} of {entries.Count} queued songs");
+            if (added.Count > 0)
+                ShowToast($"Your queue is now the jam's queue ({added.Count} song{(added.Count == 1 ? "" : "s")}).");
+            _jam.PollSoon();
+        }
+        catch (Exception ex)
+        {
+            Log($"jam: taking over the queue failed: {ex.Message}");
+            ShowToast($"Couldn't add your queue to the jam: {ex.Message}");
+        }
+    }
+
+    // Keeps the local queue in step with the taken-over jam items: one that starts playing becomes
+    // the current one (so after the jam the queue continues from there); one that's gone without
+    // being played was removed (here, on the JamiDrome dashboard) and leaves the local queue too.
+    private void FollowTakenOverQueue()
+    {
+        var state = _jam.State;
+        if (state == null || _jamTakenOver.Count == 0)
+            return;
+        if (state.NowPlaying != null && _jamTakenOver.TryGetValue(state.NowPlaying.Id, out var playing)
+            && playing != _current && _queue.Contains(playing))
+        {
+            _loadedEntry = null;
+            _pendingSeek = TimeSpan.Zero;
+            SetCurrent(playing);
+        }
+        var inJam = state.Queue.Select(i => i.Id).ToHashSet();
+        if (state.NowPlaying != null)
+            inJam.Add(state.NowPlaying.Id);
+        var played = state.History.Select(i => i.Id).ToHashSet();
+        var removed = new List<QueueEntry>();
+        foreach (var (itemId, entry) in _jamTakenOver.ToList())
+        {
+            if (inJam.Contains(itemId))
+                continue;
+            _jamTakenOver.Remove(itemId);
+            if (!played.Contains(itemId) && entry != _current && _queue.Contains(entry))
+                removed.Add(entry);
+        }
+        if (removed.Count > 0)
+            RemoveFromQueue(removed);
+    }
+
+    /// <summary>Removing taken-over songs from the local queue removes them from the jam too.</summary>
+    private void RemoveTakenOverFromJam(IEnumerable<QueueEntry> entries)
+    {
+        var removing = entries.ToHashSet();
+        foreach (var (itemId, entry) in _jamTakenOver.ToList())
+        {
+            if (!removing.Contains(entry))
+                continue;
+            _jamTakenOver.Remove(itemId);
+            var id = itemId;
+            _ = RunJamCommandAsync(() => _jam.Client.RemoveAsync(id));
+        }
     }
 
     /// <summary>Gives the player back to the local queue (paused where it was).</summary>
@@ -151,6 +243,14 @@ public sealed partial class MainPage
         if (release)
             _ = _jam.ReleaseSpeakerAsync();
 
+        // Still on a song taken over from the local queue: continue it at the jam's position.
+        var np = _jam.State?.NowPlaying;
+        if (np != null && _jamTakenOver.TryGetValue(np.Id, out var playing) && playing == _current)
+        {
+            _loadedEntry = null;
+            _pendingSeek = TimeSpan.FromSeconds(_jam.ElapsedSeconds);
+        }
+        _jamTakenOver.Clear();
         SetCurrent(_current);
         SetPlaying(false);
         if (_current != null)

@@ -2203,6 +2203,7 @@ public sealed partial class MainPage : Page
     private void RemoveFromQueue(List<QueueEntry> entries)
     {
         var removing = entries.ToHashSet();
+        RemoveTakenOverFromJam(removing);
 
         // Removing the playing track moves on to the next remaining one (playing it only if
         // something was playing), or stops if nothing is left after it.

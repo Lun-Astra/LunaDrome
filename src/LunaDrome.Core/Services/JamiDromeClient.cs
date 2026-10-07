@@ -23,6 +23,8 @@ public class JamItem
     /// <summary>Only for what's playing (and only for hosts); relative, e.g. /api/stream/abc.</summary>
     [JsonPropertyName("stream_url")] public string? StreamUrl { get; set; }
     [JsonPropertyName("navidrome_song_id")] public string? NavidromeSongId { get; set; }
+    /// <summary>Taken over from the host's own queue (plays after the requests).</summary>
+    [JsonPropertyName("from_queue")] public bool FromQueue { get; set; }
     /// <summary>"library" (added from Navidrome) or "youtube".</summary>
     public string? Source { get; set; }
 
@@ -258,6 +260,24 @@ public class JamiDromeClient
     /// <summary>Queues a song from the Navidrome library (streams from Navidrome, no download).</summary>
     public async Task AddLibrarySongAsync(string songId, string requestedBy) =>
         await SendAsync(HttpMethod.Post, "/queue/add-library", new { song_id = songId, requested_by = requestedBy });
+
+    /// <summary>Takes over the host's queue: the songs in order, marked from_queue, the first one
+    /// starting at <paramref name="startSeconds"/> if it starts playing. Returns the jam item ids
+    /// per song id (songs that couldn't be added are left out).</summary>
+    public async Task<Dictionary<string, string>> AddLibraryBatchAsync(IReadOnlyList<string> songIds, string requestedBy, double startSeconds)
+    {
+        var body = await SendAsync(HttpMethod.Post, "/queue/add-library-batch", new
+        {
+            song_ids = songIds, requested_by = requestedBy, from_queue = true, start_seconds = startSeconds,
+        });
+        var added = new Dictionary<string, string>();
+        if (body.ValueKind == JsonValueKind.Object && body.TryGetProperty("added", out var items))
+            foreach (var item in items.EnumerateArray())
+                if (item.TryGetProperty("id", out var id) && item.TryGetProperty("navidrome_song_id", out var songId)
+                    && songId.GetString() is { } sid)
+                    added[id.GetString()!] = sid;
+        return added;
+    }
 
     /// <summary>Host delete: removes a queued track, or skips it if it's playing.</summary>
     public async Task RemoveAsync(string itemId) =>
