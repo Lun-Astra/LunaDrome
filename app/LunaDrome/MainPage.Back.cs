@@ -37,6 +37,22 @@ public sealed partial class MainPage
     /// <summary>One step back. False when there's nothing left to go back to.</summary>
     private bool HandleBack()
     {
+        // An open menu (flyout) closes first, like everywhere else on Android.
+        if (XamlRoot != null)
+        {
+            var popups = VisualTreeHelper.GetOpenPopupsForXamlRoot(XamlRoot);
+            if (popups.Count > 0)
+            {
+                foreach (var popup in popups)
+                    popup.IsOpen = false;
+                return true;
+            }
+        }
+        if (InSelectionMode)
+        {
+            ExitSelection();
+            return true;
+        }
         if (FullScreenPlayerOverlay.Visibility == Visibility.Visible)
         {
             if (IsCompact && _compactPlayerTabs)

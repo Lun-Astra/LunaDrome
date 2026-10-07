@@ -206,6 +206,8 @@ public sealed partial class MainPage
         {
             if (FullScreenPlayerOverlay.Visibility == Visibility.Visible)
                 _compactPlayerTabs = false;   // always open on the player view
+            else if (_selectionList == QueueList)
+                ExitSelection();              // the queue's selection goes with the player
             UpdateCompactPlayerMode();
         });
 

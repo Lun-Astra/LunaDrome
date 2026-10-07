@@ -27,6 +27,12 @@ public static class SwipeToQueue
     /// <summary>A queue row was swiped left; MainPage removes that entry (the row's DataContext).</summary>
     public static event Action<object>? SwipedToRemove;
 
+    /// <summary>A row was held still (~0.5s). ListView rows also get a RightTapped from a hold,
+    /// the album page's ItemsRepeater rows don't (emulator test), so MainPage uses this there.</summary>
+    public static event Action<FrameworkElement>? Held;
+
+    private const int HoldMs = 500;
+
     private const double SwipeDistance = 60;   // px sideways: the action happens right there
     private const double StartSlop = 12;       // px before deciding sideways vs. scrolling
     private const double MaxSlide = 120;       // how far the row follows the finger
@@ -52,7 +58,7 @@ public static class SwipeToQueue
         new Tracker(row, right);
     }
 
-    private static void Trace(string message)
+    internal static void Trace(string message)
     {
 #if SWIPE_TRACE && ANDROID
         Android.Util.Log.Info("LunaSwipe", message);
@@ -68,6 +74,7 @@ public static class SwipeToQueue
         private readonly int _direction;   // +1 = swipe right (add), -1 = swipe left (remove)
         private readonly TranslateTransform _slide = new();
         private readonly DispatcherTimer _snapBack = new() { Interval = TimeSpan.FromMilliseconds(350) };
+        private readonly DispatcherTimer _hold = new() { Interval = TimeSpan.FromMilliseconds(HoldMs) };
         private Windows.Foundation.Point _start;
         private uint _pointerId;
         private bool _tracking;
@@ -82,6 +89,15 @@ public static class SwipeToQueue
             // The touch is often taken away without a release reaching the row (emulator test),
             // which left it slid sideways. So: no move or release for a moment = slide back.
             _snapBack.Tick += (_, _) => { _snapBack.Stop(); Reset(); };
+            _hold.Tick += (_, _) =>
+            {
+                _hold.Stop();
+                if (!_tracking || _swiping)
+                    return;
+                Trace("HELD");
+                Reset();   // a hold isn't a swipe
+                Held?.Invoke(_row);
+            };
             row.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler(Pressed), true);
             row.AddHandler(UIElement.PointerMovedEvent, new PointerEventHandler(Moved), true);
             row.AddHandler(UIElement.PointerReleasedEvent, new PointerEventHandler(Released), true);
@@ -100,6 +116,7 @@ public static class SwipeToQueue
             _start = e.GetCurrentPoint(null).Position;
             _pointerId = e.Pointer.PointerId;
             _tracking = true;
+            _hold.Start();
             Trace($"pressed dir={_direction} at {_start}");
         }
 
@@ -111,6 +128,8 @@ public static class SwipeToQueue
             var along = (p.X - _start.X) * _direction;   // distance in the swipe's own direction
             var dy = p.Y - _start.Y;
             Trace($"moved along={along:F0} dy={dy:F0} swiping={_swiping} done={_done}");
+            if (Math.Abs(p.X - _start.X) > StartSlop || Math.Abs(dy) > StartSlop)
+                _hold.Stop();   // moving: not a hold
             if (!_swiping)
             {
                 if (Math.Abs(dy) > StartSlop && Math.Abs(dy) >= Math.Abs(p.X - _start.X))
@@ -154,6 +173,7 @@ public static class SwipeToQueue
 
         private void Reset()
         {
+            _hold.Stop();
             _snapBack.Stop();
             _tracking = false;
             _swiping = false;

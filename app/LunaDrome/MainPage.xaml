@@ -391,7 +391,7 @@
     <DataTemplate x:Key="AlbumTrackRowTemplate">
       <Border Height="40" CornerRadius="4" Background="Transparent" Tag="{Binding}" controls:SwipeToQueue.Enabled="True"
               controls:Motion.HoverBackground="{StaticResource RaisedBrush}"
-              DoubleTapped="AlbumTrackRow_DoubleTapped" RightTapped="AlbumTrackRow_RightTapped">
+              Tapped="AlbumTrackRow_Tapped" DoubleTapped="AlbumTrackRow_DoubleTapped" RightTapped="AlbumTrackRow_RightTapped">
         <Grid>
           <Grid.ColumnDefinitions>
             <ColumnDefinition Width="60"/>
@@ -1384,7 +1384,8 @@
                         HorizontalAlignment="Center" VerticalAlignment="Center"
                         Data="M8,15 C8,15 1,10.5 1,5.8 C1,3 3,1.3 5.4,1.3 C6.9,1.3 7.7,2.1 8,2.6 C8.3,2.1 9.1,1.3 10.6,1.3 C13,1.3 15,3 15,5.8 C15,10.5 8,15 8,15 Z"/>
                 </Grid>
-                <muxc:ItemsRepeater x:Name="AlbumSongsList" ItemTemplate="{StaticResource AlbumTrackRowTemplate}"/>
+                <muxc:ItemsRepeater x:Name="AlbumSongsList" ItemTemplate="{StaticResource AlbumTrackRowTemplate}"
+                                    ElementPrepared="AlbumSongsList_ElementPrepared"/>
               </StackPanel>
             </ScrollViewer>
 
@@ -2076,5 +2077,24 @@
         </Grid>
       </Border>
     </Grid>
+
+    <!-- #30, Android: selecting songs (hold one, tap more). MainPage.Selection.cs. -->
+    <Border x:Name="SelectionBar" Visibility="Collapsed" VerticalAlignment="Top" Margin="8,8,8,0" Padding="6,6,10,6"
+            CornerRadius="10" Background="{StaticResource RaisedBrush}" BorderBrush="{StaticResource BorderBrush2}" BorderThickness="1">
+      <Grid ColumnSpacing="8">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto"/>
+          <ColumnDefinition Width="*"/>
+          <ColumnDefinition Width="Auto"/>
+          <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+        <Button Content="✕" Width="38" Height="38" Style="{StaticResource IconButtonStyle}" Click="SelectionClose_Click"
+                AutomationProperties.Name="Stop selecting"/>
+        <TextBlock x:Name="SelectionCountText" Grid.Column="1" Text="1 selected" FontWeight="SemiBold" VerticalAlignment="Center"/>
+        <Button x:Name="SelectionAddToQueueButton" Grid.Column="2" Content="Add to queue" Padding="12,6" Click="SelectionAddToQueue_Click"/>
+        <Button Grid.Column="3" Content="⋯" Width="40" Height="38" FontSize="16" Click="SelectionMore_Click"
+                AutomationProperties.Name="More actions"/>
+      </Grid>
+    </Border>
   </Grid>
 </Page>

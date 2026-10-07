@@ -130,6 +130,13 @@ public sealed partial class MainPage : Page
             AddToQueue(new List<Song> { song });
             ShowToast($"Added to queue: {song.Title}");
         };
+        // #30, Android: holding an album-page track starts selecting (that list gets no RightTapped).
+        Controls.SwipeToQueue.Held += row =>
+        {
+            Controls.SwipeToQueue.Trace($"HELD row {row.DataContext?.GetType().Name} inAlbum={IsInside(row, AlbumSongsList)}");
+            if (row.DataContext is Song song && IsInside(row, AlbumSongsList))
+                EnterAlbumSelection(song);
+        };
         // #30, Android: swiping a queue row to the left removes it from the queue.
         Controls.SwipeToQueue.SwipedToRemove += item =>
         {
@@ -711,6 +718,7 @@ public sealed partial class MainPage : Page
     private void ShowPage(UIElement page, Action? reopen = null)
     {
         RecordPage(reopen);
+        ExitSelection();         // a selection belongs to the page it was made on
         CloseCompactSidebar();   // any page opened from the phone menu closes it
         page.Visibility = Visibility.Visible;
         Motion.FadeIn(page);
@@ -1434,6 +1442,8 @@ public sealed partial class MainPage : Page
 
     private void AlbumTrackRow_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
     {
+        if (InSelectionMode)
+            return;   // tapping toggles songs while selecting
         if (sender is not FrameworkElement { Tag: Song song } || AlbumSongsList.ItemsSource is not List<Song> shown)
             return;
 
@@ -1446,6 +1456,13 @@ public sealed partial class MainPage : Page
     {
         if (sender is not FrameworkElement { Tag: Song song } row || AlbumSongsList.ItemsSource is not List<Song> shown)
             return;
+
+        if (IsTouchHold(e))   // #30: hold starts selecting on Android
+        {
+            EnterAlbumSelection(song);
+            e.Handled = true;
+            return;
+        }
 
         var flyout = BuildSongMenu(song, shown);
         flyout.Items.Add(new MenuFlyoutSeparator());
@@ -1648,6 +1665,8 @@ public sealed partial class MainPage : Page
     // Double-click a row to play: queues the whole list as shown (search + sort), from that track.
     private void TrackList_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
     {
+        if (InSelectionMode)
+            return;   // tapping toggles songs while selecting
         if (sender is not ListView { ItemsSource: List<Song> source } || (e.OriginalSource as FrameworkElement)?.DataContext is not Song song)
             return;
 
@@ -1661,6 +1680,13 @@ public sealed partial class MainPage : Page
     {
         if (sender is not ListView { Tag: string key } list || (e.OriginalSource as FrameworkElement)?.DataContext is not Song song)
             return;
+
+        if (IsTouchHold(e))   // #30: hold starts selecting on Android
+        {
+            EnterSelection(list, song);
+            e.Handled = true;
+            return;
+        }
 
         list.SelectedItem = song;
         var flyout = BuildSongMenu(song, list.ItemsSource as List<Song>);
@@ -1923,14 +1949,18 @@ public sealed partial class MainPage : Page
         await LoadPlaylistsAsync();
     }
 
-    private async Task RemoveFromPlaylistAsync(Song song)
+    private Task RemoveFromPlaylistAsync(Song song) => RemoveFromPlaylistAsync(new List<Song> { song });
+
+    private async Task RemoveFromPlaylistAsync(List<Song> toRemove)
     {
-        if (_currentPlaylist == null || song.PlaylistIndex < 0)
+        if (_currentPlaylist == null || toRemove.All(s => s.PlaylistIndex < 0))
             return;
 
         try
         {
-            await _client.RemoveSongFromPlaylistAsync(_currentPlaylist.Id, song.PlaylistIndex);
+            // By position: highest first, so removing one doesn't shift the next one's index.
+            foreach (var index in toRemove.Select(s => s.PlaylistIndex).Where(i => i >= 0).Distinct().OrderByDescending(i => i))
+                await _client.RemoveSongFromPlaylistAsync(_currentPlaylist.Id, index);
             var songs = await _client.GetPlaylistSongsAsync(_currentPlaylist.Id);
             PopulateSongArt(songs);
             _trackViews["PlaylistTracks"].Raw = songs;
@@ -2064,6 +2094,8 @@ public sealed partial class MainPage : Page
 
     private void QueueList_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
     {
+        if (InSelectionMode)
+            return;   // tapping toggles songs while selecting
         if ((e.OriginalSource as FrameworkElement)?.DataContext is QueueEntry entry && _queue.Contains(entry))
             PlayEntry(entry);
     }
@@ -2079,15 +2111,27 @@ public sealed partial class MainPage : Page
         if (sender is not ListView list || (e.OriginalSource as FrameworkElement)?.DataContext is not QueueEntry clicked)
             return;
 
+        if (IsTouchHold(e))   // #30: hold starts selecting on Android
+        {
+            EnterSelection(list, clicked);
+            e.Handled = true;
+            return;
+        }
+
         if (!list.SelectedItems.Contains(clicked))
         {
             list.SelectedItems.Clear();
             list.SelectedItems.Add(clicked);
         }
 
-        var selected = SelectedQueueEntries(list);
+        BuildQueueMenu(list, SelectedQueueEntries(list), clicked).ShowAt(list, e.GetPosition(list));
+        e.Handled = true;
+    }
+
+    private MenuFlyout BuildQueueMenu(ListView list, List<QueueEntry> selected, QueueEntry? clicked)
+    {
         var flyout = new MenuFlyout();
-        if (selected.Count == 1)
+        if (selected.Count == 1 && clicked != null)
             AddMenuItem(flyout, "Play", () => PlayEntry(clicked));
         AddMenuItem(flyout, "Play next", () => MoveToPlayNext(list, selected));
         AddMenuItem(flyout, "Move up", () => MoveInQueue(list, selected, -1));
@@ -2096,12 +2140,11 @@ public sealed partial class MainPage : Page
         flyout.Items.Add(new MenuFlyoutSeparator());
         flyout.Items.Add(BuildAddToPlaylistSubmenu(selected.Select(q => q.Song).ToList()));
         if (selected.Count == 1)
-            AddFavoriteToggle(flyout, clicked.Song);
+            AddFavoriteToggle(flyout, selected[0].Song);
         flyout.Items.Add(new MenuFlyoutSeparator());
         AddMenuItem(flyout, selected.Count == 1 ? "Remove from queue" : $"Remove {selected.Count} songs from queue",
             () => RemoveFromQueue(selected));
-        flyout.ShowAt(list, e.GetPosition(list));
-        e.Handled = true;
+        return flyout;
     }
 
     private void QueueList_KeyDown(object sender, KeyRoutedEventArgs e)
@@ -2160,6 +2203,7 @@ public sealed partial class MainPage : Page
     private void RemoveFromQueue(List<QueueEntry> entries)
     {
         var removing = entries.ToHashSet();
+        RemoveTakenOverFromJam(removing);
 
         // Removing the playing track moves on to the next remaining one (playing it only if
         // something was playing), or stops if nothing is left after it.
