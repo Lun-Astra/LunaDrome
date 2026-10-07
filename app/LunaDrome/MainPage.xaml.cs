@@ -130,6 +130,12 @@ public sealed partial class MainPage : Page
             AddToQueue(new List<Song> { song });
             ShowToast($"Added to queue: {song.Title}");
         };
+        // #30, Android: holding an album-page track starts selecting (that list gets no RightTapped).
+        Controls.SwipeToQueue.Held += row =>
+        {
+            if (row.DataContext is Song song && IsInside(row, AlbumSongsList))
+                EnterAlbumSelection(song);
+        };
         // #30, Android: swiping a queue row to the left removes it from the queue.
         Controls.SwipeToQueue.SwipedToRemove += item =>
         {

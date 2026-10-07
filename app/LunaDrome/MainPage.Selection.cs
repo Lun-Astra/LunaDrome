@@ -26,6 +26,14 @@ public sealed partial class MainPage
 
     private bool IsQueueList(ListView list) => list == QueueList || list == SideQueueList;
 
+    private static bool IsInside(DependencyObject element, DependencyObject ancestor)
+    {
+        for (var e = element; e != null; e = VisualTreeHelper.GetParent(e))
+            if (e == ancestor)
+                return true;
+        return false;
+    }
+
     private void EnterSelection(ListView list, object item)
     {
         if (_albumSelecting || (_selectionList != null && _selectionList != list))
