@@ -36,6 +36,8 @@ public sealed partial class MainPage
     // one on either side removes the other, and leaving the jam continues from where it got.
     private const int MaxJamTakeover = 25;
     private readonly Dictionary<string, QueueEntry> _jamTakenOver = new();
+    // Taken-over items seen in a state from the server: until then a state can predate them.
+    private readonly HashSet<string> _jamTakenOverSeen = new();
 
     private bool JamOwnsPlayback => _jamOwnsPlayer;
 
@@ -153,6 +155,7 @@ public sealed partial class MainPage
     private async Task TakeQueueIntoJamAsync()
     {
         _jamTakenOver.Clear();
+        _jamTakenOverSeen.Clear();
         if (_current == null)
             return;
         try
@@ -208,7 +211,12 @@ public sealed partial class MainPage
         foreach (var (itemId, entry) in _jamTakenOver.ToList())
         {
             if (inJam.Contains(itemId))
+            {
+                _jamTakenOverSeen.Add(itemId);
                 continue;
+            }
+            if (!_jamTakenOverSeen.Contains(itemId) && !played.Contains(itemId))
+                continue; // this state is older than the takeover
             _jamTakenOver.Remove(itemId);
             if (!played.Contains(itemId) && entry != _current && _queue.Contains(entry))
                 removed.Add(entry);
@@ -251,6 +259,7 @@ public sealed partial class MainPage
             _pendingSeek = TimeSpan.FromSeconds(_jam.ElapsedSeconds);
         }
         _jamTakenOver.Clear();
+        _jamTakenOverSeen.Clear();
         SetCurrent(_current);
         SetPlaying(false);
         if (_current != null)
