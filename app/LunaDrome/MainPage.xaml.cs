@@ -130,6 +130,15 @@ public sealed partial class MainPage : Page
             AddToQueue(new List<Song> { song });
             ShowToast($"Added to queue: {song.Title}");
         };
+        // #30, Android: swiping a queue row to the left removes it from the queue.
+        Controls.SwipeToQueue.SwipedToRemove += item =>
+        {
+            if (item is QueueEntry entry && _queue.Contains(entry))
+            {
+                RemoveFromQueue(new List<QueueEntry> { entry });
+                ShowToast($"Removed from queue: {entry.Song.Title}");
+            }
+        };
         _progressTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(400) };
         _progressTimer.Tick += ProgressTimer_Tick;
         _progressTimer.Start();

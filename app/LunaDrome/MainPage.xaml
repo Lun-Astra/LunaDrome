@@ -443,7 +443,7 @@
     <!-- Side queue panel row (Feishin's right sidebar): # (or a playing marker), art, title /
          artist, duration. Bound to a QueueEntry. -->
     <DataTemplate x:Key="SideQueueRowTemplate">
-      <Grid Margin="0,4" Background="Transparent">
+      <Grid Margin="0,4" Background="Transparent" controls:SwipeToQueue.RemoveEnabled="True">
         <Grid.ColumnDefinitions>
           <ColumnDefinition Width="34"/>
           <ColumnDefinition Width="Auto"/>
@@ -474,7 +474,7 @@
     <!-- Queue row (full-screen player): 36px art + title / artist. Bound to a QueueEntry; the
          accent bar + bold title mark the playing track, independent of the multi-selection. -->
     <DataTemplate x:Key="QueueRowTemplate">
-      <Grid Margin="2,3">
+      <Grid Margin="2,3" Background="Transparent" controls:SwipeToQueue.RemoveEnabled="True">
         <Grid.ColumnDefinitions>
           <ColumnDefinition Width="10"/>
           <ColumnDefinition Width="Auto"/>

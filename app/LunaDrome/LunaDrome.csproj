@@ -50,6 +50,11 @@
     <ProjectReference Include="..\..\src\LunaDrome.Core\LunaDrome.Core.csproj" />
   </ItemGroup>
 
+  <!-- -p:SwipeTrace=true (the Android emulator UI test): log every swipe touch event to logcat. -->
+  <PropertyGroup Condition="'$(SwipeTrace)' == 'true'">
+    <DefineConstants>$(DefineConstants);SWIPE_TRACE</DefineConstants>
+  </PropertyGroup>
+
   <!-- The visualizer's audio capture (WASAPI loopback / PulseAudio) is desktop-only. On
        Android a no-op LoopbackCapture.Android.cs takes its place (no visualizer there yet). -->
   <ItemGroup Condition="!$(TargetFramework.Contains('android'))">
