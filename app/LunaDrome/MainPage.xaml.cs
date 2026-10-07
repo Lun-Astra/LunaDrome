@@ -133,6 +133,7 @@ public sealed partial class MainPage : Page
         // #30, Android: holding an album-page track starts selecting (that list gets no RightTapped).
         Controls.SwipeToQueue.Held += row =>
         {
+            Controls.SwipeToQueue.Trace($"HELD row {row.DataContext?.GetType().Name} inAlbum={IsInside(row, AlbumSongsList)}");
             if (row.DataContext is Song song && IsInside(row, AlbumSongsList))
                 EnterAlbumSelection(song);
         };

@@ -17,6 +17,9 @@ public sealed partial class MainPage
     // shown as an accent border on the row (a background would be undone by the hover effect).
     private readonly HashSet<Song> _albumSelection = new();
     private bool _albumSelecting;
+    // Lifting the finger after a hold still raises Tapped on that row, which would deselect it again.
+    private Song? _heldSong;
+    private DateTime _heldAt;
 
     private bool InSelectionMode => _selectionList != null || _albumSelecting;
 
@@ -87,6 +90,9 @@ public sealed partial class MainPage
             ExitSelection();
         _albumSelecting = true;
         _albumSelection.Add(song);
+        _heldSong = song;
+        _heldAt = DateTime.UtcNow;
+        Controls.SwipeToQueue.Trace($"ALBUM SELECT {_albumSelection.Count}");
         RefreshAlbumSelectionMarks();
         UpdateSelectionBar();
     }
@@ -95,6 +101,14 @@ public sealed partial class MainPage
     {
         if (!_albumSelecting || sender is not FrameworkElement { Tag: Song song } row)
             return;
+        Controls.SwipeToQueue.Trace($"ALBUM TAP held={song == _heldSong}");
+        if (song == _heldSong && DateTime.UtcNow - _heldAt < TimeSpan.FromSeconds(2))
+        {
+            _heldSong = null;
+            e.Handled = true;
+            return;
+        }
+        _heldSong = null;
         if (!_albumSelection.Remove(song))
             _albumSelection.Add(song);
         MarkAlbumRow(row, song);

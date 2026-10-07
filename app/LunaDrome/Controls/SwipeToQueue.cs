@@ -58,7 +58,7 @@ public static class SwipeToQueue
         new Tracker(row, right);
     }
 
-    private static void Trace(string message)
+    internal static void Trace(string message)
     {
 #if SWIPE_TRACE && ANDROID
         Android.Util.Log.Info("LunaSwipe", message);
