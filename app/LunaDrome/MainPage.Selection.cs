@@ -13,7 +13,12 @@ public sealed partial class MainPage
     private ListView? _selectionList;
     private ListViewSelectionMode _selectionPreviousMode;
 
-    private bool InSelectionMode => _selectionList != null;
+    // The album page is an ItemsRepeater (no built-in selection): its selection is kept here and
+    // shown as an accent border on the row (a background would be undone by the hover effect).
+    private readonly HashSet<Song> _albumSelection = new();
+    private bool _albumSelecting;
+
+    private bool InSelectionMode => _selectionList != null || _albumSelecting;
 
     // A touch hold raises RightTapped; only on Android does it start selecting.
     private static bool IsTouchHold(RightTappedRoutedEventArgs e) =>
@@ -23,7 +28,7 @@ public sealed partial class MainPage
 
     private void EnterSelection(ListView list, object item)
     {
-        if (_selectionList != null && _selectionList != list)
+        if (_albumSelecting || (_selectionList != null && _selectionList != list))
             ExitSelection();
         if (_selectionList == null)
         {
@@ -50,29 +55,92 @@ public sealed partial class MainPage
 
     private void ExitSelection()
     {
-        if (_selectionList is not { } list)
-            return;
-        _selectionList = null;
-        list.SelectionChanged -= Selection_Changed;
-        list.SelectedItems.Clear();
-        list.SelectionMode = _selectionPreviousMode;
+        if (_albumSelecting)
+        {
+            _albumSelecting = false;
+            _albumSelection.Clear();
+            RefreshAlbumSelectionMarks();
+        }
+        if (_selectionList is { } list)
+        {
+            _selectionList = null;
+            list.SelectionChanged -= Selection_Changed;
+            list.SelectedItems.Clear();
+            list.SelectionMode = _selectionPreviousMode;
+        }
         SelectionBar.Visibility = Visibility.Collapsed;
     }
 
+    // ----- album page -----
+
+    private void EnterAlbumSelection(Song song)
+    {
+        if (_selectionList != null)
+            ExitSelection();
+        _albumSelecting = true;
+        _albumSelection.Add(song);
+        RefreshAlbumSelectionMarks();
+        UpdateSelectionBar();
+    }
+
+    private void AlbumTrackRow_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        if (!_albumSelecting || sender is not FrameworkElement { Tag: Song song } row)
+            return;
+        if (!_albumSelection.Remove(song))
+            _albumSelection.Add(song);
+        MarkAlbumRow(row, song);
+        if (_albumSelection.Count == 0)
+            ExitSelection();
+        else
+            UpdateSelectionBar();
+        e.Handled = true;
+    }
+
+    private void MarkAlbumRow(FrameworkElement row, Song song)
+    {
+        if (row is not Border border)
+            return;
+        var selected = _albumSelecting && _albumSelection.Contains(song);
+        border.BorderBrush = selected ? (Brush)Application.Current.Resources["AccentBrush"] : null;
+        border.BorderThickness = new Thickness(selected ? 1.5 : 0);
+    }
+
+    private void RefreshAlbumSelectionMarks()
+    {
+        if (AlbumSongsList.ItemsSource is not List<Song> shown)
+            return;
+        for (var i = 0; i < shown.Count; i++)
+            if (AlbumSongsList.TryGetElement(i) is FrameworkElement row)
+                MarkAlbumRow(row, shown[i]);
+    }
+
+    // Rows are recycled while scrolling: give a reused row the mark of its new song.
+    private void AlbumSongsList_ElementPrepared(Microsoft.UI.Xaml.Controls.ItemsRepeater sender,
+        Microsoft.UI.Xaml.Controls.ItemsRepeaterElementPreparedEventArgs args)
+    {
+        if (args.Element is FrameworkElement { DataContext: Song song } row)
+            MarkAlbumRow(row, song);
+    }
+
+    private int SelectionCount => _albumSelecting ? _albumSelection.Count : _selectionList?.SelectedItems.Count ?? 0;
+
     private void UpdateSelectionBar()
     {
-        if (_selectionList == null)
+        if (!InSelectionMode)
             return;
-        var count = _selectionList.SelectedItems.Count;
+        var count = SelectionCount;
         SelectionCountText.Text = count == 1 ? "1 selected" : $"{count} selected";
         // In the queue the songs are already queued: the ⋯ menu has the queue actions instead.
-        SelectionAddToQueueButton.Visibility = IsQueueList(_selectionList) ? Visibility.Collapsed : Visibility.Visible;
+        SelectionAddToQueueButton.Visibility = _selectionList != null && IsQueueList(_selectionList) ? Visibility.Collapsed : Visibility.Visible;
         SelectionBar.Visibility = Visibility.Visible;
     }
 
     // The selected songs in list order (the order they were tapped doesn't matter).
     private List<Song> SelectedSongs()
     {
+        if (_albumSelecting)
+            return AlbumSongsList.ItemsSource is List<Song> shown ? shown.Where(_albumSelection.Contains).ToList() : new();
         if (_selectionList?.ItemsSource is not System.Collections.IEnumerable source)
             return new();
         var selected = _selectionList.SelectedItems.ToHashSet();
@@ -95,11 +163,12 @@ public sealed partial class MainPage
 
     private void SelectionMore_Click(object sender, RoutedEventArgs e)
     {
-        if (_selectionList is not { } list || sender is not FrameworkElement anchor)
+        if (!InSelectionMode || sender is not FrameworkElement anchor)
             return;
+        var list = _selectionList;
 
         MenuFlyout flyout;
-        if (IsQueueList(list))
+        if (list != null && IsQueueList(list))
         {
             var entries = SelectedQueueEntries(list);
             flyout = BuildQueueMenu(list, entries, entries.Count == 1 ? entries[0] : null);
@@ -117,7 +186,7 @@ public sealed partial class MainPage
             AddJamMenuItem(flyout, () => Task.FromResult(songs));
             if (songs.Count == 1)
                 AddFavoriteToggle(flyout, songs[0]);
-            if (list.Tag as string == "PlaylistTracks")
+            if (list?.Tag as string == "PlaylistTracks")
             {
                 flyout.Items.Add(new MenuFlyoutSeparator());
                 AddMenuItem(flyout, songs.Count == 1 ? "Remove from playlist" : $"Remove {songs.Count} songs from playlist",
@@ -127,11 +196,14 @@ public sealed partial class MainPage
         flyout.Items.Add(new MenuFlyoutSeparator());
         AddMenuItem(flyout, "Select all", () =>
         {
-            if (_selectionList is { } l)
+            if (_albumSelecting && AlbumSongsList.ItemsSource is List<Song> shown)
             {
-                l.SelectAll();
-                UpdateSelectionBar();
+                _albumSelection.UnionWith(shown);
+                RefreshAlbumSelectionMarks();
             }
+            else
+                _selectionList?.SelectAll();
+            UpdateSelectionBar();
         });
         // Any action ends selecting ("Select all" keeps it going).
         foreach (var item in flyout.Items.OfType<MenuFlyoutItem>().Where(i => i.Text != "Select all"))

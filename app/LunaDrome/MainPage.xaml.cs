@@ -1435,6 +1435,8 @@ public sealed partial class MainPage : Page
 
     private void AlbumTrackRow_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
     {
+        if (InSelectionMode)
+            return;   // tapping toggles songs while selecting
         if (sender is not FrameworkElement { Tag: Song song } || AlbumSongsList.ItemsSource is not List<Song> shown)
             return;
 
@@ -1447,6 +1449,13 @@ public sealed partial class MainPage : Page
     {
         if (sender is not FrameworkElement { Tag: Song song } row || AlbumSongsList.ItemsSource is not List<Song> shown)
             return;
+
+        if (IsTouchHold(e))   // #30: hold starts selecting on Android
+        {
+            EnterAlbumSelection(song);
+            e.Handled = true;
+            return;
+        }
 
         var flyout = BuildSongMenu(song, shown);
         flyout.Items.Add(new MenuFlyoutSeparator());
