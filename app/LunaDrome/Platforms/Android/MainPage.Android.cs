@@ -16,6 +16,13 @@ public sealed partial class MainPage
     // going, instead of closing it.
     private void ConnectBackButton()
     {
+        Droid.MainActivity.MenuOpen = () => XamlRoot != null && VisualTreeHelper.GetOpenPopupsForXamlRoot(XamlRoot).Count > 0;
+        Droid.MainActivity.CloseMenus = () => DispatcherQueue.TryEnqueue(() =>
+        {
+            if (XamlRoot != null)
+                foreach (var popup in VisualTreeHelper.GetOpenPopupsForXamlRoot(XamlRoot))
+                    popup.IsOpen = false;
+        });
         Windows.UI.Core.SystemNavigationManager.GetForCurrentView().BackRequested += (_, e) =>
         {
             e.Handled = true;
