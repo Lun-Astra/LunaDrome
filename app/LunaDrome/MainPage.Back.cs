@@ -37,6 +37,11 @@ public sealed partial class MainPage
     /// <summary>One step back. False when there's nothing left to go back to.</summary>
     private bool HandleBack()
     {
+        if (InSelectionMode)
+        {
+            ExitSelection();
+            return true;
+        }
         if (FullScreenPlayerOverlay.Visibility == Visibility.Visible)
         {
             if (IsCompact && _compactPlayerTabs)

@@ -2076,5 +2076,24 @@
         </Grid>
       </Border>
     </Grid>
+
+    <!-- #30, Android: selecting songs (hold one, tap more). MainPage.Selection.cs. -->
+    <Border x:Name="SelectionBar" Visibility="Collapsed" VerticalAlignment="Top" Margin="8,8,8,0" Padding="6,6,10,6"
+            CornerRadius="10" Background="{StaticResource RaisedBrush}" BorderBrush="{StaticResource BorderBrush2}" BorderThickness="1">
+      <Grid ColumnSpacing="8">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto"/>
+          <ColumnDefinition Width="*"/>
+          <ColumnDefinition Width="Auto"/>
+          <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+        <Button Content="✕" Width="38" Height="38" Style="{StaticResource IconButtonStyle}" Click="SelectionClose_Click"
+                AutomationProperties.Name="Stop selecting"/>
+        <TextBlock x:Name="SelectionCountText" Grid.Column="1" Text="1 selected" FontWeight="SemiBold" VerticalAlignment="Center"/>
+        <Button x:Name="SelectionAddToQueueButton" Grid.Column="2" Content="Add to queue" Padding="12,6" Click="SelectionAddToQueue_Click"/>
+        <Button Grid.Column="3" Content="⋯" Width="40" Height="38" FontSize="16" Click="SelectionMore_Click"
+                AutomationProperties.Name="More actions"/>
+      </Grid>
+    </Border>
   </Grid>
 </Page>
