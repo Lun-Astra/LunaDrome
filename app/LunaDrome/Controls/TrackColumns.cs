@@ -16,6 +16,10 @@ public sealed class TrackColumnLayout : INotifyPropertyChanged
 {
     public const double MinWidth = 48;
 
+    /// <summary>The Tracks page's heart column: fixed width, taken out of the title column so that
+    /// page lines up with the other lists.</summary>
+    public const double FavoriteWidth = 44;
+
     private double _titleWidth = 290;
     private double _timeWidth = 64;
     private double _genreWidth = 140;
@@ -23,6 +27,8 @@ public sealed class TrackColumnLayout : INotifyPropertyChanged
     public double TitleWidth { get => _titleWidth; set => Set(ref _titleWidth, value); }
     public double TimeWidth { get => _timeWidth; set => Set(ref _timeWidth, value); }
     public double GenreWidth { get => _genreWidth; set => Set(ref _genreWidth, value); }
+    public double FavoriteColumnWidth => FavoriteWidth;
+    public double TitleWidthBesideFavorite => Math.Max(MinWidth, _titleWidth - FavoriteWidth);
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -45,7 +51,7 @@ public sealed class TrackColumnLayout : INotifyPropertyChanged
         }
         else
             return;
-        foreach (var name in new[] { nameof(TitleWidth), nameof(TimeWidth), nameof(GenreWidth) })
+        foreach (var name in new[] { nameof(TitleWidth), nameof(TitleWidthBesideFavorite), nameof(TimeWidth), nameof(GenreWidth) })
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
     }
 
@@ -57,12 +63,15 @@ public sealed class TrackColumnLayout : INotifyPropertyChanged
 
         field = value;
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+        if (name == nameof(TitleWidth))
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(TitleWidthBesideFavorite)));
     }
 }
 
 /// <summary>
 /// Header row (TITLE / TIME / GENRE, matching the WPF app's GridView columns) with a drag handle at the right edge of each
-/// column, driving a shared <see cref="TrackColumnLayout"/>.
+/// column, driving a shared <see cref="TrackColumnLayout"/>. With <see cref="ShowFavorite"/> (the Tracks
+/// page) a fixed heart column follows the title.
 /// </summary>
 public sealed class TrackListHeader : Grid
 {
@@ -76,12 +85,28 @@ public sealed class TrackListHeader : Grid
         set => SetValue(LayoutProperty, value);
     }
 
-    private static readonly (string Header, string Property)[] Columns =
+    public static readonly DependencyProperty ShowFavoriteProperty =
+        DependencyProperty.Register(nameof(ShowFavorite), typeof(bool), typeof(TrackListHeader),
+            new PropertyMetadata(false, (d, _) => ((TrackListHeader)d).ApplyWidths()));
+
+    /// <summary>Show the heart column (matching TracksPageRowTemplate).</summary>
+    public bool ShowFavorite
+    {
+        get => (bool)GetValue(ShowFavoriteProperty);
+        set => SetValue(ShowFavoriteProperty, value);
+    }
+
+    // A null header is the heart column (an icon, no drag handle).
+    private static readonly (string? Header, string Property)[] Columns =
     {
         ("TITLE", nameof(TrackColumnLayout.TitleWidth)),
+        (null, nameof(TrackColumnLayout.FavoriteColumnWidth)),
         ("TIME", nameof(TrackColumnLayout.TimeWidth)),
         ("GENRE", nameof(TrackColumnLayout.GenreWidth)),
     };
+
+    private const string HeartPath =
+        "M8,15 C8,15 1,10.5 1,5.8 C1,3 3,1.3 5.4,1.3 C6.9,1.3 7.7,2.1 8,2.6 C8.3,2.1 9.1,1.3 10.6,1.3 C13,1.3 15,3 15,5.8 C15,10.5 8,15 8,15 Z";
 
     public TrackListHeader()
     {
@@ -94,6 +119,26 @@ public sealed class TrackListHeader : Grid
         for (var i = 0; i < Columns.Length; i++)
         {
             ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            if (Columns[i].Header == null)
+            {
+                var heartCell = new Grid();
+                heartCell.Children.Add(new Microsoft.UI.Xaml.Shapes.Path
+                {
+                    Width = 11,
+                    Height = 10,
+                    Stretch = Stretch.Uniform,
+                    Stroke = (Brush)Application.Current.Resources["TextPrimaryBrush"],
+                    StrokeThickness = 1.3,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Data = (Geometry)Microsoft.UI.Xaml.Markup.XamlBindingHelper.ConvertValue(typeof(Geometry), HeartPath)
+                });
+                ToolTipService.SetToolTip(heartCell, "Favorited");
+                SetColumn(heartCell, i);
+                Children.Add(heartCell);
+                continue;
+            }
 
             var label = new TextBlock
             {
@@ -132,7 +177,19 @@ public sealed class TrackListHeader : Grid
             return;
 
         for (var i = 0; i < Columns.Length; i++)
-            ((FrameworkElement)Children[i]).Width = GetWidth(Columns[i].Property);
+        {
+            var cell = (FrameworkElement)Children[i];
+            var property = Columns[i].Property;
+            if (property == nameof(TrackColumnLayout.FavoriteColumnWidth))
+            {
+                cell.Visibility = ShowFavorite ? Visibility.Visible : Visibility.Collapsed;
+                cell.Width = TrackColumnLayout.FavoriteWidth;
+            }
+            else
+                cell.Width = ShowFavorite && property == nameof(TrackColumnLayout.TitleWidth)
+                    ? Layout.TitleWidthBesideFavorite
+                    : GetWidth(property);
+        }
     }
 
     internal double GetWidth(string property) => property switch

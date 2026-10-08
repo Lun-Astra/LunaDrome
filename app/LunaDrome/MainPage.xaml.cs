@@ -1501,7 +1501,7 @@ public sealed partial class MainPage : Page
     private async void TrackFavorite_Tapped(object sender, TappedRoutedEventArgs e)
     {
         e.Handled = true;
-        if (sender is not Panel { Tag: Song song } cell)
+        if (sender is not FrameworkElement { Tag: Song song })
             return;
 
         try
@@ -1510,14 +1510,15 @@ public sealed partial class MainPage : Page
                 await _client.UnstarSongAsync(song.Id);
             else
                 await _client.StarSongAsync(song.Id);
-            song.IsFavorited = !song.IsFavorited;
-
-            // Song isn't observable, so update this row's heart directly.
-            if (cell.Children.FirstOrDefault() is Microsoft.UI.Xaml.Shapes.Path heart)
-                heart.Fill = (Brush)new FavoriteFillConverter().Convert(song.IsFavorited, typeof(Brush), null!, "");
+            song.IsFavorited = !song.IsFavorited;   // the row's heart follows through its binding
+            if (_current?.Song == song)
+                UpdateNowPlayingFavorite(song);
         }
         catch { /* best-effort */ }
     }
+    // Tapping the heart twice quickly mustn't also play the song (the list's DoubleTapped).
+    private void TrackFavorite_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e) => e.Handled = true;
+
     private async void SongArtistText_Tapped(object sender, TappedRoutedEventArgs e)
     {
         e.Handled = true;

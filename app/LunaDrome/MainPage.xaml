@@ -440,6 +440,36 @@
       </StackPanel>
     </DataTemplate>
 
+    <!-- Tracks page row: TrackRowTemplate plus a heart (favorited or not, tap to toggle); the
+         heart's width comes out of the title column. -->
+    <DataTemplate x:Key="TracksPageRowTemplate">
+      <StackPanel Orientation="Horizontal" Background="Transparent" controls:SwipeToQueue.Enabled="True">
+        <StackPanel Orientation="Horizontal" Width="{Binding TitleWidthBesideFavorite, Source={StaticResource TrackColumns}}"
+                    Padding="6,0,6,0">
+          <Border Width="40" Height="40" CornerRadius="4" Margin="0,0,10,0" Background="{StaticResource RaisedBrush}">
+            <Image Source="{Binding CoverArtUrl}" Stretch="UniformToFill" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+          </Border>
+          <StackPanel VerticalAlignment="Center">
+            <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis"/>
+            <Border Background="Transparent" Margin="0,2,0,0" HorizontalAlignment="Left" controls:Motion.ClickableText="True" Tag="{Binding}" Tapped="SongArtistText_Tapped" ToolTipService.ToolTip="Go to artist">
+              <TextBlock Text="{Binding ArtistName}" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis"/>
+            </Border>
+          </StackPanel>
+        </StackPanel>
+        <Grid Background="Transparent" Tag="{Binding}" Tapped="TrackFavorite_Tapped" DoubleTapped="TrackFavorite_DoubleTapped"
+              Width="{Binding FavoriteColumnWidth, Source={StaticResource TrackColumns}}" ToolTipService.ToolTip="Favorite">
+          <Path Width="15" Height="14" Stretch="Uniform" Stroke="{StaticResource TextSecondaryBrush}" StrokeThickness="1.5"
+                Fill="{Binding IsFavorited, Converter={StaticResource FavoriteFill}}"
+                HorizontalAlignment="Center" VerticalAlignment="Center"
+                Data="M8,15 C8,15 1,10.5 1,5.8 C1,3 3,1.3 5.4,1.3 C6.9,1.3 7.7,2.1 8,2.6 C8.3,2.1 9.1,1.3 10.6,1.3 C13,1.3 15,3 15,5.8 C15,10.5 8,15 8,15 Z"/>
+        </Grid>
+        <TextBlock Text="{Binding DurationDisplay}" VerticalAlignment="Center" Padding="6,0,6,0"
+                   Width="{Binding TimeWidth, Source={StaticResource TrackColumns}}"/>
+        <TextBlock Text="{Binding Genre}" VerticalAlignment="Center" Padding="6,0,6,0" TextTrimming="CharacterEllipsis"
+                   Width="{Binding GenreWidth, Source={StaticResource TrackColumns}}"/>
+      </StackPanel>
+    </DataTemplate>
+
     <!-- Side queue panel row (Feishin's right sidebar): # (or a playing marker), art, title /
          artist, duration. Bound to a QueueEntry. -->
     <DataTemplate x:Key="SideQueueRowTemplate">
@@ -1444,9 +1474,9 @@
                         Margin="8,0,0,0" FontSize="13" Click="SortDirectionButton_Click"
                         ToolTipService.ToolTip="Toggle ascending/descending"/>
               </StackPanel>
-              <controls:TrackListHeader Grid.Row="2" Layout="{StaticResource TrackColumns}"/>
+              <controls:TrackListHeader Grid.Row="2" Layout="{StaticResource TrackColumns}" ShowFavorite="True"/>
               <ListView Grid.Row="3" x:Name="AllSongsList" Tag="AllTracks" SelectionMode="Single"
-                        ItemTemplate="{StaticResource TrackRowTemplate}" ItemContainerStyle="{StaticResource SongItemStyle}"
+                        ItemTemplate="{StaticResource TracksPageRowTemplate}" ItemContainerStyle="{StaticResource SongItemStyle}"
                         DoubleTapped="TrackList_DoubleTapped" RightTapped="TrackList_RightTapped"/>
             </Grid>
 
