@@ -32,7 +32,7 @@ public class Genre
         $"{AlbumCount} album{(AlbumCount == 1 ? "" : "s")} · {SongCount} song{(SongCount == 1 ? "" : "s")}";
 }
 
-public class Song
+public class Song : System.ComponentModel.INotifyPropertyChanged
 {
     public string Id { get; set; } = "";
     public string Title { get; set; } = "";
@@ -47,7 +47,23 @@ public class Song
     public string? CoverArtUrl { get; set; }
     public int? Year { get; set; }
     public int PlayCount { get; set; }
-    public bool IsFavorited { get; set; }
+    private bool _isFavorited;
+
+    /// <summary>Notifies, so a heart in a (recycled) list row follows a toggle made anywhere.</summary>
+    public bool IsFavorited
+    {
+        get => _isFavorited;
+        set
+        {
+            if (_isFavorited == value)
+                return;
+            _isFavorited = value;
+            PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(IsFavorited)));
+        }
+    }
+
+    public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
+
     public DateTime? CreatedAt { get; set; }
     public DateTime? PlayedAt { get; set; }
 
@@ -57,7 +73,12 @@ public class Song
 
     public string DurationDisplay => $"{DurationSeconds / 60}:{DurationSeconds % 60:D2}";
 
-    public Song Clone() => (Song)MemberwiseClone();
+    public Song Clone()
+    {
+        var copy = (Song)MemberwiseClone();
+        copy.PropertyChanged = null;   // the copy doesn't notify the original's rows
+        return copy;
+    }
 }
 
 public class LyricLine : System.ComponentModel.INotifyPropertyChanged
