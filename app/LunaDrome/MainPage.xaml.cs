@@ -2486,10 +2486,19 @@ public sealed partial class MainPage : Page
         _loopback.Stop();
     }
 
-    // Every ~16ms: pull the latest bands, smooth them over time, hand them to the Skia
-    // canvas (which does the WPF app's spatial smoothing + curve drawing). Smoothing is
-    // time-based - the WPF constant was 0.88 old / 0.12 new *per 60fps frame* - so the glide
-    // speed stays the same even if the frame rate isn't a steady 60.
+    // Every ~16ms: pull the latest bands, shape them, smooth them over time, hand them to the
+    // Skia canvas (which does the spatial smoothing + curve drawing). Smoothing is time-based
+    // (constants are per 60fps frame), so the speed stays the same at any frame rate.
+    //
+    // "More active, like Feishin": auto-gain puts the loudest band near the top and music sits
+    // within ~30 dB of it, so with the full 60 dB window every band hovered at 50-90% - a high,
+    // flat plateau. The shaping drops the bottom quarter (a 45 dB window) and bends the rest
+    // (power 1.5), so quiet bands fall into valleys and peaks stand out. Fast rise, slower fall
+    // (instead of the old 0.88/0.12 both ways) lets beats punch up without the line jittering.
+    private const float VisualizerFloor = 0.25f;
+    private const float VisualizerContrast = 1.5f;
+    private const double VisualizerRiseKeep = 0.55;
+    private const double VisualizerFallKeep = 0.86;
     private long _visualizerLastTicks;
 
     private void OnVisualizerRenderFrame(object? sender, object e)
@@ -2497,13 +2506,17 @@ public sealed partial class MainPage : Page
         var now = System.Diagnostics.Stopwatch.GetTimestamp();
         var dt = _visualizerLastTicks == 0 ? 1.0 / 60 : (now - _visualizerLastTicks) / (double)System.Diagnostics.Stopwatch.Frequency;
         _visualizerLastTicks = now;
-        var keep = (float)Math.Pow(0.88, Math.Clamp(dt, 0, 0.25) * 60);
+        var frames = Math.Clamp(dt, 0, 0.25) * 60;
+        var riseKeep = (float)Math.Pow(VisualizerRiseKeep, frames);
+        var fallKeep = (float)Math.Pow(VisualizerFallKeep, frames);
 
         _spectrum.CopyLatestBandsTo(_visualizerLatestBands);
         float maxChange = 0;
         for (var i = 0; i < _visualizerSmoothed.Length; i++)
         {
-            _visualizerSmoothed[i] = _visualizerSmoothed[i] * keep + _visualizerLatestBands[i] * (1 - keep);
+            var target = MathF.Pow(Math.Clamp((_visualizerLatestBands[i] - VisualizerFloor) / (1 - VisualizerFloor), 0f, 1f), VisualizerContrast);
+            var keep = target > _visualizerSmoothed[i] ? riseKeep : fallKeep;
+            _visualizerSmoothed[i] = _visualizerSmoothed[i] * keep + target * (1 - keep);
             maxChange = Math.Max(maxChange, Math.Abs(_visualizerSmoothed[i] - _visualizerDrawn[i]));
         }
 
