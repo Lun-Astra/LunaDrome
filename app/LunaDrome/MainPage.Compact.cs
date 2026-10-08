@@ -143,16 +143,16 @@ public sealed partial class MainPage
 
         // Playback bar: now-playing info + transport controls only.
         PlaybackBarBorder.Padding = compact ? new Thickness(10, 8, 10, 8) : new Thickness(24, 12, 24, 12);
-        PlayInfoColumn.Width = compact ? GridLength.Auto : new GridLength(300);
+        // On a phone the info takes what the controls leave (see NowPlayingInfoHost_SizeChanged).
+        PlayInfoColumn.Width = compact ? new GridLength(1, GridUnitType.Star) : new GridLength(300);
+        PlayControlsColumn.Width = compact ? GridLength.Auto : new GridLength(1, GridUnitType.Star);
         PlayExtraColumn.Width = new GridLength(compact ? 0 : 200);
         PlayExtraPanel.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
         NowPlayingArtBox.Width = NowPlayingArtBox.Height = compact ? 44 : 56;
         NowPlayingTextPanel.Margin = compact ? new Thickness(10, 0, 0, 0) : new Thickness(12, 0, 0, 0);
+        UpdateNowPlayingTextWidth(NowPlayingInfoHost.ActualWidth);
         if (!compact)
-        {
-            NowPlayingTextPanel.MaxWidth = 220;
             PreviousButton.Visibility = Visibility.Visible;
-        }
         PlayControlsPanel.Margin = compact ? new Thickness(8, 0, 0, 0) : new Thickness(24, 0, 24, 0);
         // Only previous / play-pause / next (+ queue) fit next to the now-playing info on a phone.
         var extras = compact ? Visibility.Collapsed : Visibility.Visible;
@@ -185,14 +185,24 @@ public sealed partial class MainPage
     private void UpdateCompactWidths(double width)
     {
         ((Controls.TrackColumnLayout)Resources["TrackColumns"]).SetCompact(true, width - 150);
-        // Playback bar: the controls (~180px) and the cover/heart keep their size, the title gets
-        // the rest. Narrow phones (~360px) drop Previous so the title stays readable.
+        // Playback bar: narrow phones (~360px) drop Previous so the title stays readable.
         PreviousButton.Visibility = width < 380 ? Visibility.Collapsed : Visibility.Visible;
-        var controlsWidth = width < 380 ? 145 : 181;
-        NowPlayingTextPanel.MaxWidth = Math.Max(60, width - 20 - 44 - 10 - 36 - 8 - controlsWidth - 4);
 
         // Full-screen player title next to its 88px cover (16px margins, 14px gap).
         FullScreenTitleText.MaxWidth = FullScreenArtistText.MaxWidth = Math.Max(100, width - 32 - 88 - 14);
+    }
+
+    // The title + artist get the width the cover and the heart (30px + 6px margin) leave, so a
+    // long title is trimmed with "…" instead of pushing the heart out of the playback bar.
+    private void NowPlayingInfoHost_SizeChanged(object sender, SizeChangedEventArgs e) =>
+        UpdateNowPlayingTextWidth(e.NewSize.Width);
+
+    private void UpdateNowPlayingTextWidth(double hostWidth)
+    {
+        if (hostWidth <= 0)
+            return;
+        var text = hostWidth - NowPlayingArtBox.Width - NowPlayingTextPanel.Margin.Left - 36;
+        NowPlayingTextPanel.MaxWidth = Math.Max(40, text);
     }
 
     // ----- #29: phone now-playing screen -----
