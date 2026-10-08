@@ -49,6 +49,28 @@ internal sealed class TrackPrefetcher : IDisposable
         DeleteAllExcept(keepSongId);
     }
 
+    /// <summary>Exiting the app: stop downloading and remove the whole cache folder. A file the
+    /// player still has open (Windows) gets a few short retries; whatever is left goes at the next
+    /// launch.</summary>
+    public static void DeleteCacheOnExit()
+    {
+        for (var attempt = 0; attempt < 4; attempt++)
+        {
+            try
+            {
+                if (Directory.Exists(CacheDir))
+                    Directory.Delete(CacheDir, recursive: true);
+                Log("prefetch cache deleted on exit");
+                return;
+            }
+            catch (Exception ex)
+            {
+                Log($"deleting the prefetch cache failed ({ex.Message}), retrying");
+                Thread.Sleep(250);
+            }
+        }
+    }
+
     /// <summary>Song ID currently downloading or downloaded.</summary>
     public string? TargetSongId { get; private set; }
 

@@ -3054,6 +3054,14 @@ public sealed partial class MainPage : Page
     }
 
     // Starts buffering whatever will play next (follows queue edits, shuffle, repeat).
+    /// <summary>Window closing: the prebuffered tracks are deleted (not left until the next launch).</summary>
+    public void ClearCacheOnExit()
+    {
+        _prefetcher.Dispose();
+        try { _player.Source = null; } catch { /* closing anyway */ }   // let go of a cached file
+        TrackPrefetcher.DeleteCacheOnExit();
+    }
+
     private void PrefetchNext()
     {
         if (JamOwnsPlayback || _loadedEntry == null || !_isPlaying || !_prefs.PrefetchNextTrack)
