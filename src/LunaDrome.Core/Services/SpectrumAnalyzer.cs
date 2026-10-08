@@ -2,7 +2,7 @@ namespace LunaDrome.Core.Services;
 
 /// <summary>
 /// Turns a stream of mono float samples into a fixed-size, log-frequency-scaled spectrum.
-/// Ported from the WPF app's AudioVisualizer (same FFT size, band count and dB mapping), but
+/// Ported from the WPF app's AudioVisualizer (band count and dB mapping; a bigger FFT since #32), but
 /// with its own small radix-2 FFT instead of NAudio.Dsp so Core stays free of any
 /// platform-specific audio dependency - the capture side (WASAPI, PulseAudio, ...) lives in the
 /// app and just calls <see cref="AddSamples"/>.
@@ -16,14 +16,30 @@ public sealed class SpectrumAnalyzer
 {
     public const int BandCount = 128;
 
-    private const int FftLength = 1024; // power of two
+    // #32: with a 1024-sample FFT a bin is ~43 Hz wide, narrower than every log band below
+    // ~900 Hz - so the left half of the 128 bands repeated the same few bins and the bass drew
+    // one broad, flat-topped hump. 4096 samples gives ~11 Hz bins (and narrow bands are
+    // interpolated between bins); a new spectrum still comes every 1024 samples (overlapping
+    // windows), so the update rate stays ~43 per second.
+    private const int FftLength = 4096; // power of two
+    private const int HopLength = 1024;
+
+    // #32: music has far more energy in the bass than in the highs, so after auto-gain the left
+    // side towered and the right side barely moved. Tilting the bands +3 dB per octave (around
+    // 1 kHz) evens that out, the way spectrum analyzers usually do.
+    private const float TiltDbPerOctave = 3f;
 
     private static readonly float[] HannWindow = BuildHannWindow();
 
-    private readonly float[] _window = new float[FftLength];
+    private readonly float[] _ring = new float[FftLength];
+    private int _ringPos;
+    private int _ringFilled;
+    private int _sinceLastSpectrum;
     private readonly float[] _re = new float[FftLength];
     private readonly float[] _im = new float[FftLength];
-    private int _windowPos;
+    private readonly float[] _magnitudes = new float[FftLength / 2];
+    private readonly float[] _bands = new float[BandCount];
+    private readonly float[] _bandDb = new float[BandCount];
 
     private readonly object _lock = new();
     private readonly float[] _latestBands = new float[BandCount];
@@ -50,11 +66,14 @@ public sealed class SpectrumAnalyzer
     {
         foreach (var sample in samples)
         {
-            _window[_windowPos++] = sample;
-            if (_windowPos < FftLength)
+            _ring[_ringPos] = sample;
+            _ringPos = (_ringPos + 1) % FftLength;
+            if (_ringFilled < FftLength)
+                _ringFilled++;
+            if (++_sinceLastSpectrum < HopLength || _ringFilled < FftLength)
                 continue;
 
-            _windowPos = 0;
+            _sinceLastSpectrum = 0;
             ComputeSpectrum();
         }
     }
@@ -71,7 +90,7 @@ public sealed class SpectrumAnalyzer
         foreach (var db in bandDb)
             frameMax = Math.Max(frameMax, db);
 
-        var decayPerFrame = PeakDecayDbPerSecond * FftLength / Math.Max(1, SampleRate);
+        var decayPerFrame = PeakDecayDbPerSecond * HopLength / Math.Max(1, SampleRate);
         _peakDb = Math.Max(frameMax, _peakDb - decayPerFrame);
 
         if (_peakDb < SilenceDb)
@@ -83,28 +102,33 @@ public sealed class SpectrumAnalyzer
     public void Reset()
     {
         _peakDb = -60f;
-        _windowPos = 0;
+        Array.Clear(_ring);
+        _ringPos = 0;
+        _ringFilled = 0;
+        _sinceLastSpectrum = 0;
         lock (_lock)
             Array.Clear(_latestBands);
     }
 
     private void ComputeSpectrum()
     {
+        // The ring holds the last FftLength samples; the oldest one sits at _ringPos.
         for (var i = 0; i < FftLength; i++)
         {
-            _re[i] = _window[i] * HannWindow[i];
+            _re[i] = _ring[(_ringPos + i) % FftLength] * HannWindow[i];
             _im[i] = 0;
         }
 
         Fft(_re, _im);
 
         // NAudio's FFT (which the WPF app's dB thresholds were tuned against) scales its output
-        // by 1/N; match that so the same -60..0 dB window produces the same-looking movement.
+        // by 1/N; match that so a tone's level doesn't depend on the FFT size.
         const float scale = 1f / FftLength;
-
-        var bands = new float[BandCount];
-        var bandDb = new float[BandCount];
         var usableBins = FftLength / 2;
+        for (var i = 0; i < usableBins; i++)
+            _magnitudes[i] = MathF.Sqrt(_re[i] * _re[i] + _im[i] * _im[i]) * scale;
+
+        var binHz = SampleRate / (float)FftLength;
         const float minFreq = 40f;
         var maxFreq = Math.Min(16000f, SampleRate / 2f);
         var logMin = MathF.Log10(minFreq);
@@ -116,24 +140,38 @@ public sealed class SpectrumAnalyzer
         {
             var freqStart = MathF.Pow(10, logMin + (logMax - logMin) * band / BandCount);
             var freqEnd = MathF.Pow(10, logMin + (logMax - logMin) * (band + 1) / BandCount);
+            var freqCenter = MathF.Sqrt(freqStart * freqEnd);
 
-            var binStart = Math.Clamp((int)(freqStart / SampleRate * FftLength), 1, usableBins - 1);
-            var binEnd = Math.Clamp((int)(freqEnd / SampleRate * FftLength), binStart, usableBins - 1);
+            float magnitude;
+            var binStart = (int)MathF.Ceiling(freqStart / binHz);
+            var binEnd = (int)MathF.Floor(freqEnd / binHz);
+            if (binEnd < binStart)
+            {
+                // Narrower than a bin: read the spectrum at the band's center, between two bins.
+                var pos = Math.Clamp(freqCenter / binHz, 1f, usableBins - 2);
+                var low = (int)pos;
+                var t = pos - low;
+                magnitude = _magnitudes[low] * (1 - t) + _magnitudes[low + 1] * t;
+            }
+            else
+            {
+                binStart = Math.Clamp(binStart, 1, usableBins - 1);
+                binEnd = Math.Clamp(binEnd, binStart, usableBins - 1);
+                float sum = 0;
+                for (var i = binStart; i <= binEnd; i++)
+                    sum += _magnitudes[i];
+                magnitude = sum / (binEnd - binStart + 1);
+            }
 
-            float sum = 0;
-            for (var i = binStart; i <= binEnd; i++)
-                sum += MathF.Sqrt(_re[i] * _re[i] + _im[i] * _im[i]) * scale;
-
-            var magnitude = sum / (binEnd - binStart + 1);
-            bandDb[band] = 20f * MathF.Log10(magnitude + 1e-6f);
+            _bandDb[band] = 20f * MathF.Log10(magnitude + 1e-6f) + TiltDbPerOctave * MathF.Log2(freqCenter / 1000f);
         }
 
-        var gainDb = AutoGain ? UpdateAutoGain(bandDb) : 0f;
+        var gainDb = AutoGain ? UpdateAutoGain(_bandDb) : 0f;
         for (var band = 0; band < BandCount; band++)
-            bands[band] = Math.Clamp((bandDb[band] + gainDb + 60f) / 60f, 0f, 1f);
+            _bands[band] = Math.Clamp((_bandDb[band] + gainDb + 60f) / 60f, 0f, 1f);
 
         lock (_lock)
-            Array.Copy(bands, _latestBands, BandCount);
+            Array.Copy(_bands, _latestBands, BandCount);
     }
 
     // In-place iterative radix-2 Cooley-Tukey FFT.
