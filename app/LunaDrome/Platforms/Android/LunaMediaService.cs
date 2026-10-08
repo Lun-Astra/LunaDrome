@@ -27,6 +27,9 @@ public class LunaMediaService : MediaBrowserServiceCompat
     private static LunaMediaService? s_running;
     private bool _foreground;
 
+    /// <summary>Music is playing (the service is in the foreground).</summary>
+    public static bool IsPlaying => s_running?._foreground == true;
+
     public LunaMediaService() { }
     protected LunaMediaService(IntPtr handle, JniHandleOwnership transfer) : base(handle, transfer) { }
 
@@ -123,9 +126,13 @@ public class LunaMediaService : MediaBrowserServiceCompat
 
     public override void OnTaskRemoved(Intent? rootIntent)
     {
-        // Swiped out of recents while paused: nothing left to keep running for.
+        // Swiped out of recents while paused: nothing left to keep running for, and the
+        // prebuffered tracks go too. (While playing, the music keeps going.)
         if (!_foreground)
+        {
+            LunaDrome.Services.TrackPrefetcher.DeleteCacheOnExit();
             StopSelf();
+        }
         base.OnTaskRemoved(rootIntent);
     }
 

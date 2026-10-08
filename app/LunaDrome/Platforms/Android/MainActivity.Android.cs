@@ -38,4 +38,13 @@ public class MainActivity : Microsoft.UI.Xaml.ApplicationActivity
         }
         return base.DispatchKeyEvent(e);
     }
+
+    // Closed for real (not just sent to the background): delete the prebuffered tracks, unless
+    // the media service keeps playing (it deletes them when it's swiped away while paused).
+    protected override void OnDestroy()
+    {
+        if (IsFinishing && !LunaDrome.Services.LunaMediaService.IsPlaying)
+            LunaDrome.Services.TrackPrefetcher.DeleteCacheOnExit();
+        base.OnDestroy();
+    }
 }

@@ -58,6 +58,8 @@ public partial class App : Application
                 page?.SaveQueueState();
                 // Playing the jam? Hand it back so it pauses now, not after the server's timeout.
                 page?.ReleaseJamOnExit();
+                // Delete the prebuffered tracks.
+                page?.ClearCacheOnExit();
             };
         }
 
