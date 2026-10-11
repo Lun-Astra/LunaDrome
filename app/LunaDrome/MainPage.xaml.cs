@@ -42,7 +42,8 @@ public sealed partial class MainPage : Page
     private static readonly Random SortRandom = new();
 
     private readonly NavidromeClient _client = new();
-    private readonly MediaPlayer _player = new();
+    // Not readonly: a crossfade swaps in a fresh player for the next song (MainPage.SleepCrossfade.cs).
+    private MediaPlayer _player = new();
     private readonly DispatcherTimer _progressTimer;
 
     private readonly ObservableCollection<QueueEntry> _queue = new();
@@ -62,6 +63,9 @@ public sealed partial class MainPage : Page
     private bool _signedIn;
     // Windows media flyout / Linux MPRIS: OS media widgets + keyboard media keys (#3, #13).
     private IMediaControls? _mediaControls;
+    // The OS one (media flyout / MPRIS / Android notification) and Discord, both behind _mediaControls.
+    private IMediaControls? _osMediaControls;
+    private DiscordMediaControls? _discord;
     private bool _isShuffled;
     private RepeatMode _repeatMode = RepeatMode.Off;
     private readonly Random _random = new();
@@ -158,30 +162,10 @@ public sealed partial class MainPage : Page
         _player.Volume = VolumeSlider.Value;
         // handledEventsToo: the Slider may handle the wheel itself without moving.
         VolumeSlider.AddHandler(PointerWheelChangedEvent, new PointerEventHandler(VolumeSlider_PointerWheelChanged), true);
-        _player.MediaEnded += (_, _) => DispatcherQueue.TryEnqueue(OnMediaEnded);
-
-        // Playback failures used to be silent (e.g. Linux: libvlc missing/unusable -> the play
-        // button just flipped to pause with no sound). Surface them in the now-playing line and
-        // on the terminal, and log state changes for troubleshooting (LUNADROME_LOG=1).
-        _player.MediaFailed += (_, e) =>
-        {
-            Console.Error.WriteLine($"[LunaDrome] playback failed: {e.Error} {e.ErrorMessage} (0x{e.ExtendedErrorCode?.HResult:X8} {e.ExtendedErrorCode?.Message})");
-            DispatcherQueue.TryEnqueue(() =>
-            {
-                SetPlaying(false);
-                // #24: the player sometimes reports a (message-less) failure and just keeps
-                // playing; SyncWithPlayerState clears this again once it's really playing.
-                _showingPlaybackError = true;
-                NowPlayingSubText.Text = string.IsNullOrWhiteSpace(e.ErrorMessage)
-                    ? "Playback failed" : $"Playback failed: {e.ErrorMessage}";
-            });
-        };
-        _player.MediaOpened += (_, _) =>
-        {
-            Log("media opened");
-            DispatcherQueue.TryEnqueue(ApplyPendingSeek);
-        };
-        _player.PlaybackSession.PlaybackStateChanged += (s, _) => Log($"playback state: {s.PlaybackState}");
+        // Player events (MediaEnded, failures, seek-on-open) live in HookPlayer: a crossfade
+        // swaps in a second player, which gets the same handlers.
+        HookPlayer(_player);
+        _fadeTimer.Tick += FadeTimer_Tick;
 
         // Slider marks its own pointer events handled, so listen with handledEventsToo to know
         // when the user is dragging (the progress timer mustn't fight the drag) and when to seek.
@@ -299,9 +283,13 @@ public sealed partial class MainPage : Page
             AccentColorPicker.Visibility = Visibility.Collapsed;
         PrefetchCheck.IsChecked = _prefs.PrefetchNextTrack;
         VolumeStepBox.Value = Math.Clamp(_prefs.VolumeScrollStep, 1, 25);
+        CrossfadeBox.Value = Math.Clamp(_prefs.CrossfadeSeconds, 0, 12);
+        CrossfadeSetting.Visibility = OperatingSystem.IsAndroid() ? Visibility.Collapsed : Visibility.Visible;
         ResumeQueueCheck.IsChecked = _prefs.ResumeQueueOnStartup;
         OnlineLyricsCheck.IsChecked = _prefs.OnlineLyrics;
         AutoUpdateCheck.IsChecked = _prefs.CheckForUpdates;
+        DiscordPresenceCheck.IsChecked = _prefs.DiscordPresence;
+        DiscordPresenceSetting.Visibility = OperatingSystem.IsAndroid() ? Visibility.Collapsed : Visibility.Visible;
         RefreshSpotiDromeSettings();
         RefreshJamiDromeSettings();
         UpdateCacheSizeText();
@@ -521,7 +509,10 @@ public sealed partial class MainPage : Page
         _prefs.ResumeQueueOnStartup = ResumeQueueCheck.IsChecked == true;
         _prefs.OnlineLyrics = OnlineLyricsCheck.IsChecked == true;
         _prefs.CheckForUpdates = AutoUpdateCheck.IsChecked == true;
+        _prefs.DiscordPresence = DiscordPresenceCheck.IsChecked == true;
         PreferencesService.Save(_prefs);
+        if (_discord != null)
+            _discord.Enabled = _prefs.DiscordPresence;
 
         if (!_prefs.PrefetchNextTrack)
         {
@@ -2570,8 +2561,11 @@ public sealed partial class MainPage : Page
         PlayEntry(start);
     }
 
-    private void PlayEntry(QueueEntry entry, TimeSpan startAt = default)
+    private void PlayEntry(QueueEntry entry, TimeSpan startAt = default, bool crossfading = false)
     {
+        // Anything else that starts a song ends a running crossfade first.
+        if (!crossfading)
+            FinishCrossfade();
         // Playing something from the library while this PC plays the jam = leave the jam.
         LeaveJamPlayback(release: true);
         if (entry != _loadedEntry)
@@ -2596,6 +2590,7 @@ public sealed partial class MainPage : Page
         {
             // e.g. the native media engine failing to load on Linux
             Console.Error.WriteLine($"[LunaDrome] playback start failed: {ex}");
+            FinishCrossfade();
             NowPlayingSubText.Text = $"Playback failed: {ex.Message}";
             SetPlaying(false);
             return;
@@ -2810,6 +2805,9 @@ public sealed partial class MainPage : Page
         // Not awaited: waiting on the server here used to hold up starting the next track (#11).
         _ = ScrobbleQuietlyAsync(_loadedEntry.Song.Id);
 
+        if (HandleSleepAtSongEnd())
+            return;
+
         if (_repeatMode == RepeatMode.One && _current != null)
         {
             PlayEntry(_current);
@@ -2832,18 +2830,23 @@ public sealed partial class MainPage : Page
     // and again after login.
     private void EnsureMediaControls()
     {
-        if (_mediaControls != null)
+        if (_osMediaControls != null)
             return;
 
-        _mediaControls = MediaControls.Create();
-        Log($"media controls: {_mediaControls?.GetType().Name ?? "not available yet"}");
-        if (_mediaControls == null)
-            return;
-
-        _mediaControls.CommandReceived += command => DispatcherQueue.TryEnqueue(() => HandleMediaCommand(command));
-#if ANDROID
-        ConnectAndroidAuto();
+#if !ANDROID
+        // Discord status (desktop), fed by the same updates; on/off from Settings.
+        _discord ??= new DiscordMediaControls(Log) { Enabled = _prefs.DiscordPresence };
 #endif
+        _osMediaControls = MediaControls.Create();
+        Log($"media controls: {_osMediaControls?.GetType().Name ?? "not available yet"}");
+        _mediaControls = new MediaControlsGroup(_osMediaControls, _discord);
+        if (_osMediaControls != null)
+        {
+            _osMediaControls.CommandReceived += command => DispatcherQueue.TryEnqueue(() => HandleMediaCommand(command));
+#if ANDROID
+            ConnectAndroidAuto();
+#endif
+        }
         if (_current != null)
         {
             SetCurrent(_current);
@@ -2908,6 +2911,7 @@ public sealed partial class MainPage : Page
 
     private void Pause()
     {
+        FinishCrossfade();
         if (JamOwnsPlayback)
         {
             JamPause();
@@ -2921,6 +2925,7 @@ public sealed partial class MainPage : Page
 
     private void Stop()
     {
+        FinishCrossfade();
         if (JamOwnsPlayback)
         {
             JamPause();
@@ -2983,9 +2988,17 @@ public sealed partial class MainPage : Page
         PreferencesService.Save(_prefs);
     }
 
+    private void CrossfadeBox_ValueChanged(NumberBox sender, NumberBoxValueChangedEventArgs args)
+    {
+        if (!_initialized || double.IsNaN(args.NewValue))
+            return;
+        _prefs.CrossfadeSeconds = (int)Math.Clamp(Math.Round(args.NewValue), 0, 12);
+        PreferencesService.Save(_prefs);
+    }
+
     private void VolumeSlider_ValueChanged(object sender, RangeBaseValueChangedEventArgs e)
     {
-        _player.Volume = e.NewValue;
+        ApplyPlaybackVolume();
         // Not while the XAML default is being applied at startup (that would overwrite the saved volume).
         if (_initialized)
             _prefs.Volume = e.NewValue;
@@ -3030,6 +3043,8 @@ public sealed partial class MainPage : Page
 
         SyncWithPlayerState(session, position, duration);
         CheckForStall(position, duration);
+        UpdateSleepTimer(position, duration);
+        MaybeStartCrossfade(position, duration);
         SyncCompactPlayer();   // #29: progress + state of the phone player (no-op when hidden)
         PrefetchNext();
 
@@ -3071,6 +3086,7 @@ public sealed partial class MainPage : Page
     /// <summary>Window closing: the prebuffered tracks are deleted (not left until the next launch).</summary>
     public void ClearCacheOnExit()
     {
+        FinishCrossfade();
         _prefetcher.Dispose();
         try { _player.Source = null; } catch { /* closing anyway */ }   // let go of a cached file
         TrackPrefetcher.DeleteCacheOnExit();
@@ -3078,7 +3094,8 @@ public sealed partial class MainPage : Page
 
     private void PrefetchNext()
     {
-        if (JamOwnsPlayback || _loadedEntry == null || !_isPlaying || !_prefs.PrefetchNextTrack)
+        // Not during a crossfade: that would delete the fading-out song's file under its player.
+        if (JamOwnsPlayback || _loadedEntry == null || !_isPlaying || !_prefs.PrefetchNextTrack || _fadingOut != null)
             return;
 
         if (GetNextEntry() is { } next && next.Song.Id != _loadedEntry.Song.Id)

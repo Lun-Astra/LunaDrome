@@ -15,6 +15,8 @@ public class Preferences
     public bool ResumeQueueOnStartup { get; set; } = true;
     public bool OnlineLyrics { get; set; } = true;
     public bool CheckForUpdates { get; set; } = true;
+    /// <summary>Show the playing song on the user's Discord profile (desktop). Off by default.</summary>
+    public bool DiscordPresence { get; set; }
 
     public double Volume { get; set; } = 0.8;
 
@@ -23,6 +25,9 @@ public class Preferences
 
     /// <summary>Volume change per mouse-wheel notch over the volume slider, in percent (#27).</summary>
     public int VolumeScrollStep { get; set; } = 5;
+
+    /// <summary>Crossfade between songs in seconds (desktop); 0 = off.</summary>
+    public int CrossfadeSeconds { get; set; }
 
     /// <summary>Synced-lyrics offset per song id, in seconds (positive = lyrics later), set with
     /// the Earlier / Later buttons in the Lyrics tab.</summary>

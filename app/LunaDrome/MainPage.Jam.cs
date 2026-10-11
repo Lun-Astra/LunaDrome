@@ -140,6 +140,7 @@ public sealed partial class MainPage
         if (_loadedEntry != null && _loadedEntry == _current && _endedEntry != _loadedEntry)
             _pendingSeek = _player.PlaybackSession.Position;
         await TakeQueueIntoJamAsync();
+        FinishCrossfade();
         _player.Pause();
         _loadedEntry = null;
         _jamOwnsPlayer = true;

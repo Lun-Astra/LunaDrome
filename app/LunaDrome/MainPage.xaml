@@ -954,6 +954,19 @@
                       </StackPanel>
                       <TextBlock Style="{StaticResource SettingsHintStyle}" Text="How much one notch of the mouse wheel changes the volume while the pointer is over the volume slider."/>
                     </StackPanel>
+                    <StackPanel x:Name="CrossfadeSetting">
+                      <StackPanel Orientation="Horizontal" Spacing="10">
+                        <TextBlock Text="Crossfade between songs" VerticalAlignment="Center"/>
+                        <NumberBox x:Name="CrossfadeBox" Minimum="0" Maximum="12" SmallChange="1" Width="120"
+                                   SpinButtonPlacementMode="Inline" ValueChanged="CrossfadeBox_ValueChanged"/>
+                        <TextBlock Text="seconds" VerticalAlignment="Center"/>
+                      </StackPanel>
+                      <TextBlock Style="{StaticResource SettingsHintStyle}" Text="The next song starts while the current one fades out. 0 = off. Not when you skip, in a jam, with Repeat one, or for short songs."/>
+                    </StackPanel>
+                    <StackPanel x:Name="DiscordPresenceSetting">
+                      <CheckBox x:Name="DiscordPresenceCheck" Content="Show what I'm listening to on Discord" Click="PreferenceCheck_Click"/>
+                      <TextBlock Style="{StaticResource SettingsHintStyle}" Text="While a song plays, your Discord profile shows &quot;Listening to LunaDrome&quot; with the song, artist and album. Needs the Discord app running on this computer."/>
+                    </StackPanel>
                     <StackPanel>
                       <CheckBox x:Name="OnlineLyricsCheck" Content="Find lyrics online (LRCLIB)" Click="PreferenceCheck_Click"/>
                       <TextBlock Style="{StaticResource SettingsHintStyle}" Text="When your server has no synced lyrics, looks the song up on lrclib.net (sends artist, title and album)."/>
@@ -1811,6 +1824,11 @@
               </Button>
               <TextBlock Text="NOW PLAYING" FontSize="11" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center"
                          Foreground="{StaticResource TextSecondaryBrush}"/>
+              <Button x:Name="CompactSleepTimerButton" Style="{StaticResource IconButtonStyle}" Width="40" Height="40" HorizontalAlignment="Right"
+                      Margin="0,0,44,0" Click="SleepTimerButton_Click" AutomationProperties.Name="Sleep timer">
+                <Path x:Name="CompactSleepTimerIcon" Width="18" Height="18" Stretch="Uniform" StrokeThickness="1.7" StrokeLineJoin="Round"
+                      Stroke="{StaticResource TextSecondaryBrush}" Data="M12,2 A9,9 0 1 0 21,13 A7,7 0 1 1 12,2 Z"/>
+              </Button>
               <Button Style="{StaticResource IconButtonStyle}" Width="40" Height="40" HorizontalAlignment="Right"
                       Click="CompactShowQueue_Click" AutomationProperties.Name="Queue" ToolTipService.ToolTip="Queue">
                 <Path Width="18" Height="14" Stretch="Uniform" Stroke="{StaticResource TextPrimaryBrush}" StrokeThickness="1.8"
@@ -2102,6 +2120,11 @@
 
           <!-- Volume -->
           <StackPanel Grid.Column="2" x:Name="PlayExtraPanel" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Right">
+            <Button x:Name="SleepTimerButton" Style="{StaticResource IconButtonStyle}" Margin="0,0,12,0"
+                    Click="SleepTimerButton_Click" AutomationProperties.Name="Sleep timer" ToolTipService.ToolTip="Sleep timer">
+              <Path x:Name="SleepTimerIcon" Width="15" Height="15" Stretch="Uniform" StrokeThickness="1.5" StrokeLineJoin="Round"
+                    Stroke="{StaticResource TextSecondaryBrush}" Data="M12,2 A9,9 0 1 0 21,13 A7,7 0 1 1 12,2 Z"/>
+            </Button>
             <TextBlock Text="VOL" FontSize="10" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,10,0"
                        Foreground="{StaticResource TextSecondaryBrush}"/>
             <Slider x:Name="VolumeSlider" Width="110" Minimum="0" Maximum="1" StepFrequency="0.01" Value="0.8"
