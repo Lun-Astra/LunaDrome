@@ -62,6 +62,9 @@ public sealed partial class MainPage : Page
     private bool _signedIn;
     // Windows media flyout / Linux MPRIS: OS media widgets + keyboard media keys (#3, #13).
     private IMediaControls? _mediaControls;
+    // The OS one (media flyout / MPRIS / Android notification) and Discord, both behind _mediaControls.
+    private IMediaControls? _osMediaControls;
+    private DiscordMediaControls? _discord;
     private bool _isShuffled;
     private RepeatMode _repeatMode = RepeatMode.Off;
     private readonly Random _random = new();
@@ -302,6 +305,8 @@ public sealed partial class MainPage : Page
         ResumeQueueCheck.IsChecked = _prefs.ResumeQueueOnStartup;
         OnlineLyricsCheck.IsChecked = _prefs.OnlineLyrics;
         AutoUpdateCheck.IsChecked = _prefs.CheckForUpdates;
+        DiscordPresenceCheck.IsChecked = _prefs.DiscordPresence;
+        DiscordPresenceSetting.Visibility = OperatingSystem.IsAndroid() ? Visibility.Collapsed : Visibility.Visible;
         RefreshSpotiDromeSettings();
         RefreshJamiDromeSettings();
         UpdateCacheSizeText();
@@ -521,7 +526,10 @@ public sealed partial class MainPage : Page
         _prefs.ResumeQueueOnStartup = ResumeQueueCheck.IsChecked == true;
         _prefs.OnlineLyrics = OnlineLyricsCheck.IsChecked == true;
         _prefs.CheckForUpdates = AutoUpdateCheck.IsChecked == true;
+        _prefs.DiscordPresence = DiscordPresenceCheck.IsChecked == true;
         PreferencesService.Save(_prefs);
+        if (_discord != null)
+            _discord.Enabled = _prefs.DiscordPresence;
 
         if (!_prefs.PrefetchNextTrack)
         {
@@ -2832,18 +2840,23 @@ public sealed partial class MainPage : Page
     // and again after login.
     private void EnsureMediaControls()
     {
-        if (_mediaControls != null)
+        if (_osMediaControls != null)
             return;
 
-        _mediaControls = MediaControls.Create();
-        Log($"media controls: {_mediaControls?.GetType().Name ?? "not available yet"}");
-        if (_mediaControls == null)
-            return;
-
-        _mediaControls.CommandReceived += command => DispatcherQueue.TryEnqueue(() => HandleMediaCommand(command));
-#if ANDROID
-        ConnectAndroidAuto();
+#if !ANDROID
+        // Discord status (desktop), fed by the same updates; on/off from Settings.
+        _discord ??= new DiscordMediaControls(Log) { Enabled = _prefs.DiscordPresence };
 #endif
+        _osMediaControls = MediaControls.Create();
+        Log($"media controls: {_osMediaControls?.GetType().Name ?? "not available yet"}");
+        _mediaControls = new MediaControlsGroup(_osMediaControls, _discord);
+        if (_osMediaControls != null)
+        {
+            _osMediaControls.CommandReceived += command => DispatcherQueue.TryEnqueue(() => HandleMediaCommand(command));
+#if ANDROID
+            ConnectAndroidAuto();
+#endif
+        }
         if (_current != null)
         {
             SetCurrent(_current);

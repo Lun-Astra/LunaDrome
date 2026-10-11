@@ -15,6 +15,8 @@ public class Preferences
     public bool ResumeQueueOnStartup { get; set; } = true;
     public bool OnlineLyrics { get; set; } = true;
     public bool CheckForUpdates { get; set; } = true;
+    /// <summary>Show the playing song on the user's Discord profile (desktop). Off by default.</summary>
+    public bool DiscordPresence { get; set; }
 
     public double Volume { get; set; } = 0.8;
 
