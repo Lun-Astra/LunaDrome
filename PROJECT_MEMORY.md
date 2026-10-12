@@ -630,3 +630,8 @@ Luna is hopping off for the night. Current state of the app, for picking this ba
 ### v3.10.2: no more silence after a crossfade — 2026-10-12
 - v3.10.1 bug (found in Luna's playback.log): after a crossfade, songs played silently while the time ran on, until a restart. VLC's DirectSound output saves "directx-volume" on every volume change, shared by the whole LibVLC instance, and starts each new audio output at that value (the faded-out ~0). Uno's 16 ms tick then copies VLC's volume into MediaPlayer.Volume. `EnforcePlaybackVolume` (every progress tick and on MediaOpened) sets it back to the slider value.
 - A MediaEnded or failure from the outgoing player ends the crossfade right away. The state log marks "(other player)".
+
+### v3.11.0: Spotify-like phone mini player, round play buttons — 2026-10-12
+- #29 follow-up: on phones (compact mode) the mini player is one slim row (cover, title/artist, heart, play/pause) with a 2px progress line (`MiniProgressTrack`/`MiniProgressFill`) along the bottom. Previous/next, queue, stop, shuffle, repeat and the progress row (`BarProgressRow`) are hidden there; skipping stays on the swipe, a tap opens the full player.
+- The phone player's cover fills the width (`SizeCompactArt`: min(width-40, height minus 300, or 400 with the lyrics card), clamped 140-480).
+- `PrimaryButtonStyle` now honours CornerRadius (TemplateBinding, default 16), so the play buttons (44/22, 68/34) are real circles.
