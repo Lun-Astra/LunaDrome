@@ -160,8 +160,6 @@ public sealed partial class MainPage
         PreviousButton.Visibility = NextButton.Visibility = QueueToggleButton.Visibility = extras;
         BarProgressRow.Visibility = extras;
         MiniProgressTrack.Visibility = compact ? Visibility.Visible : Visibility.Collapsed;
-        PlayPauseButton.Width = PlayPauseButton.Height = compact ? 40 : 44;
-        PlayPauseButton.CornerRadius = new CornerRadius(compact ? 20 : 22);
         PlayPauseButton.Margin = compact ? new Thickness(4, 0, 2, 0) : new Thickness(8, 0, 8, 0);
 
         // "Download via SpotiDrome": the desktop rows (64px thumbnail, badge text, length column)
