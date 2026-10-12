@@ -24,6 +24,23 @@ public sealed partial class MainPage
             _player.Volume = PlaybackVolume;
     }
 
+    /// <summary>Every progress tick (and when media opens): puts the volume back if VLC changed it.</summary>
+    /// <remarks>VLC's DirectSound output remembers the last volume set on ANY player (its
+    /// "directx-volume" setting) and starts each new audio output at that volume. After a
+    /// crossfade that was the outgoing song's ~0, and Uno copies VLC's volume back into
+    /// MediaPlayer.Volume - so the next songs played silently while the time ran on.</remarks>
+    private void EnforcePlaybackVolume()
+    {
+        if (_fadingOut != null)
+            return;   // the fade timer sets both volumes
+        var wanted = PlaybackVolume;
+        if (Math.Abs(_player.Volume - wanted) > 0.005)
+        {
+            Log($"volume was {_player.Volume:0.00} instead of {wanted:0.00} - setting it again");
+            _player.Volume = wanted;
+        }
+    }
+
     // ================= Sleep timer =================
 
     private const double SleepFadeSeconds = 10;
@@ -212,6 +229,8 @@ public sealed partial class MainPage
         {
             if (ReferenceEquals(s, _player))
                 OnMediaEnded();
+            else if (ReferenceEquals(s, _fadingOut))
+                FinishCrossfade();   // the old song ran out before the fade did
         });
 
         // Playback failures used to be silent (e.g. Linux: libvlc missing/unusable -> the play
@@ -226,6 +245,8 @@ public sealed partial class MainPage
             {
                 if (ReferenceEquals(s, _player))
                     OnPlaybackFailed(e.ErrorMessage);
+                else if (ReferenceEquals(s, _fadingOut))
+                    FinishCrossfade();
             });
         };
         player.MediaOpened += (s, _) =>
@@ -234,10 +255,14 @@ public sealed partial class MainPage
             DispatcherQueue.TryEnqueue(() =>
             {
                 if (ReferenceEquals(s, _player))
+                {
                     ApplyPendingSeek();
+                    EnforcePlaybackVolume();
+                }
             });
         };
-        player.PlaybackSession.PlaybackStateChanged += (s, _) => Log($"playback state: {s.PlaybackState}");
+        player.PlaybackSession.PlaybackStateChanged += (s, _) =>
+            Log($"playback state: {s.PlaybackState}{(ReferenceEquals(s, _player.PlaybackSession) ? "" : " (other player)")}");
     }
 
     /// <summary>Every progress tick: start crossfading into the next song when the current one

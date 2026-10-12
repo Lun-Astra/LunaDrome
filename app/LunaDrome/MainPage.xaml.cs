@@ -3072,6 +3072,7 @@ public sealed partial class MainPage : Page
 
         if (session.PlaybackState == MediaPlaybackState.Playing && _loadedEntry == _current)
             _lastPlayingPosition = position;
+        EnforcePlaybackVolume();
         SyncWithPlayerState(session, position, duration);
         CheckForStall(position, duration);
         UpdateSleepTimer(position, duration);
