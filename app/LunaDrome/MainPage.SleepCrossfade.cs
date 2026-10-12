@@ -1,4 +1,5 @@
 using LunaDrome.Core.Services;
+using LunaDrome.Services;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Media;
 using Windows.Media.Playback;
@@ -177,12 +178,34 @@ public sealed partial class MainPage
     // ================= Crossfade =================
 
     private MediaPlayer? _fadingOut;
+    // The other player of the pair, idle between crossfades. Players are reused, never disposed:
+    // disposing one (while Uno's 16 ms timer and queued callbacks still read its VLC player)
+    // crashed the app at the end of a crossfade.
+    private MediaPlayer? _sparePlayer;
     private DateTime _fadeStart;
     private double _fadeSeconds;
     private readonly DispatcherTimer _fadeTimer = new() { Interval = TimeSpan.FromMilliseconds(50) };
 
+    // Windows: players whose VLC output is DirectSound (see VlcAudioOutput). Two players on VLC's
+    // default output share one volume, so a crossfade only runs once both are switched.
+    private readonly HashSet<MediaPlayer> _ownVolumePlayers = new();
+
+    /// <summary>Before a player first plays: on Windows give it a volume of its own.</summary>
+    private void PrepareAudioOutput(MediaPlayer player)
+    {
+        if (!OperatingSystem.IsWindows() || _ownVolumePlayers.Contains(player))
+            return;
+        if (VlcAudioOutput.TrySet(player, "directsound"))
+            _ownVolumePlayers.Add(player);
+        else
+            Log("couldn't switch the player to DirectSound - crossfade stays off");
+    }
+
+    private bool PlayersHaveOwnVolume(MediaPlayer a, MediaPlayer b) =>
+        !OperatingSystem.IsWindows() || (_ownVolumePlayers.Contains(a) && _ownVolumePlayers.Contains(b));
+
     /// <summary>Hooks the events of a player; they're ignored once it's no longer the current one
-    /// (the outgoing player of a crossfade keeps reporting until it's thrown away).</summary>
+    /// (the outgoing player of a crossfade keeps reporting until it is stopped).</summary>
     private void HookPlayer(MediaPlayer player)
     {
         player.MediaEnded += (s, _) => DispatcherQueue.TryEnqueue(() =>
@@ -193,20 +216,16 @@ public sealed partial class MainPage
 
         // Playback failures used to be silent (e.g. Linux: libvlc missing/unusable -> the play
         // button just flipped to pause with no sound). Surface them in the now-playing line and
-        // on the terminal, and log state changes for troubleshooting (LUNADROME_LOG=1).
+        // on the terminal, and log state changes for troubleshooting (playback.log; LUNADROME_LOG=1 for the terminal).
         player.MediaFailed += (s, e) =>
         {
-            Console.Error.WriteLine($"[LunaDrome] playback failed: {e.Error} {e.ErrorMessage} (0x{e.ExtendedErrorCode?.HResult:X8} {e.ExtendedErrorCode?.Message})");
+            var details = $"{e.Error} {e.ErrorMessage} (0x{e.ExtendedErrorCode?.HResult:X8} {e.ExtendedErrorCode?.Message})";
+            Console.Error.WriteLine($"[LunaDrome] playback failed: {details}");
+            Log($"player reported a failure: {details}{(ReferenceEquals(s, _player) ? "" : " (outgoing crossfade player)")}");
             DispatcherQueue.TryEnqueue(() =>
             {
-                if (!ReferenceEquals(s, _player))
-                    return;
-                SetPlaying(false);
-                // #24: the player sometimes reports a (message-less) failure and just keeps
-                // playing; SyncWithPlayerState clears this again once it's really playing.
-                _showingPlaybackError = true;
-                NowPlayingSubText.Text = string.IsNullOrWhiteSpace(e.ErrorMessage)
-                    ? "Playback failed" : $"Playback failed: {e.ErrorMessage}";
+                if (ReferenceEquals(s, _player))
+                    OnPlaybackFailed(e.ErrorMessage);
             });
         };
         player.MediaOpened += (s, _) =>
@@ -241,13 +260,23 @@ public sealed partial class MainPage
         if (GetNextEntry() is not { } next)
             return;
 
+        if (_sparePlayer == null)
+        {
+            _sparePlayer = new MediaPlayer { Volume = 0 };
+            HookPlayer(_sparePlayer);
+            PrepareAudioOutput(_sparePlayer);
+        }
+        if (!PlayersHaveOwnVolume(_player, _sparePlayer))
+            return;
+
         Log($"crossfade ({seconds}s) into '{next.Song.Title}'");
         _endedEntry = _loadedEntry;   // the old song counts as played
         _ = ScrobbleQuietlyAsync(_loadedEntry.Song.Id);
 
         _fadingOut = _player;
-        _player = new MediaPlayer { Volume = 0 };
-        HookPlayer(_player);
+        _player = _sparePlayer;
+        _sparePlayer = null;
+        _player.Volume = 0;
         _fadeStart = DateTime.UtcNow;
         _fadeSeconds = seconds;
         PlayEntry(next, crossfading: true);
@@ -284,13 +313,13 @@ public sealed partial class MainPage
         try
         {
             old.Pause();
-            old.Source = null;
-            (old as IDisposable)?.Dispose();
+            old.Source = null;   // lets go of the stream / prefetched file
         }
         catch (Exception ex)
         {
-            Log($"crossfade: disposing the old player failed: {ex.Message}");
+            Log($"crossfade: stopping the old player failed: {ex.Message}");
         }
+        _sparePlayer = old;   // the next crossfade fades in on this one
         ApplyPlaybackVolume();
     }
 }

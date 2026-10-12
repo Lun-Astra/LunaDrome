@@ -42,7 +42,7 @@ public sealed partial class MainPage : Page
     private static readonly Random SortRandom = new();
 
     private readonly NavidromeClient _client = new();
-    // Not readonly: a crossfade swaps in a fresh player for the next song (MainPage.SleepCrossfade.cs).
+    // Not readonly: a crossfade swaps in the second player for the next song (MainPage.SleepCrossfade.cs).
     private MediaPlayer _player = new();
     private readonly DispatcherTimer _progressTimer;
 
@@ -165,6 +165,7 @@ public sealed partial class MainPage : Page
         // Player events (MediaEnded, failures, seek-on-open) live in HookPlayer: a crossfade
         // swaps in a second player, which gets the same handlers.
         HookPlayer(_player);
+        PrepareAudioOutput(_player);
         _fadeTimer.Tick += FadeTimer_Tick;
 
         // Slider marks its own pointer events handled, so listen with handledEventsToo to know
@@ -2582,6 +2583,8 @@ public sealed partial class MainPage : Page
             _loadedEntry = entry;
             _endedEntry = null;
             _pendingSeek = startAt;
+            _lastPlayingPosition = startAt;
+            _playbackGeneration++;
             ResetStallWatch();
             _player.Source = MediaSource.CreateFromUri(file != null ? new Uri(file) : new Uri(_client.GetStreamUrl(song.Id)));
             _player.Play();
@@ -2590,6 +2593,7 @@ public sealed partial class MainPage : Page
         {
             // e.g. the native media engine failing to load on Linux
             Console.Error.WriteLine($"[LunaDrome] playback start failed: {ex}");
+            Log($"playback start failed: {ex.Message}");
             FinishCrossfade();
             NowPlayingSubText.Text = $"Playback failed: {ex.Message}";
             SetPlaying(false);
@@ -2669,10 +2673,32 @@ public sealed partial class MainPage : Page
 
     private static readonly bool DiagnosticsEnabled = Environment.GetEnvironmentVariable("LUNADROME_LOG") == "1";
 
+    // Playback events also go to playback.log next to preferences.json (Windows has no console to
+    // read them from); when it passes 1 MB it's moved to playback.old.log.
+    private static readonly string PlaybackLogPath = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "LunaDrome-Uno", "playback.log");
+    private static readonly object PlaybackLogLock = new();
+
     private static void Log(string message)
     {
+        var line = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} {message}";
         if (DiagnosticsEnabled)
-            Console.Error.WriteLine($"[LunaDrome] {DateTime.Now:HH:mm:ss.fff} {message}");
+            Console.Error.WriteLine($"[LunaDrome] {line}");
+        lock (PlaybackLogLock)
+        {
+            try
+            {
+                var file = new FileInfo(PlaybackLogPath);
+                if (file.Exists && file.Length > 1024 * 1024)
+                    File.Move(PlaybackLogPath, Path.ChangeExtension(PlaybackLogPath, ".old.log"), overwrite: true);
+                Directory.CreateDirectory(Path.GetDirectoryName(PlaybackLogPath)!);
+                File.AppendAllText(PlaybackLogPath, line + Environment.NewLine);
+            }
+            catch
+            {
+                // logging must never break playback
+            }
+        }
     }
 
     private void SetPlaying(bool playing)
@@ -2904,6 +2930,7 @@ public sealed partial class MainPage : Page
             return;
         }
 
+        _playbackGeneration++;
         _player.Play();
         ResetStallWatch();
         SetPlaying(true);
@@ -2911,6 +2938,7 @@ public sealed partial class MainPage : Page
 
     private void Pause()
     {
+        _playbackGeneration++;
         FinishCrossfade();
         if (JamOwnsPlayback)
         {
@@ -2925,6 +2953,7 @@ public sealed partial class MainPage : Page
 
     private void Stop()
     {
+        _playbackGeneration++;
         FinishCrossfade();
         if (JamOwnsPlayback)
         {
@@ -3041,6 +3070,8 @@ public sealed partial class MainPage : Page
         var position = session.Position;
         var duration = session.NaturalDuration;
 
+        if (session.PlaybackState == MediaPlaybackState.Playing && _loadedEntry == _current)
+            _lastPlayingPosition = position;
         SyncWithPlayerState(session, position, duration);
         CheckForStall(position, duration);
         UpdateSleepTimer(position, duration);
@@ -3152,6 +3183,51 @@ public sealed partial class MainPage : Page
             Log($"player paused by itself at {position} - syncing the icon");
             SetPlaying(false);
         }
+    }
+
+    // ----- Playback failures (#24) -----
+    // VLC reports some failures (usually without a message) while it just keeps playing, and a
+    // real one (the stream broke off) used to leave LunaDrome stuck on "Playback failed". So look
+    // again a moment later: still playing -> ignore it; otherwise pick the song up where it was
+    // (twice, like the stall watchdog), and only then show the error.
+    private TimeSpan _lastPlayingPosition;
+    // Bumped by Play/Pause/Stop/skip: a failure check that's overtaken by one of those drops out.
+    private int _playbackGeneration;
+
+    private async void OnPlaybackFailed(string? message)
+    {
+        var entry = _loadedEntry;
+        var generation = _playbackGeneration;
+        var position = _lastPlayingPosition;
+        Log($"handling the failure (last position {position})");
+        if (!JamOwnsPlayback && entry != null && entry == _current)
+        {
+            await Task.Delay(1000);
+            if (generation != _playbackGeneration || _loadedEntry != entry || _endedEntry == entry || JamOwnsPlayback)
+                return;   // moved on in the meantime
+            if (_player.PlaybackSession.PlaybackState == MediaPlaybackState.Playing)
+            {
+                Log("still playing after the reported failure - ignoring it");
+                return;
+            }
+            var duration = _player.PlaybackSession.NaturalDuration;
+            if (duration > TimeSpan.Zero && position >= duration - TimeSpan.FromSeconds(3))
+            {
+                Log("failed at the very end - treating the song as finished");
+                OnMediaEnded();
+                return;
+            }
+            if (_stallRecoveries < 2)
+            {
+                _stallRecoveries++;
+                Log($"reloading after the failure (attempt {_stallRecoveries})");
+                PlayEntry(entry, position);
+                return;
+            }
+        }
+        SetPlaying(false);
+        _showingPlaybackError = true;
+        NowPlayingSubText.Text = string.IsNullOrWhiteSpace(message) ? "Playback failed" : $"Playback failed: {message}";
     }
 
     // ----- Stall watchdog (#11) -----
