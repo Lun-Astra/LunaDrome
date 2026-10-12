@@ -32,7 +32,7 @@ jobs:
           [[ "$GITHUB_REF_TYPE" == "tag" ]] || v="0.0.0-dev"
           echo "version=$v" >> "$GITHUB_OUTPUT"
       - name: Publish (self-contained win-x64)
-        run: dotnet publish ${{ env.PROJECT }} -f net10.0-desktop -c Release -r win-x64 --self-contained true -o publish/win-x64
+        run: dotnet publish ${{ env.PROJECT }} -f net10.0-desktop -c Release -r win-x64 --self-contained true -p:PublishReadyToRun=true -o publish/win-x64
       - name: Build installer
         shell: pwsh
         run: |
@@ -60,7 +60,7 @@ jobs:
           [[ "$GITHUB_REF_TYPE" == "tag" ]] || v="0.0.0-dev"
           echo "version=$v" >> "$GITHUB_OUTPUT"
       - name: Publish (self-contained linux-x64)
-        run: dotnet publish ${{ env.PROJECT }} -f net10.0-desktop -c Release -r linux-x64 --self-contained true -o publish/linux-x64
+        run: dotnet publish ${{ env.PROJECT }} -f net10.0-desktop -c Release -r linux-x64 --self-contained true -p:PublishReadyToRun=true -o publish/linux-x64
       - name: Build .deb and .tar.gz
         run: bash installer/linux/build-packages.sh publish/linux-x64 "${{ steps.v.outputs.version }}" dist
       - uses: actions/upload-artifact@v4
