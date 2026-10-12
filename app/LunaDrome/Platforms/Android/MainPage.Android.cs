@@ -1,16 +1,13 @@
+using LunaDrome.Controls;
 using LunaDrome.Core.Models;
 using LunaDrome.Services;
 
 namespace LunaDrome;
 
-// Android Auto (#26): the browse tree the car shows and what its play/search/seek requests do.
-// Media ids: "" = root, "albums:<type>" = an album list (recent/newest/frequent/random),
-// "playlists", "album:<id>" / "playlist:<id>" = a track list, "song|<list id>|<index>" = a
-// track in that list (playing it queues the whole list, like clicking a track in the app).
+// Android Auto (#26): what the car's play/search/seek requests do while the app runs. The browse
+// tree is in AutoLibrary (it also works without the app), the media ids are explained there.
 public sealed partial class MainPage
 {
-    private readonly Dictionary<string, List<Song>> _autoTrackLists = new();
-
     // Android's back button / gesture: one step back (player, menu, queue, previous page). With
     // nothing left it sends the app to the background like the home button, so playback keeps
     // going, instead of closing it.
@@ -32,83 +29,52 @@ public sealed partial class MainPage
         };
     }
 
+    // Called when the media controls are set up and again after login; only a logged-in page
+    // takes over from AutoPlayer.
     private void ConnectAndroidAuto()
     {
-        AndroidAutoBridge.Browse = BrowseForAutoAsync;
+        if (!_client.IsAuthenticated)
+            return;
+        AutoLibrary.PageClient = _client;
         AndroidAutoBridge.PlayFromMediaId = id => DispatcherQueue.TryEnqueue(async () => await PlayFromAutoAsync(id));
         AndroidAutoBridge.PlayFromSearch = query => DispatcherQueue.TryEnqueue(async () => await PlayFromAutoSearchAsync(query));
         AndroidAutoBridge.Seek = position => DispatcherQueue.TryEnqueue(() => SeekFromAuto(position));
+        TakeOverFromAutoPlayer();
     }
 
-    private async Task<IReadOnlyList<BrowseItem>> BrowseForAutoAsync(string parentId)
+    // Android Auto started LunaDrome without the app and has been playing on its own: carry on
+    // with that queue, at the same spot, in the app (before the saved queue is restored).
+    private void TakeOverFromAutoPlayer()
     {
-        if (!_client.IsAuthenticated)
-            return new[] { new BrowseItem("none", "Log in to LunaDrome on your phone", null, null, false, false) };
-
-        if (parentId == "")
+        if (AutoPlayer.TakeOver() is not { } handover)
+            return;
+        var entries = handover.Songs.Select(s => new QueueEntry(s)).ToList();
+        PopulateSongArt(handover.Songs);
+        _isShuffled = false;
+        UpdateShuffleIcon();
+        _unshuffledOrder = null;
+        ReplaceQueue(entries);
+        var entry = entries[Math.Clamp(handover.Index, 0, entries.Count - 1)];
+        if (handover.Playing)
         {
-            _autoTrackLists.Clear(); // back at the top: pick up library changes
-            return new[]
-            {
-                new BrowseItem("albums:recent", "Recently played", null, null, true, false),
-                new BrowseItem("albums:newest", "Recently added", null, null, true, false),
-                new BrowseItem("albums:frequent", "Most played", null, null, true, false),
-                new BrowseItem("playlists", "Playlists", null, null, true, false),
-            };
+            PlayEntry(entry, handover.Position);
+            return;
         }
-
-        if (parentId.StartsWith("albums:"))
-        {
-            var albums = await _client.GetAlbumListAsync(parentId["albums:".Length..], 60);
-            return albums.Select(a => new BrowseItem("album:" + a.Id, a.Name, a.ArtistName,
-                _client.GetCoverArtUrl(a.Id, 300), true, true)).ToList();
-        }
-
-        if (parentId == "playlists")
-        {
-            var playlists = await _client.GetPlaylistsAsync();
-            return playlists.Select(p => new BrowseItem("playlist:" + p.Id, p.Name, $"{p.SongCount} tracks",
-                p.CoverArtUrl, true, true)).ToList();
-        }
-
-        if (parentId.StartsWith("album:") || parentId.StartsWith("playlist:"))
-        {
-            var songs = await LoadAutoTrackListAsync(parentId);
-            return songs.Select((s, i) => new BrowseItem($"song|{parentId}|{i}", s.Title, s.ArtistName,
-                null, false, true)).ToList();
-        }
-
-        return Array.Empty<BrowseItem>();
-    }
-
-    private async Task<List<Song>> LoadAutoTrackListAsync(string listId)
-    {
-        if (_autoTrackLists.TryGetValue(listId, out var cached))
-            return cached;
-        var songs = listId.StartsWith("album:")
-            ? await _client.GetSongsForAlbumAsync(listId["album:".Length..])
-            : await _client.GetPlaylistSongsAsync(listId["playlist:".Length..]);
-        _autoTrackLists[listId] = songs;
-        return songs;
+        SetCurrent(entry);
+        SetPlaying(false);
+        _pendingSeek = handover.Position;
+        ProgressSlider.Maximum = Math.Max(1, entry.Song.DurationSeconds);
+        ProgressSlider.Value = Math.Min(_pendingSeek.TotalSeconds, ProgressSlider.Maximum);
+        ElapsedText.Text = FormatTime(_pendingSeek);
+        DurationText.Text = FormatTime(TimeSpan.FromSeconds(entry.Song.DurationSeconds));
     }
 
     private async Task PlayFromAutoAsync(string mediaId)
     {
         try
         {
-            string listId = mediaId;
-            int index = 0;
-            if (mediaId.StartsWith("song|"))
-            {
-                var parts = mediaId.Split('|');
-                if (parts.Length != 3 || !int.TryParse(parts[2], out index))
-                    return;
-                listId = parts[1];
-            }
-            if (!listId.StartsWith("album:") && !listId.StartsWith("playlist:"))
-                return;
-            var songs = await LoadAutoTrackListAsync(listId);
-            PlayQueueFrom(songs, index);
+            if (await AutoLibrary.ResolveAsync(mediaId) is { } target)
+                PlayQueueFrom(target.Songs, target.Index);
         }
         catch (Exception ex)
         {
@@ -121,27 +87,14 @@ public sealed partial class MainPage
     {
         try
         {
-            if (string.IsNullOrWhiteSpace(query))
+            if (string.IsNullOrWhiteSpace(query) && _current != null)
             {
-                if (_current != null)
-                {
-                    Play();
-                    return;
-                }
-                var random = await _client.GetAlbumListAsync("random", 1);
-                if (random.Count > 0)
-                    PlayQueueFrom(await _client.GetSongsForAlbumAsync(random[0].Id), 0);
+                Play();
                 return;
             }
-
-            var (_, albums, songs) = await _client.SearchAsync(query, artistCount: 0, albumCount: 1, songCount: 30);
-            // An exact album-name hit wins ("play Persona 5"), otherwise the matching tracks.
-            if (albums.Count > 0 && string.Equals(albums[0].Name, query.Trim(), StringComparison.OrdinalIgnoreCase))
-                PlayQueueFrom(await _client.GetSongsForAlbumAsync(albums[0].Id), 0);
-            else if (songs.Count > 0)
+            var songs = await AutoLibrary.SearchAsync(query);
+            if (songs.Count > 0)
                 PlayQueueFrom(songs, 0);
-            else if (albums.Count > 0)
-                PlayQueueFrom(await _client.GetSongsForAlbumAsync(albums[0].Id), 0);
         }
         catch (Exception ex)
         {

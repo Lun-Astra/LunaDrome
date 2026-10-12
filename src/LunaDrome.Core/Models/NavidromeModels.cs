@@ -115,4 +115,5 @@ public class Playlist
     public string Name { get; set; } = "";
     public int SongCount { get; set; }
     public string? CoverArtUrl { get; set; }
+    public string? CoverArtId { get; set; }
 }

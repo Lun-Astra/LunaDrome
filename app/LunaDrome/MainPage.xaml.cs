@@ -246,6 +246,9 @@ public sealed partial class MainPage : Page
         NavHome.IsChecked = true;
         _ = LoadPlaylistsAsync();
         EnsureMediaControls();
+#if ANDROID
+        ConnectAndroidAuto();
+#endif
         RestoreQueueState();
         _signedIn = true;
         if (_prefs.CheckForUpdates)
@@ -585,6 +588,9 @@ public sealed partial class MainPage : Page
         SaveQueueState();
         _signedIn = false;
         SettingsService.Save(new AppSettings { ServerUrl = _client.ServerUrl, Username = _client.Username });
+#if ANDROID
+        AutoLibrary.PageClient = null;
+#endif
 
         _player.Pause();
         SetPlaying(false);

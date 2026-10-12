@@ -164,17 +164,8 @@ public class LunaMediaService : MediaBrowserServiceCompat
         var items = new List<MediaBrowserCompat.MediaItem>();
         try
         {
-            var browse = AndroidAutoBridge.Browse;
-            if (browse == null)
-            {
-                // The page hasn't started (Android Auto launched the process on its own).
-                items.Add(Item(new BrowseItem("none", "Open LunaDrome on your phone first", "and log in", null, false, false)));
-            }
-            else
-            {
-                foreach (var item in await browse(parentId == RootId ? "" : parentId))
-                    items.Add(Item(item));
-            }
+            foreach (var item in await AutoLibrary.BrowseAsync(parentId == RootId ? "" : parentId))
+                items.Add(Item(item));
         }
         catch (Exception ex)
         {
