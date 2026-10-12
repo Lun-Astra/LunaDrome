@@ -2642,6 +2642,7 @@ public sealed partial class MainPage : Page
             FullScreenArtistText.Text = "";
             FullScreenArt.Background = null;
             ProgressSlider.Value = 0;
+            MiniProgressFill.Width = 0;
             ElapsedText.Text = "0:00";
             DurationText.Text = "0:00";
             _mediaControls?.SetTrack(null);
@@ -3112,6 +3113,8 @@ public sealed partial class MainPage : Page
         }
         ElapsedText.Text = FormatTime(position);
         DurationText.Text = FormatTime(duration);
+        if (MiniProgressTrack.Visibility == Visibility.Visible)
+            MiniProgressFill.Width = MiniProgressTrack.ActualWidth * Math.Clamp(position / duration, 0, 1);
     }
 
     // Starts buffering whatever will play next (follows queue edits, shuffle, repeat).

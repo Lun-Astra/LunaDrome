@@ -151,12 +151,18 @@ public sealed partial class MainPage
         NowPlayingArtBox.Width = NowPlayingArtBox.Height = compact ? 44 : 56;
         NowPlayingTextPanel.Margin = compact ? new Thickness(10, 0, 0, 0) : new Thickness(12, 0, 0, 0);
         UpdateNowPlayingTextWidth(NowPlayingInfoHost.ActualWidth);
-        if (!compact)
-            PreviousButton.Visibility = Visibility.Visible;
         PlayControlsPanel.Margin = compact ? new Thickness(8, 0, 0, 0) : new Thickness(24, 0, 24, 0);
-        // Only previous / play-pause / next (+ queue) fit next to the now-playing info on a phone.
+        // #29: on a phone the mini player is one slim row like Spotify's: cover, title/artist,
+        // heart and play. Previous/next is a swipe on the song, the rest is in the full player
+        // (a tap on the bar), and the progress is a thin line along the bottom.
         var extras = compact ? Visibility.Collapsed : Visibility.Visible;
         StopButton.Visibility = ShuffleButton.Visibility = RepeatButton.Visibility = extras;
+        PreviousButton.Visibility = NextButton.Visibility = QueueToggleButton.Visibility = extras;
+        BarProgressRow.Visibility = extras;
+        MiniProgressTrack.Visibility = compact ? Visibility.Visible : Visibility.Collapsed;
+        PlayPauseButton.Width = PlayPauseButton.Height = compact ? 40 : 44;
+        PlayPauseButton.CornerRadius = new CornerRadius(compact ? 20 : 22);
+        PlayPauseButton.Margin = compact ? new Thickness(4, 0, 2, 0) : new Thickness(8, 0, 8, 0);
 
         // "Download via SpotiDrome": the desktop rows (64px thumbnail, badge text, length column)
         // leave a phone's title a few letters.
@@ -185,8 +191,6 @@ public sealed partial class MainPage
     private void UpdateCompactWidths(double width)
     {
         ((Controls.TrackColumnLayout)Resources["TrackColumns"]).SetCompact(true, width - 150);
-        // Playback bar: narrow phones (~360px) drop Previous so the title stays readable.
-        PreviousButton.Visibility = width < 380 ? Visibility.Collapsed : Visibility.Visible;
 
         // Full-screen player title next to its 88px cover (16px margins, 14px gap).
         FullScreenTitleText.MaxWidth = FullScreenArtistText.MaxWidth = Math.Max(100, width - 32 - 88 - 14);

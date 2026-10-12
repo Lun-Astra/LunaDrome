@@ -2104,7 +2104,7 @@
                 </StackPanel>
               </Button>
             </StackPanel>
-            <Grid Margin="0,10,0,0">
+            <Grid x:Name="BarProgressRow" Margin="0,10,0,0">
               <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="*"/>
@@ -2117,6 +2117,13 @@
                          Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center"/>
             </Grid>
           </StackPanel>
+
+          <!-- #29, phones: a thin progress line along the bottom edge of the mini player card
+               (the slider row is hidden there, like Spotify's mini player). -->
+          <Border x:Name="MiniProgressTrack" Grid.ColumnSpan="3" Height="2" CornerRadius="1" VerticalAlignment="Bottom"
+                  Margin="2,0,2,-7" Background="{StaticResource BorderBrush2}" Visibility="Collapsed" IsHitTestVisible="False">
+            <Border x:Name="MiniProgressFill" HorizontalAlignment="Left" Width="0" CornerRadius="1" Background="{StaticResource TextPrimaryBrush}"/>
+          </Border>
 
           <!-- Volume -->
           <StackPanel Grid.Column="2" x:Name="PlayExtraPanel" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Right">
