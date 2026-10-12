@@ -619,3 +619,10 @@ Luna is hopping off for the night. Current state of the app, for picking this ba
 - Sleep timer (`MainPage.SleepCrossfade.cs`): moon button in the bar and the phone player; 15-90 min or end of the song; the last 10 s fade out (`_sleepVolumeFactor`), then Pause (in a jam: stop playing it here). End of song: the next entry becomes current, paused.
 - Crossfade (desktop, `CrossfadeSeconds` 0-12): `_player` is swapped for a fresh MediaPlayer for the next song; `HookPlayer` handlers ignore events from a player that's no longer `_player`; 50 ms equal-power fade; ended early by Pause/Stop/any other PlayEntry/jam takeover/exit; no prefetch during a fade. Off on Android (a second player can take the audio focus). Not heard yet (no audio on the dev box).
 - Dev clone moved to /root/work: systemd-tmpfiles empties /tmp of files older than 10 days.
+
+### v3.10.1: crossfade crash/glitch fixed, "Playback failed" retries, faster startup — 2026-10-12
+- Crossfade crashed at the end of a fade: the old MediaPlayer was disposed while Uno's SharedMediaPlayerExtension (16 ms timer + queued callbacks) still used its VlcPlayer. Now the two players take turns (`_sparePlayer`) and are never disposed; the outgoing one gets Pause + Source = null.
+- Crossfade glitched on Windows: VLC's default output (mmdevice) sets the volume of the app's whole audio session, so both players shared one volume. `Services/VlcAudioOutput.cs` switches each player to DirectSound (per-stream volume, same volume curve) through reflection (`SharedMediaPlayerExtension.GetByMediaPlayer` -> `VlcPlayer.SetAudioOutput`) before its first song; crossfade is skipped if that fails.
+- #24 again: a reported failure is checked again after 1 s. Still playing: ignored. At the end: treated as ended. Otherwise: reload at the last position (twice), then show "Playback failed". `_playbackGeneration` drops the check after Play/Pause/Stop/skip.
+- `Log()` also writes `%APPDATA%/LunaDrome-Uno/playback.log` (moved to playback.old.log past 1 MB).
+- Release builds are ReadyToRun (launch to window 1.9 s -> 0.95 s in a Linux test).
