@@ -1,0 +1,67 @@
+# Android UI test in an emulator (CI test branch only): builds the APK, starts a fake Navidrome,
+# runs ci/player_shots.sh and keeps screenshots + logcat as an artifact.
+name: Android UI test
+
+on:
+  push:
+    branches: ['ci/android-ui-test']
+  workflow_dispatch:
+
+jobs:
+  ui-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Free disk space (the emulator image needs room after the APK build)
+        run: |
+          df -h /
+          sudo rm -rf /opt/ghc /usr/local/.ghcup /usr/share/swift /opt/hostedtoolcache/CodeQL /usr/local/share/powershell /usr/local/share/chromium /usr/local/lib/node_modules || true
+          sudo docker image prune -af > /dev/null 2>&1 || true
+          df -h /
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Android workload
+        run: dotnet workload install android
+      - name: Build APK (debug-signed; includes x86_64 for the emulator)
+        run: >
+          dotnet publish app/LunaDrome/LunaDrome.csproj -f net10.0-android -c Release -o publish/android
+          -p:EnableAndroid=true -p:AndroidPackageFormat=apk -p:SwipeTrace=true
+      - name: Remove intermediate build files (keep the APK)
+        run: |
+          rm -rf app/LunaDrome/obj app/LunaDrome/bin src/LunaDrome.Core/obj src/LunaDrome.Core/bin ~/.nuget/packages
+          ls -la publish/android/*-Signed.apk
+          df -h /
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Fake Navidrome
+        run: nohup python3 ci/mock_navidrome.py > mock.log 2>&1 &
+      - name: Phone player screenshots in an emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: default
+          profile: Nexus 5X
+          cores: 4
+          ram-size: 4096M
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: bash ci/player_shots.sh
+      - name: Keep the mock log
+        if: always()
+        run: mkdir -p ui-test-out && cp mock.log ui-test-out/ || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ui-test-out
+          path: ui-test-out/
+          retention-days: 3
