@@ -44,7 +44,7 @@ jobs:
           sudo udevadm trigger --name-match=kvm
       - name: Fake Navidrome
         run: nohup python3 ci/mock_navidrome.py > mock.log 2>&1 &
-      - name: Phone player screenshots in an emulator
+      - name: Android Auto without the app, in an emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
@@ -55,7 +55,7 @@ jobs:
           ram-size: 4096M
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: bash ci/player_shots.sh
+          script: bash ci/auto_test.sh
       - name: Keep the mock log
         if: always()
         run: mkdir -p ui-test-out && cp mock.log ui-test-out/ || true
