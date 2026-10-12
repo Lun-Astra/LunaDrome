@@ -242,22 +242,50 @@ public sealed class AndroidMediaControls : IMediaControls
 
         public SessionCallback(AndroidMediaControls owner) => _owner = owner;
 
-        public override void OnPlay() => _owner.Raise(MediaCommand.Play);
-        public override void OnPause() => _owner.Raise(MediaCommand.Pause);
-        public override void OnStop() => _owner.Raise(MediaCommand.Pause);
-        public override void OnSkipToNext() => _owner.Raise(MediaCommand.Next);
-        public override void OnSkipToPrevious() => _owner.Raise(MediaCommand.Previous);
+        // The page plays when it's running; otherwise (Android Auto started the app on its own)
+        // AutoPlayer does.
+        private static bool PageConnected => AndroidAutoBridge.PlayFromMediaId != null;
 
-        public override void OnSeekTo(long pos) => AndroidAutoBridge.Seek?.Invoke(TimeSpan.FromMilliseconds(pos));
+        public override void OnPlay() => Command(MediaCommand.Play, AutoPlayer.Play);
+        public override void OnPause() => Command(MediaCommand.Pause, AutoPlayer.Pause);
+        public override void OnStop() => Command(MediaCommand.Pause, AutoPlayer.Pause);
+        public override void OnSkipToNext() => Command(MediaCommand.Next, AutoPlayer.Next);
+        public override void OnSkipToPrevious() => Command(MediaCommand.Previous, AutoPlayer.Previous);
+
+        private void Command(MediaCommand command, Action withoutPage)
+        {
+            if (PageConnected)
+                _owner.Raise(command);
+            else
+                withoutPage();
+        }
+
+        public override void OnSeekTo(long pos)
+        {
+            var position = TimeSpan.FromMilliseconds(pos);
+            if (PageConnected)
+                AndroidAutoBridge.Seek?.Invoke(position);
+            else
+                AutoPlayer.SeekTo(position);
+        }
 
         public override void OnPlayFromMediaId(string? mediaId, Bundle? extras)
         {
-            if (!string.IsNullOrEmpty(mediaId))
+            if (string.IsNullOrEmpty(mediaId))
+                return;
+            if (PageConnected)
                 AndroidAutoBridge.PlayFromMediaId?.Invoke(mediaId);
+            else
+                AutoPlayer.PlayFromMediaId(mediaId);
         }
 
-        public override void OnPlayFromSearch(string? query, Bundle? extras) =>
-            AndroidAutoBridge.PlayFromSearch?.Invoke(query ?? "");
+        public override void OnPlayFromSearch(string? query, Bundle? extras)
+        {
+            if (PageConnected)
+                AndroidAutoBridge.PlayFromSearch?.Invoke(query ?? "");
+            else
+                AutoPlayer.PlayFromSearch(query ?? "");
+        }
     }
 }
 
@@ -265,12 +293,11 @@ public sealed class AndroidMediaControls : IMediaControls
 public sealed record BrowseItem(string MediaId, string Title, string? Subtitle, string? ArtUrl, bool Browsable, bool Playable);
 
 /// <summary>
-/// What the Android side needs from the page: the library tree to browse and ways to start
-/// playback. MainPage fills these in (Platforms/Android/MainPage.Android.cs).
+/// What the Android side needs from the page: ways to start playback. MainPage fills these in
+/// (Platforms/Android/MainPage.Android.cs) once it's logged in; until then AutoPlayer plays.
 /// </summary>
 public static class AndroidAutoBridge
 {
-    public static Func<string, Task<IReadOnlyList<BrowseItem>>>? Browse;
     public static Action<string>? PlayFromMediaId;
     public static Action<string>? PlayFromSearch;
     public static Action<TimeSpan>? Seek;

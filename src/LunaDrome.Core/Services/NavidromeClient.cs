@@ -279,6 +279,7 @@ public class NavidromeClient
                 Id = p.Id,
                 Name = p.Name,
                 SongCount = p.SongCount,
+                CoverArtId = string.IsNullOrEmpty(p.CoverArt) ? null : p.CoverArt,
                 CoverArtUrl = string.IsNullOrEmpty(p.CoverArt) ? null : GetCoverArtUrl(p.CoverArt, 240)
             })
             .ToList();
