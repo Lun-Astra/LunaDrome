@@ -147,6 +147,7 @@ internal sealed class AutoPlayer : Java.Lang.Object, AndroidPlayer.IOnPreparedLi
         _prepared = false;
         _playWhenReady = play;
         var song = _songs[index];
+        Console.Error.WriteLine($"[LunaDrome] auto player: {song.Title} ({index + 1}/{_songs.Count}), play={play}");
 
         Controls.SetTrack(song, _client.GetCoverArtUrl(song.AlbumId, 480));
         Controls.SetCanGoPreviousNext(true, index < _songs.Count - 1);
