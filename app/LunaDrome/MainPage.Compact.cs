@@ -241,8 +241,15 @@ public sealed partial class MainPage
 
         // The cover is as big as the space allows: the full width (minus the 20px margins), but
         // short enough to leave room for the title, progress, controls and lyrics card.
-        CompactPlayerView.SizeChanged += (_, e) =>
-            CompactArtBox.Width = CompactArtBox.Height = Math.Clamp(Math.Min(e.NewSize.Width - 40, e.NewSize.Height - 400), 140, 480);
+        // #29: like Spotify the cover fills the width; room for the lyrics card only while it's shown.
+        void SizeCompactArt()
+        {
+            var below = CompactLyricsCard.Visibility == Visibility.Visible ? 400 : 300;
+            CompactArtBox.Width = CompactArtBox.Height = Math.Clamp(
+                Math.Min(CompactPlayerView.ActualWidth - 40, CompactPlayerView.ActualHeight - below), 140, 480);
+        }
+        CompactPlayerView.SizeChanged += (_, _) => SizeCompactArt();
+        CompactLyricsCard.RegisterPropertyChangedCallback(VisibilityProperty, (_, _) => SizeCompactArt());
 
         // Swipe the playback bar's now-playing info: left = next song, right = previous. Android
         // only (like swiping a song row to queue it): on desktop a mouse drag there did it too.

@@ -120,6 +120,7 @@
         <Setter Property="Background" Value="{StaticResource AccentBrush}"/>
         <Setter Property="Foreground" Value="{StaticResource OnAccentBrush}"/>
         <Setter Property="FontWeight" Value="Bold"/>
+        <Setter Property="CornerRadius" Value="16"/>
         <Setter Property="Template">
           <Setter.Value>
             <ControlTemplate TargetType="Button">
@@ -144,7 +145,7 @@
                     </VisualState>
                   </VisualStateGroup>
                 </VisualStateManager.VisualStateGroups>
-                <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="16">
+                <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="{TemplateBinding CornerRadius}">
                   <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
                                     Margin="{TemplateBinding Padding}" Foreground="{TemplateBinding Foreground}"/>
                 </Border>
