@@ -626,3 +626,7 @@ Luna is hopping off for the night. Current state of the app, for picking this ba
 - #24 again: a reported failure is checked again after 1 s. Still playing: ignored. At the end: treated as ended. Otherwise: reload at the last position (twice), then show "Playback failed". `_playbackGeneration` drops the check after Play/Pause/Stop/skip.
 - `Log()` also writes `%APPDATA%/LunaDrome-Uno/playback.log` (moved to playback.old.log past 1 MB).
 - Release builds are ReadyToRun (launch to window 1.9 s -> 0.95 s in a Linux test).
+
+### v3.10.2: no more silence after a crossfade — 2026-10-12
+- v3.10.1 bug (found in Luna's playback.log): after a crossfade, songs played silently while the time ran on, until a restart. VLC's DirectSound output saves "directx-volume" on every volume change, shared by the whole LibVLC instance, and starts each new audio output at that value (the faded-out ~0). Uno's 16 ms tick then copies VLC's volume into MediaPlayer.Volume. `EnforcePlaybackVolume` (every progress tick and on MediaOpened) sets it back to the slider value.
+- A MediaEnded or failure from the outgoing player ends the crossfade right away. The state log marks "(other player)".
