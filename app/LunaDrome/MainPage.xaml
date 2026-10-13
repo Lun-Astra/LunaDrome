@@ -2022,7 +2022,7 @@
               <Border x:Name="NowPlayingArt" CornerRadius="6"/>
             </Grid>
             <StackPanel x:Name="NowPlayingTextPanel" VerticalAlignment="Center" Margin="12,0,0,0">
-              <Border x:Name="NowPlayingTitleLink" Background="Transparent" HorizontalAlignment="Left" controls:Motion.ClickableText="True" Tapped="NowPlayingText_Tapped" ToolTipService.ToolTip="Show/hide Queue, Lyrics, Visualizer">
+              <Border x:Name="NowPlayingTitleLink" Background="Transparent" HorizontalAlignment="Left" controls:Motion.ClickableText="True" Tapped="NowPlayingText_Tapped" RightTapped="NowPlayingText_RightTapped" ToolTipService.ToolTip="Show/hide Queue, Lyrics, Visualizer (right-click to share)">
                 <TextBlock x:Name="NowPlayingText" FontWeight="SemiBold" Text="Nothing playing" FontSize="12" TextTrimming="CharacterEllipsis"/>
               </Border>
               <Border x:Name="NowPlayingArtistLink" Background="Transparent" Margin="0,2,0,0" HorizontalAlignment="Left" controls:Motion.ClickableText="True" Tapped="NowPlayingArtist_Tapped" ToolTipService.ToolTip="Go to artist">

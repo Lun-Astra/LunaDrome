@@ -364,6 +364,26 @@ public class NavidromeClient
         return (new List<LyricLine>(), false);
     }
 
+    /// <summary>A public link to a song on the Navidrome server (Feishin's "Share"): anyone with it
+    /// can play the song in a browser, without an account. Needs sharing turned on in Navidrome
+    /// (ND_ENABLESHARING); <paramref name="expires"/> null = the server's default (one year).</summary>
+    /// <exception cref="InvalidOperationException">The server refused (e.g. sharing is off).</exception>
+    public async Task<string> CreateShareAsync(string songId, string? description, DateTimeOffset? expires)
+    {
+        var args = new List<(string, string)> { ("id", songId) };
+        if (!string.IsNullOrWhiteSpace(description))
+            args.Add(("description", description.Trim()));
+        if (expires is { } at)
+            args.Add(("expires", at.ToUnixTimeMilliseconds().ToString()));
+        var json = await _http.GetStringAsync(BuildUrl("createShare.view", args.ToArray()));
+        var resp = JsonSerializer.Deserialize<SubsonicEnvelope<SharesResponse>>(json, JsonOptions)?.Response;
+        if (resp?.Status != "ok")
+            throw new InvalidOperationException(resp?.Error?.Message ?? "Unexpected response from server.");
+        return resp.Shares?.Share.FirstOrDefault()?.Url is { Length: > 0 } link
+            ? link
+            : throw new InvalidOperationException("The server didn't return a link.");
+    }
+
     public Task DeletePlaylistAsync(string playlistId) =>
         _http.GetStringAsync(BuildUrl("deletePlaylist.view", ("id", playlistId)));
 
