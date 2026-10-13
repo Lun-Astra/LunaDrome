@@ -646,3 +646,8 @@ Luna is hopping off for the night. Current state of the app, for picking this ba
 - Luna: right-click the song title in the bottom-left player to share it, like Feishin: a link anyone can open to play the song on the Navidrome host.
 - `MainPage.Share.cs`: RightTapped on `NowPlayingTitleLink` → "Share song…" → dialog (optional description; valid 1/7/30 days, or 1 year = Navidrome's default) → "Create link" copies it and shows it with a Copy button.
 - `NavidromeClient.CreateShareAsync` (Subsonic `createShare`, needs sharing on in Navidrome; throws with the server's message otherwise). Navidrome builds the link from the request it sees, so behind the http proxy it says http://; `MatchServerScheme` makes it https when the server URL is https on the same host.
+
+### v3.12.1: Android Auto plays in the car — 2026-10-13
+- Luna: LunaDrome wasn't in Android Auto's app list, and playing from the phone gave no sound in the car.
+- App list: the APK's car declaration is fine (checked the v3.12.0 APK); Android Auto hides apps not installed from the Play Store until "Unknown sources" is on in its developer settings.
+- No sound: Uno's Android MediaPlayer never requests audio focus, so Android Auto never switched the car to us. `Platforms/Android/PageAudioFocus.cs` requests it (usage media/music) whenever the page plays, from `AndroidMediaControls.SetPlaybackState` while the page is connected (also when the state didn't change, i.e. after taking over from AutoPlayer); a transient loss (call) pauses and resumes after, a full loss pauses; stopping abandons it. Emulator run 38403659442: focus held while the page plays, while AutoPlayer plays, and after the takeover.
