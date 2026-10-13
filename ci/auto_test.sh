@@ -16,7 +16,8 @@ anr() {
 tap() { anr; adb shell input tap "$@"; }
 state() { echo "== $1" >> $OUT/state.txt; adb shell dumpsys media_session | grep -E "package=|state=PlaybackState|active=" >> $OUT/state.txt;
           echo "pid: $(adb shell pidof $PKG)" >> $OUT/state.txt;
-          adb shell dumpsys activity activities | grep -E "ResumedActivity|$PKG/" | head -5 >> $OUT/state.txt; }
+          adb shell dumpsys activity activities | grep -E "ResumedActivity|$PKG/" | head -5 >> $OUT/state.txt;
+          adb shell dumpsys audio | grep -A4 "Audio Focus stack entries" >> $OUT/state.txt; }
 APK=$(ls publish/android/*-Signed.apk | head -1)
 adb shell settings put global hide_error_dialogs 1
 sleep 60
