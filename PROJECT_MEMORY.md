@@ -635,3 +635,14 @@ Luna is hopping off for the night. Current state of the app, for picking this ba
 - #29 follow-up: on phones (compact mode) the mini player is one slim row (cover, title/artist, heart, play/pause) with a 2px progress line (`MiniProgressTrack`/`MiniProgressFill`) along the bottom. Previous/next, queue, stop, shuffle, repeat and the progress row (`BarProgressRow`) are hidden there; skipping stays on the swipe, a tap opens the full player.
 - The phone player's cover fills the width (`SizeCompactArt`: min(width-40, height minus 300, or 400 with the lyrics card), clamped 140-480).
 - `PrimaryButtonStyle` now honours CornerRadius (TemplateBinding, default 16), so the play buttons (44/22, 68/34) are real circles.
+
+### v3.11.1: Android Auto works without opening the app — 2026-10-12
+- Luna: Android Auto was slow, laggy, hung a lot and couldn't be started from the car screen.
+- `Platforms/Android/AutoLibrary.cs`: the browse tree and voice search, off the UI thread with 12 s timeouts. It uses the page's client once logged in (`PageClient`), else logs in with the saved login itself. Lists are capped at 300 rows (binder size); playing a row still queues the whole list.
+- `AutoPlayer.cs`: when the page isn't logged in (Android Auto started the process on its own), a plain Android MediaPlayer queue plays: play/pause/next/previous/seek, audio focus (pause on loss, duck), scrobble, and the queue is saved to queue.json. "Play" with nothing loaded resumes the saved queue, else a random album. `AndroidMediaControls` routes session commands to it while `AndroidAutoBridge.PlayFromMediaId` is null. After login the page calls `ConnectAndroidAuto` → `TakeOverFromAutoPlayer` (same queue, index, position, playing state) before RestoreQueueState.
+- `AutoArtProvider.cs`: cover art for browse rows via `content://com.lunastra.lunadrome.art/<cover id>` (the car only loads content:// artwork); downloads at 300 px into cache/auto-art. The URI holds only the cover id. `Playlist.CoverArtId` added.
+
+### v3.12.0: Share the playing song — 2026-10-13
+- Luna: right-click the song title in the bottom-left player to share it, like Feishin: a link anyone can open to play the song on the Navidrome host.
+- `MainPage.Share.cs`: RightTapped on `NowPlayingTitleLink` → "Share song…" → dialog (optional description; valid 1/7/30 days, or 1 year = Navidrome's default) → "Create link" copies it and shows it with a Copy button.
+- `NavidromeClient.CreateShareAsync` (Subsonic `createShare`, needs sharing on in Navidrome; throws with the server's message otherwise). Navidrome builds the link from the request it sees, so behind the http proxy it says http://; `MatchServerScheme` makes it https when the server URL is https on the same host.

@@ -167,6 +167,22 @@ internal class CreatePlaylistResponse : SubsonicResponseBase
     public PlaylistDetailDto? Playlist { get; set; }
 }
 
+internal class SharesResponse : SubsonicResponseBase
+{
+    public SharesPayload? Shares { get; set; }
+}
+
+internal class SharesPayload
+{
+    public List<ShareDto> Share { get; set; } = new();
+}
+
+internal class ShareDto
+{
+    public string Id { get; set; } = "";
+    public string Url { get; set; } = "";
+}
+
 internal class GenresResponse : SubsonicResponseBase
 {
     public GenresPayload? Genres { get; set; }
