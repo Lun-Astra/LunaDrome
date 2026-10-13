@@ -380,8 +380,19 @@ public class NavidromeClient
         if (resp?.Status != "ok")
             throw new InvalidOperationException(resp?.Error?.Message ?? "Unexpected response from server.");
         return resp.Shares?.Share.FirstOrDefault()?.Url is { Length: > 0 } link
-            ? link
+            ? MatchServerScheme(link)
             : throw new InvalidOperationException("The server didn't return a link.");
+    }
+
+    // Navidrome builds the link from the request it sees, so behind a proxy that talks plain http to
+    // it the link starts with http:// even though the server is reached over https.
+    private string MatchServerScheme(string link)
+    {
+        if (!Uri.TryCreate(link, UriKind.Absolute, out var shareUri) || !Uri.TryCreate(ServerUrl, UriKind.Absolute, out var server)
+            || shareUri.Scheme != Uri.UriSchemeHttp || server.Scheme != Uri.UriSchemeHttps
+            || !string.Equals(shareUri.Host, server.Host, StringComparison.OrdinalIgnoreCase))
+            return link;
+        return new UriBuilder(shareUri) { Scheme = Uri.UriSchemeHttps, Port = server.Port }.Uri.ToString();
     }
 
     public Task DeletePlaylistAsync(string playlistId) =>
