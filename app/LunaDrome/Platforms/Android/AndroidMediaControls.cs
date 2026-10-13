@@ -79,6 +79,8 @@ public sealed class AndroidMediaControls : IMediaControls
         _playing = playing;
         PublishState();
         UpdateNotification();
+        if (AndroidAutoBridge.PlayFromMediaId != null)   // the page is playing, not AutoPlayer
+            PageAudioFocus.Update(playing, Raise);
     }
 
     public void SetCanGoPreviousNext(bool canGoPrevious, bool canGoNext)
