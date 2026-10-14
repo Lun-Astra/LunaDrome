@@ -12,7 +12,8 @@ namespace LunaDrome.Services;
 /// server shows an empty list instead of a car screen that spins forever.
 /// </summary>
 /// <remarks>
-/// Media ids: "" = root, "albums:&lt;type&gt;" = an album list (recent/newest/frequent),
+/// Media ids: "" = root (tabs), "home" = Song mix + the album lists, "mix" = Song mix (the whole
+/// library shuffled), "albums:&lt;type&gt;" = an album list (recent/newest/frequent),
 /// "playlists", "album:&lt;id&gt;" / "playlist:&lt;id&gt;" = a track list, "song|&lt;list id&gt;|&lt;index&gt;" =
 /// a track in that list (playing it queues the whole list, like clicking a track in the app).
 /// </remarks>
@@ -22,6 +23,9 @@ internal static class AutoLibrary
     // shows so many rows anyway). Playing a row still queues the whole list.
     private const int MaxRows = 300;
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(12);
+
+    /// <summary>Song mix: the whole library, shuffled (Symfonium's "shuffle all").</summary>
+    public const string SongMixId = "mix";
 
     private static readonly ConcurrentDictionary<string, List<Song>> s_lists = new();
     private static readonly object s_loginLock = new();
@@ -85,14 +89,23 @@ internal static class AutoLibrary
         if (parentId == "")
         {
             s_lists.Clear(); // back at the top: pick up library changes
+            // The car shows the root's rows as tabs (and nothing playable there), so Song mix
+            // goes at the top of the first tab.
             return new[]
             {
-                new BrowseItem("albums:recent", "Recently played", null, null, true, false),
-                new BrowseItem("albums:newest", "Recently added", null, null, true, false),
-                new BrowseItem("albums:frequent", "Most played", null, null, true, false),
+                new BrowseItem("home", "Home", null, null, true, false),
                 new BrowseItem("playlists", "Playlists", null, null, true, false),
             };
         }
+
+        if (parentId == "home")
+            return new[]
+            {
+                new BrowseItem(SongMixId, "Song mix", "Your whole library, shuffled", null, false, true),
+                new BrowseItem("albums:recent", "Recently played", null, null, true, false),
+                new BrowseItem("albums:newest", "Recently added", null, null, true, false),
+                new BrowseItem("albums:frequent", "Most played", null, null, true, false),
+            };
 
         if (parentId.StartsWith("albums:"))
         {
@@ -121,6 +134,8 @@ internal static class AutoLibrary
     /// <summary>The track list and start index a playable media id stands for.</summary>
     public static Task<(List<Song> Songs, int Index)?> ResolveAsync(string mediaId) => Task.Run(async () =>
     {
+        if (mediaId == SongMixId)
+            return await SongMixAsync() is { Count: > 0 } mix ? (mix, 0) : ((List<Song>, int)?)null;
         var listId = mediaId;
         var index = 0;
         if (mediaId.StartsWith("song|"))
@@ -140,22 +155,31 @@ internal static class AutoLibrary
     });
 
     /// <summary>"Hey Google, play &lt;query&gt; on LunaDrome": an exact album name wins, otherwise the
-    /// matching songs. An empty query means "just play something" (a random album).</summary>
+    /// matching songs. An empty query means "just play something" (Song mix).</summary>
     public static Task<List<Song>> SearchAsync(string query) => Task.Run(async () =>
     {
         var client = await GetClientAsync();
         if (client == null)
             return new List<Song>();
         if (string.IsNullOrWhiteSpace(query))
-        {
-            var random = await client.GetAlbumListAsync("random", 1).WaitAsync(Timeout);
-            return random.Count > 0 ? await client.GetSongsForAlbumAsync(random[0].Id).WaitAsync(Timeout) : new List<Song>();
-        }
+            return await SongMixAsync();
         var (_, albums, songs) = await client.SearchAsync(query, artistCount: 0, albumCount: 1, songCount: 30).WaitAsync(Timeout);
         if (albums.Count > 0 && (songs.Count == 0 || string.Equals(albums[0].Name, query.Trim(), StringComparison.OrdinalIgnoreCase)))
             return await client.GetSongsForAlbumAsync(albums[0].Id).WaitAsync(Timeout);
         return songs;
     });
+
+    /// <summary>Every song in the library, in random order (empty when it can't be loaded).</summary>
+    private static async Task<List<Song>> SongMixAsync()
+    {
+        var client = await GetClientAsync();
+        if (client == null)
+            return new List<Song>();
+        // A few pages of 500 for a big library, so a longer wait than one list.
+        var songs = await client.GetAllSongsAsync().WaitAsync(TimeSpan.FromSeconds(30));
+        Random.Shared.Shuffle(System.Runtime.InteropServices.CollectionsMarshal.AsSpan(songs));
+        return songs;
+    }
 
     private static async Task<List<Song>> LoadListAsync(NavidromeClient client, string listId)
     {
