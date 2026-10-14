@@ -106,6 +106,7 @@ public sealed partial class MainPage : Page
 
     public MainPage()
     {
+        Console.WriteLine("[LunaDrome] main page created");
         _loopback = new LoopbackCapture(_spectrum);
         _prefetcher = new TrackPrefetcher(_client);
         this.InitializeComponent();

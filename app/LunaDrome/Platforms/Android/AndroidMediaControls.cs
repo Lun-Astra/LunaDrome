@@ -19,6 +19,7 @@ namespace LunaDrome.Services;
 public sealed class AndroidMediaControls : IMediaControls
 {
     private const string ChannelId = "playback";
+    private const string SongMixAction = "lunadrome.SONG_MIX";
     internal const int NotificationId = 1;
 
     private static AndroidMediaControls? s_instance;
@@ -148,6 +149,8 @@ public sealed class AndroidMediaControls : IMediaControls
         _positionReportedAt = DateTime.UtcNow;
         Session.SetPlaybackState(new PlaybackStateCompat.Builder()
             .SetActions(actions)!
+            // A Song mix button on Android Auto's player screen.
+            .AddCustomAction(new PlaybackStateCompat.CustomAction.Builder(SongMixAction, "Song mix", Resource.Drawable.lunadrome_shuffle).Build())!
             .SetState(state, (long)_position.TotalMilliseconds, _playing == true ? 1f : 0f)!
             .Build());
     }
@@ -281,6 +284,12 @@ public sealed class AndroidMediaControls : IMediaControls
                 AndroidAutoBridge.PlayFromMediaId?.Invoke(mediaId);
             else
                 AutoPlayer.PlayFromMediaId(mediaId);
+        }
+
+        public override void OnCustomAction(string? action, Bundle? extras)
+        {
+            if (action == SongMixAction)
+                OnPlayFromMediaId(AutoLibrary.SongMixId, extras);
         }
 
         public override void OnPlayFromSearch(string? query, Bundle? extras)
