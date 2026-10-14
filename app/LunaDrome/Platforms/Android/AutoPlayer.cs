@@ -26,12 +26,30 @@ internal sealed class AutoPlayer : Java.Lang.Object, AndroidPlayer.IOnPreparedLi
     private AndroidPlayer? _player;
     private List<Song> _songs = new();
     private int _index = -1;
-    private bool _prepared, _playWhenReady, _resumeOnFocusGain, _ticking;
+    private bool _prepared, _playWhenReady, _resumeOnFocusGain, _ticking, _handedOver;
     private int _failuresInARow;
     private TimeSpan _startAt;
     private DateTime _lastSave;
 
-    private AutoPlayer() => _audio = (AudioManager?)_context.GetSystemService(Context.AudioService);
+    private AutoPlayer()
+    {
+        _audio = (AudioManager?)_context.GetSystemService(Context.AudioService);
+        // The car or headphones went away: pause, like any music app (the page's player does
+        // this itself).
+        _context.RegisterReceiver(new NoisyReceiver(), new IntentFilter(AudioManager.ActionAudioBecomingNoisy));
+    }
+
+    private sealed class NoisyReceiver : BroadcastReceiver
+    {
+        public override void OnReceive(Context? context, Intent? intent)
+        {
+            if (s_current is { _playWhenReady: true } player && !player._handedOver)
+            {
+                AndroidLog.Write("background player: audio output went away - pausing");
+                player.PauseInternal();
+            }
+        }
+    }
 
     /// <summary>The player, while it has something loaded.</summary>
     public static bool IsActive => s_current?._index >= 0;
@@ -76,13 +94,18 @@ internal sealed class AutoPlayer : Java.Lang.Object, AndroidPlayer.IOnPreparedLi
             Post(() => Current.Start(songs, 0, TimeSpan.Zero, play: true));
     }
 
-    /// <summary>Stops this player and hands its queue to the page (null when nothing's loaded).</summary>
-    public static (List<Song> Songs, int Index, TimeSpan Position, bool Playing)? TakeOver()
+    /// <summary>Stops this player and hands its queue to the page (null when nothing's loaded).
+    /// <paramref name="claimFocus"/> takes the audio focus for the page first, so there's no moment
+    /// without it - Android Auto may switch the car away from LunaDrome in that gap.</summary>
+    public static (List<Song> Songs, int Index, TimeSpan Position, bool Playing)? TakeOver(Action? claimFocus = null)
     {
         var player = s_current;
         if (player == null || player._index < 0)
             return null;
         var state = (player._songs, player._index, player.Position, player._playWhenReady);
+        AndroidLog.Write($"the app takes over from the background player: {player._songs[player._index].Title} at {state.Position:m\\:ss}, playing={state._playWhenReady}");
+        player._handedOver = true;   // the focus loss that follows is the page, not a pause
+        claimFocus?.Invoke();
         player.SaveQueue();
         player.Release();
         player.AbandonFocus();
@@ -147,7 +170,7 @@ internal sealed class AutoPlayer : Java.Lang.Object, AndroidPlayer.IOnPreparedLi
         _prepared = false;
         _playWhenReady = play;
         var song = _songs[index];
-        Console.Error.WriteLine($"[LunaDrome] auto player: {song.Title} ({index + 1}/{_songs.Count}), play={play}");
+        AndroidLog.Write($"auto player: {song.Title} ({index + 1}/{_songs.Count}), play={play}");
 
         Controls.SetTrack(song, _client.GetCoverArtUrl(song.AlbumId, 480));
         Controls.SetCanGoPreviousNext(true, index < _songs.Count - 1);
@@ -170,7 +193,7 @@ internal sealed class AutoPlayer : Java.Lang.Object, AndroidPlayer.IOnPreparedLi
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"[LunaDrome] auto player load: {ex.Message}");
+            AndroidLog.Write($"auto player load: {ex.Message}");
             Failed();
         }
         SaveQueue();
@@ -210,7 +233,7 @@ internal sealed class AutoPlayer : Java.Lang.Object, AndroidPlayer.IOnPreparedLi
     {
         if (mp == _player)
         {
-            Console.Error.WriteLine($"[LunaDrome] auto player error {what} {extra}");
+            AndroidLog.Write($"auto player error {what} {extra}");
             Failed();
         }
         return true;
@@ -338,7 +361,7 @@ internal sealed class AutoPlayer : Java.Lang.Object, AndroidPlayer.IOnPreparedLi
                 Songs = _songs,
                 CurrentIndex = _index,
                 PositionSeconds = Position.TotalSeconds,
-            }, ex => Console.Error.WriteLine($"[LunaDrome] auto player save: {ex.Message}"));
+            }, ex => AndroidLog.Write($"auto player save: {ex.Message}"));
         }
         catch { }
     }
@@ -392,6 +415,9 @@ internal sealed class AutoPlayer : Java.Lang.Object, AndroidPlayer.IOnPreparedLi
 
     public void OnAudioFocusChange(AudioFocus focusChange)
     {
+        AndroidLog.Write($"background player: audio focus {focusChange}{(_handedOver ? " (handed over, ignored)" : "")}");
+        if (_handedOver)
+            return;
         switch (focusChange)
         {
             case AudioFocus.Gain:

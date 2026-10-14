@@ -106,9 +106,13 @@ public sealed partial class MainPage : Page
 
     public MainPage()
     {
+        PlaybackLog.Write("main page created");
         _loopback = new LoopbackCapture(_spectrum);
         _prefetcher = new TrackPrefetcher(_client);
         this.InitializeComponent();
+#if ANDROID
+        ShareLogButton.Visibility = Visibility.Visible;
+#endif
         InitCompactLayout();
         Loaded += (_, _) => EnsureMediaControls();
         Unloaded += (_, _) =>
@@ -568,6 +572,14 @@ public sealed partial class MainPage : Page
 
     private void ReportProblem_Click(object sender, RoutedEventArgs e) =>
         UpdateChecker.OpenUrl("https://github.com/Lun-Astra/LunaDrome/issues/new");
+
+    private void ShareLog_Click(object sender, RoutedEventArgs e)
+    {
+#if ANDROID
+        try { ShareLogAndroid(); }
+        catch (Exception ex) { ShowToast($"Couldn't share the log: {ex.Message}"); }
+#endif
+    }
 
     // Back to the login screen: forgets the saved password (server + username stay filled in),
     // stops playback. The queue is saved first, so signing back in resumes it.
@@ -2678,35 +2690,7 @@ public sealed partial class MainPage : Page
             await LoadLyricsForCurrentSongAsync();
     }
 
-    private static readonly bool DiagnosticsEnabled = Environment.GetEnvironmentVariable("LUNADROME_LOG") == "1";
-
-    // Playback events also go to playback.log next to preferences.json (Windows has no console to
-    // read them from); when it passes 1 MB it's moved to playback.old.log.
-    private static readonly string PlaybackLogPath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "LunaDrome-Uno", "playback.log");
-    private static readonly object PlaybackLogLock = new();
-
-    private static void Log(string message)
-    {
-        var line = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} {message}";
-        if (DiagnosticsEnabled)
-            Console.Error.WriteLine($"[LunaDrome] {line}");
-        lock (PlaybackLogLock)
-        {
-            try
-            {
-                var file = new FileInfo(PlaybackLogPath);
-                if (file.Exists && file.Length > 1024 * 1024)
-                    File.Move(PlaybackLogPath, Path.ChangeExtension(PlaybackLogPath, ".old.log"), overwrite: true);
-                Directory.CreateDirectory(Path.GetDirectoryName(PlaybackLogPath)!);
-                File.AppendAllText(PlaybackLogPath, line + Environment.NewLine);
-            }
-            catch
-            {
-                // logging must never break playback
-            }
-        }
-    }
+    private static void Log(string message) => PlaybackLog.Write(message);
 
     private void SetPlaying(bool playing)
     {

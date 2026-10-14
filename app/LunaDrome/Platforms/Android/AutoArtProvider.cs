@@ -52,7 +52,7 @@ public class AutoArtProvider : ContentProvider
             }
             catch (Exception ex)
             {
-                Console.Error.WriteLine($"[LunaDrome] auto art {coverId}: {ex.Message}");
+                AndroidLog.Write($"auto art {coverId}: {ex.Message}");
                 throw new Java.IO.FileNotFoundException(uri.ToString());
             }
         }

@@ -1056,6 +1056,8 @@
                     <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
                       <Button Content="GitHub page" Style="{StaticResource TextButtonStyle}" Click="OpenGitHub_Click"/>
                       <Button Content="Report a problem" Style="{StaticResource TextButtonStyle}" Click="ReportProblem_Click"/>
+                      <!-- Android: send playback.log (e.g. after something went wrong in the car). -->
+                      <Button x:Name="ShareLogButton" Content="Share playback log" Style="{StaticResource TextButtonStyle}" Click="ShareLog_Click" Visibility="Collapsed"/>
                     </StackPanel>
                   </StackPanel>
                 </Border>

@@ -19,6 +19,7 @@ namespace LunaDrome.Services;
 public sealed class AndroidMediaControls : IMediaControls
 {
     private const string ChannelId = "playback";
+    private const string SongMixAction = "lunadrome.SONG_MIX";
     internal const int NotificationId = 1;
 
     private static AndroidMediaControls? s_instance;
@@ -51,6 +52,14 @@ public sealed class AndroidMediaControls : IMediaControls
             Session.SetSessionActivity(PendingIntent.GetActivity(context, 0, launch, PendingIntentFlags.Immutable));
         Session.Active = true;
         PublishState();
+        // Unplugged from the car / car switched off: stop, don't carry on from the phone.
+        CarConnection.Watch(() =>
+        {
+            if (AndroidAutoBridge.PlayFromMediaId != null)
+                Raise(MediaCommand.Pause);
+            else
+                AutoPlayer.Pause();
+        });
     }
 
     public static AndroidMediaControls Create()
@@ -148,6 +157,8 @@ public sealed class AndroidMediaControls : IMediaControls
         _positionReportedAt = DateTime.UtcNow;
         Session.SetPlaybackState(new PlaybackStateCompat.Builder()
             .SetActions(actions)!
+            // A Song mix button on Android Auto's player screen.
+            .AddCustomAction(new PlaybackStateCompat.CustomAction.Builder(SongMixAction, "Song mix", Resource.Drawable.lunadrome_shuffle).Build())!
             .SetState(state, (long)_position.TotalMilliseconds, _playing == true ? 1f : 0f)!
             .Build());
     }
@@ -185,7 +196,7 @@ public sealed class AndroidMediaControls : IMediaControls
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"[LunaDrome] media notification: {ex.Message}");
+            AndroidLog.Write($"media notification: {ex.Message}");
         }
     }
 
@@ -240,6 +251,9 @@ public sealed class AndroidMediaControls : IMediaControls
 
     private void Raise(MediaCommand command) => CommandReceived?.Invoke(command);
 
+    /// <summary>The page takes the audio focus (before the background player gives it up).</summary>
+    internal void ClaimFocusForPage() => PageAudioFocus.Update(true, Raise);
+
     private sealed class SessionCallback : MediaSessionCompat.Callback
     {
         private readonly AndroidMediaControls _owner;
@@ -258,6 +272,7 @@ public sealed class AndroidMediaControls : IMediaControls
 
         private void Command(MediaCommand command, Action withoutPage)
         {
+            AndroidLog.Write($"media session: {command} -> {(PageConnected ? "app" : "background player")}");
             if (PageConnected)
                 _owner.Raise(command);
             else
@@ -277,10 +292,17 @@ public sealed class AndroidMediaControls : IMediaControls
         {
             if (string.IsNullOrEmpty(mediaId))
                 return;
+            AndroidLog.Write($"media session: play {mediaId} -> {(PageConnected ? "app" : "background player")}");
             if (PageConnected)
                 AndroidAutoBridge.PlayFromMediaId?.Invoke(mediaId);
             else
                 AutoPlayer.PlayFromMediaId(mediaId);
+        }
+
+        public override void OnCustomAction(string? action, Bundle? extras)
+        {
+            if (action == SongMixAction)
+                OnPlayFromMediaId(AutoLibrary.SongMixId, extras);
         }
 
         public override void OnPlayFromSearch(string? query, Bundle? extras)
