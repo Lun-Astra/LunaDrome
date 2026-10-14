@@ -44,9 +44,22 @@ public sealed partial class MainPage
 
     // Android Auto started LunaDrome without the app and has been playing on its own: carry on
     // with that queue, at the same spot, in the app (before the saved queue is restored).
+    // Settings > About: the playback log as text, to any app (mail, chat) - for car problems that
+    // only show on a real phone.
+    private void ShareLogAndroid()
+    {
+        var send = new Android.Content.Intent(Android.Content.Intent.ActionSend)
+            .SetType("text/plain")!
+            .PutExtra(Android.Content.Intent.ExtraSubject, $"LunaDrome {UpdateChecker.CurrentVersion} playback log")!
+            .PutExtra(Android.Content.Intent.ExtraText, PlaybackLog.ReadRecent(100_000))!;
+        var chooser = Android.Content.Intent.CreateChooser(send, "Share playback log")!
+            .AddFlags(Android.Content.ActivityFlags.NewTask)!;
+        Android.App.Application.Context.StartActivity(chooser);
+    }
+
     private void TakeOverFromAutoPlayer()
     {
-        if (AutoPlayer.TakeOver() is not { } handover)
+        if (AutoPlayer.TakeOver(() => AndroidMediaControls.Current?.ClaimFocusForPage()) is not { } handover)
             return;
         var entries = handover.Songs.Select(s => new QueueEntry(s)).ToList();
         PopulateSongArt(handover.Songs);

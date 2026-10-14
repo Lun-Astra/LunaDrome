@@ -32,7 +32,7 @@ public partial class App : Application
     {
         // No UseStudio() here: in Debug it overlays Uno's Hot Design toolbar on the top-left of the
         // window, right over the sidebar logo, which made debug builds look unlike the live app.
-        Console.WriteLine($"[LunaDrome] launched (window existed: {MainWindow != null})");
+        LunaDrome.Services.PlaybackLog.Write($"app launched (window existed: {MainWindow != null})");
         MainWindow = new Window { Title = WindowTitle };
 
         // Same default size as the WPF app's MainWindow (1200x720).

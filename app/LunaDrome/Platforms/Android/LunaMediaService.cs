@@ -169,7 +169,7 @@ public class LunaMediaService : MediaBrowserServiceCompat
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"[LunaDrome] browse {parentId}: {ex.Message}");
+            AndroidLog.Write($"browse {parentId}: {ex.Message}");
         }
         result.SendResult(new JavaList<MediaBrowserCompat.MediaItem>(items));
     }

@@ -67,7 +67,7 @@ internal static class AutoLibrary
             var (ok, error) = await client.LoginAsync().WaitAsync(Timeout);
             if (!ok)
             {
-                Console.Error.WriteLine($"[LunaDrome] auto login: {error}");
+                AndroidLog.Write($"auto login: {error}");
                 return null;
             }
             s_ownClient = client;
@@ -75,7 +75,7 @@ internal static class AutoLibrary
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"[LunaDrome] auto login: {ex.Message}");
+            AndroidLog.Write($"auto login: {ex.Message}");
             return null;
         }
     }
