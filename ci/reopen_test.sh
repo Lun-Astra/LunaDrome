@@ -59,5 +59,6 @@ state "8 20 s later"
 adb logcat -d -v time > $OUT/logcat-all.txt
 grep -E "AndroidRuntime|FATAL|Exception" $OUT/logcat-all.txt | head -50 > $OUT/logcat-errors.txt
 grep -E "LunaDrome\]|DOTNET" $OUT/logcat-all.txt | head -300 > $OUT/logcat-luna.txt
+adb shell run-as $PKG sh -c "cat files/.config/LunaDrome-Uno/playback.log 2>/dev/null; cat files/LunaDrome-Uno/playback.log 2>/dev/null; find . -name playback.log" > $OUT/playback.log 2>&1
 cat $OUT/state.txt
 ls -la $OUT
