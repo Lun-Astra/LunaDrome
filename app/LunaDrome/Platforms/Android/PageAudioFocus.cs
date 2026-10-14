@@ -54,7 +54,7 @@ internal sealed class PageAudioFocus : Java.Lang.Object, AudioManager.IOnAudioFo
 #pragma warning restore CA1422, CS0618
         }
         _held = result == AudioFocusRequest.Granted;
-        Console.WriteLine($"[LunaDrome] audio focus: {result}");
+        AndroidLog.Write($"audio focus: {result}");
     }
 
     private void Abandon()
@@ -79,6 +79,7 @@ internal sealed class PageAudioFocus : Java.Lang.Object, AudioManager.IOnAudioFo
     // Arrives on the main thread, like the session callbacks.
     public void OnAudioFocusChange(AudioFocus focusChange)
     {
+        AndroidLog.Write($"app player: audio focus {focusChange}");
         switch (focusChange)
         {
             case AudioFocus.Gain:

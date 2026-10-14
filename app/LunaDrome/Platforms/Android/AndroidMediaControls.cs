@@ -52,6 +52,14 @@ public sealed class AndroidMediaControls : IMediaControls
             Session.SetSessionActivity(PendingIntent.GetActivity(context, 0, launch, PendingIntentFlags.Immutable));
         Session.Active = true;
         PublishState();
+        // Unplugged from the car / car switched off: stop, don't carry on from the phone.
+        CarConnection.Watch(() =>
+        {
+            if (AndroidAutoBridge.PlayFromMediaId != null)
+                Raise(MediaCommand.Pause);
+            else
+                AutoPlayer.Pause();
+        });
     }
 
     public static AndroidMediaControls Create()
@@ -188,7 +196,7 @@ public sealed class AndroidMediaControls : IMediaControls
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"[LunaDrome] media notification: {ex.Message}");
+            AndroidLog.Write($"media notification: {ex.Message}");
         }
     }
 
@@ -243,6 +251,9 @@ public sealed class AndroidMediaControls : IMediaControls
 
     private void Raise(MediaCommand command) => CommandReceived?.Invoke(command);
 
+    /// <summary>The page takes the audio focus (before the background player gives it up).</summary>
+    internal void ClaimFocusForPage() => PageAudioFocus.Update(true, Raise);
+
     private sealed class SessionCallback : MediaSessionCompat.Callback
     {
         private readonly AndroidMediaControls _owner;
@@ -261,6 +272,7 @@ public sealed class AndroidMediaControls : IMediaControls
 
         private void Command(MediaCommand command, Action withoutPage)
         {
+            AndroidLog.Write($"media session: {command} -> {(PageConnected ? "app" : "background player")}");
             if (PageConnected)
                 _owner.Raise(command);
             else
@@ -280,6 +292,7 @@ public sealed class AndroidMediaControls : IMediaControls
         {
             if (string.IsNullOrEmpty(mediaId))
                 return;
+            AndroidLog.Write($"media session: play {mediaId} -> {(PageConnected ? "app" : "background player")}");
             if (PageConnected)
                 AndroidAutoBridge.PlayFromMediaId?.Invoke(mediaId);
             else
