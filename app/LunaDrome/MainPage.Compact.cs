@@ -24,13 +24,15 @@ public sealed partial class MainPage
             if (IsCompact)
                 UpdateCompactWidths(e.NewSize.Width);
         };
-#if ANDROID
-        // Android draws the app edge-to-edge, under the status bar and the navigation bar;
-        // keep the whole page inside the visible area instead.
+#if ANDROID || __IOS__
+        // Phones draw the app edge-to-edge, under the status bar / notch and the navigation bar
+        // or home indicator; keep the whole page inside the visible area instead.
         Uno.UI.Toolkit.VisibleBoundsPadding.SetPaddingMask(PageRoot, Uno.UI.Toolkit.VisibleBoundsPadding.PaddingMask.All);
-        ConnectBackButton();
         VisualizerUnavailableText.Visibility = Visibility.Visible;
         VisualizerCanvas.Visibility = Visibility.Collapsed;
+#endif
+#if ANDROID
+        ConnectBackButton();
 #endif
     }
 

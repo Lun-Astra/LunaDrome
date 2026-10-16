@@ -2850,7 +2850,7 @@ public sealed partial class MainPage : Page
         if (_osMediaControls != null)
             return;
 
-#if !ANDROID
+#if !ANDROID && !__IOS__
         // Discord status (desktop), fed by the same updates; on/off from Settings.
         _discord ??= new DiscordMediaControls(Log) { Enabled = _prefs.DiscordPresence };
 #endif

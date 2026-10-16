@@ -1798,7 +1798,7 @@
                   <controls:VisualizerCanvas x:Name="VisualizerCanvas"/>
                   <!-- Android has no audio capture for it yet (Services/LoopbackCapture.Android.cs). -->
                   <TextBlock x:Name="VisualizerUnavailableText" Visibility="Collapsed" TextWrapping="Wrap"
-                             Text="The visualizer isn't available on Android yet." Foreground="{StaticResource TextSecondaryBrush}"/>
+                             Text="The visualizer isn't available on phones yet." Foreground="{StaticResource TextSecondaryBrush}"/>
                 </Grid>
               </Grid>
             </Grid>

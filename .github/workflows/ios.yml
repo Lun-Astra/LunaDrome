@@ -1,0 +1,102 @@
+# Builds the iOS app as an unsigned .ipa, for sideloading with AltStore / SideStore (they sign it
+# with your own Apple ID on install). On a version tag (v4.0.0) it is attached to that GitHub
+# Release as LunaDrome-<version>-ios.ipa; run it by hand from the Actions tab
+# (workflow_dispatch) to just build it, plus a smoke test: the app is started in an iPhone
+# simulator and a screenshot + log are kept as artifacts.
+name: iOS
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  ipa:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Newest Xcode
+        run: |
+          ls -d /Applications/Xcode*.app
+          xcode="$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)"
+          sudo xcode-select -s "$xcode/Contents/Developer"
+          xcodebuild -version
+      - name: iOS workload
+        run: dotnet workload install ios
+      - name: Version from tag
+        id: v
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          [[ "$GITHUB_REF_TYPE" == "tag" ]] || v="0.0.1"
+          IFS=. read -r a b c <<< "$v"
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "code=$(( a * 10000 + b * 100 + ${c:-0} ))" >> "$GITHUB_OUTPUT"
+      - name: Build (device, unsigned)
+        run: >
+          dotnet build app/LunaDrome/LunaDrome.csproj -f net10.0-ios -c Release -r ios-arm64
+          -p:EnableIos=true
+          -p:EnableCodeSigning=false
+          -p:ApplicationDisplayVersion=${{ steps.v.outputs.version }}
+          -p:ApplicationVersion=${{ steps.v.outputs.code }}
+      - name: Package the .ipa
+        run: |
+          app="$(find app/LunaDrome/bin/Release/net10.0-ios/ios-arm64 -maxdepth 2 -name '*.app' -type d | head -1)"
+          echo "app bundle: $app"
+          mkdir -p dist/Payload
+          cp -R "$app" dist/Payload/
+          (cd dist && zip -qry "LunaDrome-${{ steps.v.outputs.version }}-ios.ipa" Payload && rm -rf Payload)
+          ls -la dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios
+          path: dist/*.ipa
+          retention-days: 1
+      - if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.ipa
+
+  simulator:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Newest Xcode
+        run: |
+          xcode="$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)"
+          sudo xcode-select -s "$xcode/Contents/Developer"
+      - name: iOS workload
+        run: dotnet workload install ios
+      - name: Build (simulator)
+        run: >
+          dotnet build app/LunaDrome/LunaDrome.csproj -f net10.0-ios -c Debug -r iossimulator-arm64
+          -p:EnableIos=true
+      - name: Start it in an iPhone simulator
+        run: |
+          mkdir -p sim-out
+          app="$(find app/LunaDrome/bin/Debug/net10.0-ios/iossimulator-arm64 -maxdepth 2 -name '*.app' -type d | head -1)"
+          udid="$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(x["udid"] for r in sorted(d, reverse=True) for x in d[r] if x["name"].startswith("iPhone")))')"
+          xcrun simctl boot "$udid"
+          xcrun simctl bootstatus "$udid" -b
+          xcrun simctl install "$udid" "$app"
+          xcrun simctl launch "$udid" com.lunastra.lunadrome | tee sim-out/launch.txt
+          sleep 60
+          xcrun simctl io "$udid" screenshot sim-out/01-start.png
+          xcrun simctl spawn "$udid" launchctl list | grep -i lunadrome | tee sim-out/running.txt || echo "NOT RUNNING" | tee sim-out/running.txt
+          xcrun simctl spawn "$udid" log show --last 3m --style compact --predicate 'process CONTAINS "LunaDrome"' > sim-out/log.txt || true
+          tail -50 sim-out/log.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ios-simulator
+          path: sim-out
+          retention-days: 3

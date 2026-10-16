@@ -5,6 +5,9 @@
          default target it would make every desktop build restore the Android workload/runtime
          packs too, which the Windows/Linux release runners (and a plain desktop dev setup) lack. -->
     <TargetFrameworks Condition="'$(EnableAndroid)' == 'true'">$(TargetFrameworks);net10.0-android</TargetFrameworks>
+    <!-- iOS likewise (-p:EnableIos=true, .github/workflows/ios.yml on a Mac runner): an unsigned
+         .ipa for sideloading with AltStore / SideStore. -->
+    <TargetFrameworks Condition="'$(EnableIos)' == 'true'">$(TargetFrameworks);net10.0-ios</TargetFrameworks>
 
     <OutputType>Exe</OutputType>
     <UnoSingleProject>true</UnoSingleProject>
@@ -15,6 +18,7 @@
     <ApplicationId>com.lunastra.lunadrome</ApplicationId>
     <!-- AndroidX Media (Android Auto, #26) needs Android 6+. -->
     <SupportedOSPlatformVersion Condition="$(TargetFramework.Contains('android'))">23.0</SupportedOSPlatformVersion>
+    <SupportedOSPlatformVersion Condition="$(TargetFramework.Contains('ios'))">15.0</SupportedOSPlatformVersion>
     <!-- Android launcher icon / splash: the moon from Assets/Icons + Assets/Splash on the app's dark background. -->
     <UnoIconBackgroundColor>#141517</UnoIconBackgroundColor>
     <UnoSplashScreenColor>#141517</UnoSplashScreenColor>
@@ -56,15 +60,17 @@
   </PropertyGroup>
 
   <!-- The visualizer's audio capture (WASAPI loopback / PulseAudio) is desktop-only. On
-       Android a no-op LoopbackCapture.Android.cs takes its place (no visualizer there yet). -->
-  <ItemGroup Condition="!$(TargetFramework.Contains('android'))">
+       phones a no-op LoopbackCapture.Android.cs takes its place (no visualizer there yet). -->
+  <ItemGroup Condition="$(TargetFramework.Contains('desktop'))">
     <PackageReference Include="NAudio.Wasapi" />
     <Compile Remove="Services\LoopbackCapture.Android.cs" />
   </ItemGroup>
-  <ItemGroup Condition="$(TargetFramework.Contains('android'))">
+  <ItemGroup Condition="!$(TargetFramework.Contains('desktop'))">
     <Compile Remove="Services\LoopbackCapture.cs" />
     <!-- Linux media keys over D-Bus (Tmds.DBus comes with Uno's desktop runtime only). -->
     <Compile Remove="Services\MprisMediaControls.cs" />
+  </ItemGroup>
+  <ItemGroup Condition="$(TargetFramework.Contains('android'))">
     <!-- MediaSessionCompat / MediaBrowserServiceCompat: notification controls + Android Auto (#26). -->
     <PackageReference Include="Xamarin.AndroidX.Media" />
   </ItemGroup>
