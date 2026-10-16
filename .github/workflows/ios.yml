@@ -16,18 +16,21 @@ permissions:
 
 jobs:
   ipa:
-    runs-on: macos-26
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
       - name: Xcode 26.5
-        # Matches the pinned iOS workload below (Xcode_26.6.0 on the runner lacks its macOS SDK).
+        # Matches the pinned iOS workload below (macos-26 runners lack the macOS SDK path the iOS build's actool step uses).
         run: |
           ls -d /Applications/Xcode*.app
-          sudo xcode-select -s /Applications/Xcode_26.5.0.app/Contents/Developer
+          x="$(ls -d /Applications/Xcode_26.5*.app 2>/dev/null | sort -V | tail -1)"
+          [ -n "$x" ] || x="$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)"
+          sudo xcode-select -s "$x/Contents/Developer"
           xcodebuild -version
+          ls -la "$x/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/" || true
       - name: iOS workload
         # Pinned to the newest iOS SDK built for Xcode 26: the runners don't have Xcode 27 yet,
         # which the latest (27.x) iOS workload requires. It asks for Xcode 26.6, but the runner's
@@ -73,14 +76,20 @@ jobs:
 
   simulator:
     if: github.event_name == 'workflow_dispatch' || github.ref_name == 'ios-port'
-    runs-on: macos-26
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
       - name: Xcode 26.5
-        run: sudo xcode-select -s /Applications/Xcode_26.5.0.app/Contents/Developer
+        run: |
+          ls -d /Applications/Xcode*.app
+          x="$(ls -d /Applications/Xcode_26.5*.app 2>/dev/null | sort -V | tail -1)"
+          [ -n "$x" ] || x="$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)"
+          sudo xcode-select -s "$x/Contents/Developer"
+          xcodebuild -version
+          ls -la "$x/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/" || true
       - name: iOS workload
         # Pinned to the newest iOS SDK built for Xcode 26: the runners don't have Xcode 27 yet,
         # which the latest (27.x) iOS workload requires. It asks for Xcode 26.6, but the runner's
