@@ -43,7 +43,7 @@ public sealed partial class MainPage : Page
 
     private readonly NavidromeClient _client = new();
     // Not readonly: a crossfade swaps in the second player for the next song (MainPage.SleepCrossfade.cs).
-    private MediaPlayer _player = new();
+    private Windows.Media.Playback.MediaPlayer _player = new();
     private readonly DispatcherTimer _progressTimer;
 
     private readonly ObservableCollection<QueueEntry> _queue = new();
@@ -2850,7 +2850,7 @@ public sealed partial class MainPage : Page
         if (_osMediaControls != null)
             return;
 
-#if !ANDROID
+#if !ANDROID && !__IOS__
         // Discord status (desktop), fed by the same updates; on/off from Settings.
         _discord ??= new DiscordMediaControls(Log) { Enabled = _prefs.DiscordPresence };
 #endif

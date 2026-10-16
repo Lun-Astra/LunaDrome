@@ -194,21 +194,21 @@ public sealed partial class MainPage
 
     // ================= Crossfade =================
 
-    private MediaPlayer? _fadingOut;
+    private Windows.Media.Playback.MediaPlayer? _fadingOut;
     // The other player of the pair, idle between crossfades. Players are reused, never disposed:
     // disposing one (while Uno's 16 ms timer and queued callbacks still read its VLC player)
     // crashed the app at the end of a crossfade.
-    private MediaPlayer? _sparePlayer;
+    private Windows.Media.Playback.MediaPlayer? _sparePlayer;
     private DateTime _fadeStart;
     private double _fadeSeconds;
     private readonly DispatcherTimer _fadeTimer = new() { Interval = TimeSpan.FromMilliseconds(50) };
 
     // Windows: players whose VLC output is DirectSound (see VlcAudioOutput). Two players on VLC's
     // default output share one volume, so a crossfade only runs once both are switched.
-    private readonly HashSet<MediaPlayer> _ownVolumePlayers = new();
+    private readonly HashSet<Windows.Media.Playback.MediaPlayer> _ownVolumePlayers = new();
 
     /// <summary>Before a player first plays: on Windows give it a volume of its own.</summary>
-    private void PrepareAudioOutput(MediaPlayer player)
+    private void PrepareAudioOutput(Windows.Media.Playback.MediaPlayer player)
     {
         if (!OperatingSystem.IsWindows() || _ownVolumePlayers.Contains(player))
             return;
@@ -218,12 +218,12 @@ public sealed partial class MainPage
             Log("couldn't switch the player to DirectSound - crossfade stays off");
     }
 
-    private bool PlayersHaveOwnVolume(MediaPlayer a, MediaPlayer b) =>
+    private bool PlayersHaveOwnVolume(Windows.Media.Playback.MediaPlayer a, Windows.Media.Playback.MediaPlayer b) =>
         !OperatingSystem.IsWindows() || (_ownVolumePlayers.Contains(a) && _ownVolumePlayers.Contains(b));
 
     /// <summary>Hooks the events of a player; they're ignored once it's no longer the current one
     /// (the outgoing player of a crossfade keeps reporting until it is stopped).</summary>
-    private void HookPlayer(MediaPlayer player)
+    private void HookPlayer(Windows.Media.Playback.MediaPlayer player)
     {
         player.MediaEnded += (s, _) => DispatcherQueue.TryEnqueue(() =>
         {
@@ -287,7 +287,7 @@ public sealed partial class MainPage
 
         if (_sparePlayer == null)
         {
-            _sparePlayer = new MediaPlayer { Volume = 0 };
+            _sparePlayer = new Windows.Media.Playback.MediaPlayer { Volume = 0 };
             HookPlayer(_sparePlayer);
             PrepareAudioOutput(_sparePlayer);
         }

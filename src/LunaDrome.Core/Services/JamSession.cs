@@ -36,6 +36,11 @@ public sealed class JamSession : IDisposable
     public event Action<JamSpeaker?>? SpeakerLost;
     /// <summary>The server rejected the host token - log in again.</summary>
     public event Action? AuthLost;
+    /// <summary>Emoji reactions the guests sent since the last poll (#34).</summary>
+    public event Action<IReadOnlyList<string>>? ReactionsReceived;
+
+    // The newest reaction seen; -1 until the first poll, which only sets it (no replay of old ones).
+    private long _reactionSeq = -1;
 
     public JamSession(string deviceId, string deviceName)
     {
@@ -76,6 +81,7 @@ public sealed class JamSession : IDisposable
             ClockOffsetSeconds = state.ServerTime - DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000.0;
             State = state;
             LastError = null;
+            await PollReactionsAsync(cancellationToken);
         }
         catch (JamiDromeException ex) when (ex.IsAuthError)
         {
@@ -87,6 +93,22 @@ public sealed class JamSession : IDisposable
             LastError = ex.Message;
         }
         StateChanged?.Invoke();
+    }
+
+    private async Task PollReactionsAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await Client.GetReactionsAsync(Math.Max(0, _reactionSeq), cancellationToken);
+            var fresh = _reactionSeq < 0 ? new List<string>() : result.Reactions.Select(r => r.Emoji).ToList();
+            _reactionSeq = result.Latest;
+            if (fresh.Count > 0)
+                ReactionsReceived?.Invoke(fresh);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // An older JamiDrome without reactions, or a blip: the next poll tries again.
+        }
     }
 
     /// <summary>"Play here": makes this device the speaker (un-pausing a jam that paused because
