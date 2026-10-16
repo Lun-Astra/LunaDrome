@@ -8,7 +8,6 @@ name: iOS
 on:
   push:
     tags: ['v*']
-    branches: [ios-port]   # TEMP while porting: drop before merging
   workflow_dispatch:
 
 permissions:
@@ -27,7 +26,7 @@ jobs:
         run: |
           ls -d /Applications/Xcode*.app
           x="$(ls -d /Applications/Xcode_26.6*.app | sort -V | tail -1)"
-          # The real folder (Xcode_26.3.app is a link to Xcode_26.3.0.app): the iOS build tasks
+          # The real folder (Xcode_26.6.app is a link to Xcode_26.6.0.app): the iOS build tasks
           # resolve it, so everything must agree on the same path.
           x="$(cd "$x" && pwd -P)"
           sudo xcode-select -s "$x/Contents/Developer"
@@ -77,7 +76,7 @@ jobs:
           files: dist/*.ipa
 
   simulator:
-    if: github.event_name == 'workflow_dispatch' || github.ref_name == 'ios-port'
+    if: github.event_name == 'workflow_dispatch'
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
@@ -88,7 +87,7 @@ jobs:
         run: |
           ls -d /Applications/Xcode*.app
           x="$(ls -d /Applications/Xcode_26.6*.app | sort -V | tail -1)"
-          # The real folder (Xcode_26.3.app is a link to Xcode_26.3.0.app): the iOS build tasks
+          # The real folder (Xcode_26.6.app is a link to Xcode_26.6.0.app): the iOS build tasks
           # resolve it, so everything must agree on the same path.
           x="$(cd "$x" && pwd -P)"
           sudo xcode-select -s "$x/Contents/Developer"

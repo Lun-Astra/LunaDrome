@@ -5,7 +5,7 @@ it via the Subsonic API. Inspired by Feishin / Finamp / Ensemble, built to grow 
 self-hosted music downloader and SendSpin Bluetooth speaker support.
 
 Built with [Uno Platform](https://platform.uno/) (C# / WinUI XAML, Skia renderer), so one codebase
-runs on Windows and Linux today, with macOS / iOS / Android as later targets. (The original WPF
+runs on Windows, Linux, Android and iOS (macOS may follow). (The original WPF
 Windows-only app was retired in favor of this one; it's still in git history.)
 
 ## Features
@@ -61,6 +61,7 @@ Grab the latest build from the [Releases](https://github.com/Lun-Astra/LunaDrome
   optional desktop shortcut, uninstall from Apps & features.
 - **Debian / Ubuntu:** `sudo apt install ./lunadrome_<version>_amd64.deb` (pulls in VLC libraries).
 - **Android:** `LunaDrome-<version>-android.apk` - open it on the phone and allow installing apps from your browser/file manager when asked. Phones get a compact layout (☰ menu); no visualizer on Android yet.
+- **iPhone / iPad:** `LunaDrome-<version>-ios.ipa` - unsigned, so install it with [AltStore](https://altstore.io) or [SideStore](https://sidestore.io) and your own (free) Apple ID; they re-sign it every 7 days. Same compact layout as Android, with lock-screen / Control Center controls and background playback; no visualizer and no CarPlay (that needs an Apple entitlement).
 - **Other Linux (x64):** extract `LunaDrome-<version>-linux-x64.tar.gz`, run `./install.sh`
   (or `sudo ./install.sh --system`); needs libvlc, and `parec` for the visualizer.
 
