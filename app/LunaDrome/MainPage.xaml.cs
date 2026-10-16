@@ -43,7 +43,7 @@ public sealed partial class MainPage : Page
 
     private readonly NavidromeClient _client = new();
     // Not readonly: a crossfade swaps in the second player for the next song (MainPage.SleepCrossfade.cs).
-    private MediaPlayer _player = new();
+    private Windows.Media.Playback.MediaPlayer _player = new();
     private readonly DispatcherTimer _progressTimer;
 
     private readonly ObservableCollection<QueueEntry> _queue = new();

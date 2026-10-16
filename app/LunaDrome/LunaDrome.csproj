@@ -60,10 +60,10 @@
   </PropertyGroup>
 
   <!-- The visualizer's audio capture (WASAPI loopback / PulseAudio) is desktop-only. On
-       phones a no-op LoopbackCapture.Android.cs takes its place (no visualizer there yet). -->
+       phones a no-op LoopbackCapture.Phone.cs takes its place (no visualizer there yet). -->
   <ItemGroup Condition="$(TargetFramework.Contains('desktop'))">
     <PackageReference Include="NAudio.Wasapi" />
-    <Compile Remove="Services\LoopbackCapture.Android.cs" />
+    <Compile Remove="Services\LoopbackCapture.Phone.cs" />
   </ItemGroup>
   <ItemGroup Condition="!$(TargetFramework.Contains('desktop'))">
     <Compile Remove="Services\LoopbackCapture.cs" />

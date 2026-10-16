@@ -18,7 +18,7 @@ internal static class VlcAudioOutput
 
     /// <summary>Takes effect when the player next starts audio, so call it before the first song.
     /// False when the VLC player can't be reached (Android, or a changed Uno).</summary>
-    public static bool TrySet(MediaPlayer player, string module)
+    public static bool TrySet(Windows.Media.Playback.MediaPlayer player, string module)
     {
         try
         {
@@ -33,7 +33,7 @@ internal static class VlcAudioOutput
         }
     }
 
-    private static object? FindExtension(MediaPlayer player)
+    private static object? FindExtension(Windows.Media.Playback.MediaPlayer player)
     {
         foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
         {
