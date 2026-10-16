@@ -29,7 +29,12 @@ jobs:
           sudo xcode-select -s "$xcode/Contents/Developer"
           xcodebuild -version
       - name: iOS workload
-        run: dotnet workload install ios
+        # Pinned to the newest iOS SDK built for Xcode 26: the runners don't have Xcode 27 yet,
+        # which the latest (27.x) iOS workload requires. Bump when they do.
+        run: |
+          echo '{"microsoft.net.sdk.ios": "26.5.10318/10.0.100"}' > "$RUNNER_TEMP/ios-rollback.json"
+          dotnet workload install ios --from-rollback-file "$RUNNER_TEMP/ios-rollback.json"
+          dotnet workload list
       - name: Version from tag
         id: v
         run: |
@@ -76,7 +81,12 @@ jobs:
           xcode="$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)"
           sudo xcode-select -s "$xcode/Contents/Developer"
       - name: iOS workload
-        run: dotnet workload install ios
+        # Pinned to the newest iOS SDK built for Xcode 26: the runners don't have Xcode 27 yet,
+        # which the latest (27.x) iOS workload requires. Bump when they do.
+        run: |
+          echo '{"microsoft.net.sdk.ios": "26.5.10318/10.0.100"}' > "$RUNNER_TEMP/ios-rollback.json"
+          dotnet workload install ios --from-rollback-file "$RUNNER_TEMP/ios-rollback.json"
+          dotnet workload list
       - name: Build (simulator)
         run: >
           dotnet build app/LunaDrome/LunaDrome.csproj -f net10.0-ios -c Debug -r iossimulator-arm64
