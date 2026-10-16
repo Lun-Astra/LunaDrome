@@ -31,6 +31,10 @@ jobs:
           sudo xcode-select -s "$x/Contents/Developer"
           xcodebuild -version
           ls -la "$x/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/" || true
+          # A freshly selected Xcode needs its first-launch setup, or xcrun can't find actool.
+          sudo xcodebuild -runFirstLaunch
+          xcrun -sdk "$x/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk" -find actool || true
+          xcrun --find actool || true
       - name: iOS workload
         # Pinned to the newest iOS SDK built for Xcode 26: the runners don't have Xcode 27 yet,
         # which the latest (27.x) iOS workload requires. It asks for Xcode 26.6, but the runner's
@@ -90,6 +94,10 @@ jobs:
           sudo xcode-select -s "$x/Contents/Developer"
           xcodebuild -version
           ls -la "$x/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/" || true
+          # A freshly selected Xcode needs its first-launch setup, or xcrun can't find actool.
+          sudo xcodebuild -runFirstLaunch
+          xcrun -sdk "$x/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk" -find actool || true
+          xcrun --find actool || true
       - name: iOS workload
         # Pinned to the newest iOS SDK built for Xcode 26: the runners don't have Xcode 27 yet,
         # which the latest (27.x) iOS workload requires. It asks for Xcode 26.6, but the runner's
