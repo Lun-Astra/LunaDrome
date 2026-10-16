@@ -740,6 +740,16 @@ public sealed partial class MainPage
         var invitesHeader = new TextBlock { Text = "Active links", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(0, 8, 0, 0) };
         var invitesList = new StackPanel { Spacing = 6 };
 
+        void ShowLink(string link)
+        {
+            linkBox.Text = link;
+            linkBox.Visibility = Visibility.Visible;
+            copyButton.Visibility = Visibility.Visible;
+            qr.Source = new BitmapImage(new Uri(_jam.Client.InviteQrUrl(link)));
+            qr.Visibility = Visibility.Visible;
+            CopyToClipboard(link);
+        }
+
         async Task RefreshInvitesAsync()
         {
             invitesList.Children.Clear();
@@ -761,11 +771,22 @@ public sealed partial class MainPage
                 var row = new Grid { ColumnSpacing = 8 };
                 row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
                 row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
                 row.Children.Add(new TextBlock
                 {
                     VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis,
                     Text = $"…{invite.Token[Math.Max(0, invite.Token.Length - 6)..]}  ·  expires {expires:ddd HH:mm}",
                 });
+                // #36: an existing link's address + QR code again (e.g. for someone who arrives later).
+                var show = new Button { Content = "Show", Style = (Style)Application.Current.Resources["TextButtonStyle"] };
+                show.Click += (_, _) =>
+                {
+                    var link = _jam.Client.InviteLink(invite.Token);
+                    ShowLink(link);
+                    status.Text = $"Link copied (expires {expires:ddd HH:mm}). Send it, or let them scan the code.";
+                };
+                Grid.SetColumn(show, 1);
+                row.Children.Add(show);
                 var delete = new Button { Content = "Delete", Style = (Style)Application.Current.Resources["TextButtonStyle"] };
                 var armed = false;
                 delete.Click += async (_, _) =>
@@ -789,7 +810,7 @@ public sealed partial class MainPage
                     }
                     await RefreshInvitesAsync();
                 };
-                Grid.SetColumn(delete, 1);
+                Grid.SetColumn(delete, 2);
                 row.Children.Add(delete);
                 invitesList.Children.Add(row);
             }
@@ -810,12 +831,7 @@ public sealed partial class MainPage
             try
             {
                 var link = await _jam.Client.CreateInviteAsync(durations[Math.Max(0, ttlBox.SelectedIndex)].Ttl);
-                linkBox.Text = link;
-                linkBox.Visibility = Visibility.Visible;
-                copyButton.Visibility = Visibility.Visible;
-                qr.Source = new BitmapImage(new Uri(_jam.Client.InviteQrUrl(link)));
-                qr.Visibility = Visibility.Visible;
-                CopyToClipboard(link);
+                ShowLink(link);
                 status.Text = "Link copied. Send it to your friends, or let them scan the code.";
                 await RefreshInvitesAsync();
             }
@@ -834,7 +850,8 @@ public sealed partial class MainPage
         var dialog = new ContentDialog
         {
             Title = "Share the jam",
-            Content = content,
+            // Scrolls: with a QR code shown, the list of links no longer fit (#36).
+            Content = new ScrollViewer { Content = content, VerticalScrollBarVisibility = ScrollBarVisibility.Auto },
             CloseButtonText = "Done",
             XamlRoot = this.XamlRoot
         };
