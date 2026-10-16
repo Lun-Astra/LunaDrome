@@ -8,6 +8,7 @@ name: iOS
 on:
   push:
     tags: ['v*']
+    branches: [ios-port]   # TEMP while porting: drop before merging
   workflow_dispatch:
 
 permissions:
@@ -63,7 +64,7 @@ jobs:
           files: dist/*.ipa
 
   simulator:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' || github.ref_name == 'ios-port'
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
