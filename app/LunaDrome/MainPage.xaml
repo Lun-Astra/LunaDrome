@@ -2161,5 +2161,8 @@
                 AutomationProperties.Name="More actions"/>
       </Grid>
     </Border>
+
+    <!-- Jam guests' emoji reactions float up here (#34); never in the way of clicks. -->
+    <Canvas x:Name="ReactionLayer" IsHitTestVisible="False" Grid.RowSpan="10" Grid.ColumnSpan="10"/>
   </Grid>
 </Page>
