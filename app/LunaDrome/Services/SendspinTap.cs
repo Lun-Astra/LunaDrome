@@ -34,11 +34,9 @@ internal sealed class SendspinTap
         _resume = (_, _) => _source.Resume();
         _flush = (_, _) => _source.Flush();
         _drain = _ => _source.Drain();
-        _volume = (_, volume, mute) =>
-        {
-            _source.Gain = volume;
-            _source.Muted = mute;
-        };
+        // Registered so VLC doesn't scale the samples itself, but the level comes from SetGain:
+        // what VLC reports here under audio callbacks isn't reliable on every platform.
+        _volume = (_, _, _) => { };
     }
 
     public static bool IsAttached(Windows.Media.Playback.MediaPlayer player) => Taps.TryGetValue(player, out _);
@@ -52,9 +50,16 @@ internal sealed class SendspinTap
         vlc.SetAudioFormat("S16N", SendspinOutput.SampleRate, SendspinOutput.Channels);
         vlc.SetAudioCallbacks(tap._play, tap._pause, tap._resume, tap._flush, tap._drain);
         vlc.SetVolumeCallback(tap._volume);
-        source.Gain = (float)player.Volume;   // VLC reports its own volume as 0 under callbacks
         Taps.AddOrUpdate(player, tap);
         return true;
+    }
+
+    /// <summary>The player's volume (0-1) as the stream's level; LunaDrome calls this wherever it
+    /// sets a player's volume (slider, crossfade, sleep timer).</summary>
+    public static void SetGain(Windows.Media.Playback.MediaPlayer player, double volume)
+    {
+        if (Taps.TryGetValue(player, out var tap))
+            tap._source.Gain = (float)volume;
     }
 
     /// <summary>Stops taking the player's audio; the caller then picks a sound-card output

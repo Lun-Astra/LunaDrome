@@ -165,7 +165,7 @@ public sealed partial class MainPage : Page
         InitJam();
         _client.StreamQuality = _prefs.StreamQuality;
         VolumeSlider.Value = Math.Clamp(_prefs.Volume, 0, 1);
-        _player.Volume = VolumeSlider.Value;
+        SetPlayerVolume(_player, VolumeSlider.Value);
         // handledEventsToo: the Slider may handle the wheel itself without moving.
         VolumeSlider.AddHandler(PointerWheelChangedEvent, new PointerEventHandler(VolumeSlider_PointerWheelChanged), true);
         // Player events (MediaEnded, failures, seek-on-open) live in HookPlayer: a crossfade
