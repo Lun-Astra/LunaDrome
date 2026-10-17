@@ -342,6 +342,8 @@ public sealed partial class MainPage
                 _sendspinSources[player] = source = _sendspin.CreateSource();
             if (!SendspinTap.TryAttach(player, source))
                 Log("sendspin: couldn't reach the VLC player to take its audio");
+            // The level LunaDrome wants (MediaPlayer.Volume may already hold VLC's 0 by now).
+            SendspinTap.SetGain(player, ReferenceEquals(player, _player) && _fadingOut == null ? PlaybackVolume : 0);
         }
         else if (SendspinTap.IsAttached(player))
         {

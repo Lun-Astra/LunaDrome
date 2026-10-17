@@ -21,7 +21,14 @@ public sealed partial class MainPage
     {
         // During a crossfade the fade timer sets both players' volumes itself.
         if (_fadingOut == null)
-            _player.Volume = PlaybackVolume;
+            SetPlayerVolume(_player, PlaybackVolume);
+    }
+
+    /// <summary>Sets a player's volume, and the level of its audio on Sendspin speakers.</summary>
+    private static void SetPlayerVolume(Windows.Media.Playback.MediaPlayer player, double volume)
+    {
+        player.Volume = volume;
+        SendspinTap.SetGain(player, volume);
     }
 
     /// <summary>Every progress tick (and when media opens): puts the volume back if VLC changed it.</summary>
@@ -40,7 +47,7 @@ public sealed partial class MainPage
         if (Math.Abs(_player.Volume - wanted) > 0.005)
         {
             Log($"volume was {_player.Volume:0.00} instead of {wanted:0.00} - setting it again");
-            _player.Volume = wanted;
+            SetPlayerVolume(_player, wanted);
         }
     }
 
@@ -307,7 +314,7 @@ public sealed partial class MainPage
         _fadingOut = _player;
         _player = _sparePlayer;
         _sparePlayer = null;
-        _player.Volume = 0;
+        SetPlayerVolume(_player, 0);
         _fadeStart = DateTime.UtcNow;
         _fadeSeconds = seconds;
         PlayEntry(next, crossfading: true);
@@ -326,8 +333,8 @@ public sealed partial class MainPage
         // Equal-power curves: the sum sounds equally loud all the way through.
         var t = Math.Clamp((DateTime.UtcNow - _fadeStart).TotalSeconds / _fadeSeconds, 0, 1);
         var volume = PlaybackVolume;
-        _player.Volume = volume * Math.Sin(t * Math.PI / 2);
-        _fadingOut.Volume = volume * Math.Cos(t * Math.PI / 2);
+        SetPlayerVolume(_player, volume * Math.Sin(t * Math.PI / 2));
+        SetPlayerVolume(_fadingOut, volume * Math.Cos(t * Math.PI / 2));
         if (t >= 1)
             FinishCrossfade();
     }
