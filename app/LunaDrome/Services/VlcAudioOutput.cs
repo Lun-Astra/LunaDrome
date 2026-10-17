@@ -22,14 +22,27 @@ internal static class VlcAudioOutput
     {
         try
         {
-            var extension = FindExtension(player);
-            var vlcPlayer = extension?.GetType().GetProperty("VlcPlayer", AnyMember | BindingFlags.Instance)?.GetValue(extension);
+            var vlcPlayer = GetVlcPlayer(player);
             var setAudioOutput = vlcPlayer?.GetType().GetMethod("SetAudioOutput", new[] { typeof(string) });
             return setAudioOutput?.Invoke(vlcPlayer, new object[] { module }) is true;
         }
         catch
         {
             return false;
+        }
+    }
+
+    /// <summary>The LibVLCSharp.Shared.MediaPlayer behind a desktop player (null on phones).</summary>
+    public static object? GetVlcPlayer(Windows.Media.Playback.MediaPlayer player)
+    {
+        try
+        {
+            var extension = FindExtension(player);
+            return extension?.GetType().GetProperty("VlcPlayer", AnyMember | BindingFlags.Instance)?.GetValue(extension);
+        }
+        catch
+        {
+            return null;
         }
     }
 

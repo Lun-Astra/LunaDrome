@@ -2012,7 +2012,7 @@
           <Grid.ColumnDefinitions>
             <ColumnDefinition x:Name="PlayInfoColumn" Width="300"/>
             <ColumnDefinition x:Name="PlayControlsColumn" Width="*"/>
-            <ColumnDefinition x:Name="PlayExtraColumn" Width="200"/>
+            <ColumnDefinition x:Name="PlayExtraColumn" Width="240"/>
           </Grid.ColumnDefinitions>
 
           <!-- Now playing (on phones: swipe left / right for next / previous, #29). The host's width
@@ -2129,6 +2129,13 @@
 
           <!-- Volume -->
           <StackPanel Grid.Column="2" x:Name="PlayExtraPanel" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Right">
+            <!-- Output picker: this computer or Sendspin speakers (MainPage.Sendspin.cs). -->
+            <Button x:Name="OutputButton" Style="{StaticResource IconButtonStyle}" Margin="0,0,8,0"
+                    Click="OutputButton_Click" AutomationProperties.Name="Play on" ToolTipService.ToolTip="Play on: this computer">
+              <Path x:Name="OutputIcon" Width="16" Height="15" Stretch="Uniform" StrokeThickness="1.5" StrokeLineJoin="Round"
+                    Stroke="{StaticResource TextSecondaryBrush}"
+                    Data="M2,8 L5,8 L10,3.5 L10,20.5 L5,16 L2,16 Z M14,8.5 A4.5,4.5 0 0 1 14,15.5 M16.5,5.5 A8.5,8.5 0 0 1 16.5,18.5"/>
+            </Button>
             <Button x:Name="SleepTimerButton" Style="{StaticResource IconButtonStyle}" Margin="0,0,12,0"
                     Click="SleepTimerButton_Click" AutomationProperties.Name="Sleep timer" ToolTipService.ToolTip="Sleep timer">
               <Path x:Name="SleepTimerIcon" Width="15" Height="15" Stretch="Uniform" StrokeThickness="1.5" StrokeLineJoin="Round"

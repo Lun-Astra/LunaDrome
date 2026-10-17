@@ -33,6 +33,9 @@ public sealed partial class MainPage
     {
         if (_fadingOut != null)
             return;   // the fade timer sets both volumes
+        // On Sendspin VLC reports 0 (its audio goes to a callback, which gets the real volume).
+        if (SendspinTap.IsAttached(_player))
+            return;
         var wanted = PlaybackVolume;
         if (Math.Abs(_player.Volume - wanted) > 0.005)
         {
@@ -210,12 +213,15 @@ public sealed partial class MainPage
     /// <summary>Before a player first plays: on Windows give it a volume of its own.</summary>
     private void PrepareAudioOutput(Windows.Media.Playback.MediaPlayer player)
     {
-        if (!OperatingSystem.IsWindows() || _ownVolumePlayers.Contains(player))
-            return;
-        if (VlcAudioOutput.TrySet(player, "directsound"))
-            _ownVolumePlayers.Add(player);
-        else
-            Log("couldn't switch the player to DirectSound - crossfade stays off");
+        if (OperatingSystem.IsWindows() && !_ownVolumePlayers.Contains(player))
+        {
+            if (VlcAudioOutput.TrySet(player, "directsound"))
+                _ownVolumePlayers.Add(player);
+            else
+                Log("couldn't switch the player to DirectSound - crossfade stays off");
+        }
+        // Playing on Sendspin speakers: a new (crossfade) player sends its audio there too.
+        ApplySendspinRoute(player);
     }
 
     private bool PlayersHaveOwnVolume(Windows.Media.Playback.MediaPlayer a, Windows.Media.Playback.MediaPlayer b) =>

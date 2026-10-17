@@ -148,7 +148,7 @@ public sealed partial class MainPage
         // On a phone the info takes what the controls leave (see NowPlayingInfoHost_SizeChanged).
         PlayInfoColumn.Width = compact ? new GridLength(1, GridUnitType.Star) : new GridLength(300);
         PlayControlsColumn.Width = compact ? GridLength.Auto : new GridLength(1, GridUnitType.Star);
-        PlayExtraColumn.Width = new GridLength(compact ? 0 : 200);
+        PlayExtraColumn.Width = new GridLength(compact ? 0 : 240);
         PlayExtraPanel.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
         NowPlayingArtBox.Width = NowPlayingArtBox.Height = compact ? 44 : 56;
         NowPlayingTextPanel.Margin = compact ? new Thickness(10, 0, 0, 0) : new Thickness(12, 0, 0, 0);

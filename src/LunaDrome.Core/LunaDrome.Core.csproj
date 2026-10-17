@@ -6,4 +6,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!-- mDNS discovery of Sendspin speakers (_sendspin._tcp). -->
+    <PackageReference Include="Zeroconf" Version="3.7.16" />
+  </ItemGroup>
+
 </Project>

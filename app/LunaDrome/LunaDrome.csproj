@@ -64,9 +64,12 @@
   <ItemGroup Condition="$(TargetFramework.Contains('desktop'))">
     <PackageReference Include="NAudio.Wasapi" />
     <Compile Remove="Services\LoopbackCapture.Phone.cs" />
+    <!-- Sendspin output taps LibVLC's decoded audio (desktop players are LibVLC). -->
+    <Compile Remove="Services\SendspinTap.Phone.cs" />
   </ItemGroup>
   <ItemGroup Condition="!$(TargetFramework.Contains('desktop'))">
     <Compile Remove="Services\LoopbackCapture.cs" />
+    <Compile Remove="Services\SendspinTap.cs" />
     <!-- Linux media keys over D-Bus (Tmds.DBus comes with Uno's desktop runtime only). -->
     <Compile Remove="Services\MprisMediaControls.cs" />
   </ItemGroup>

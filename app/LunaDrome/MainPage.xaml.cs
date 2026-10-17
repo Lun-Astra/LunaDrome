@@ -114,6 +114,7 @@ public sealed partial class MainPage : Page
         ShareLogButton.Visibility = Visibility.Visible;
 #endif
         InitCompactLayout();
+        InitSendspin();
         Loaded += (_, _) => EnsureMediaControls();
         Unloaded += (_, _) =>
         {
@@ -122,6 +123,7 @@ public sealed partial class MainPage : Page
             _loopback.Dispose();
             _prefetcher.Dispose();
             _mediaControls?.Dispose();
+            DisposeSendspin();
         };
         _visualizerTimer.Tick += OnVisualizerRenderFrame;
 
@@ -2856,7 +2858,9 @@ public sealed partial class MainPage : Page
 #endif
         _osMediaControls = MediaControls.Create();
         Log($"media controls: {_osMediaControls?.GetType().Name ?? "not available yet"}");
-        _mediaControls = new MediaControlsGroup(_osMediaControls, _discord);
+        // Sendspin speakers get the same now-playing updates (and send their buttons) while
+        // LunaDrome streams to them; MainPage.Sendspin.cs hooks up their commands.
+        _mediaControls = new MediaControlsGroup(_osMediaControls, _discord, _sendspinControls);
         if (_osMediaControls != null)
         {
             _osMediaControls.CommandReceived += command => DispatcherQueue.TryEnqueue(() => HandleMediaCommand(command));
