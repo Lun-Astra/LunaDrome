@@ -45,6 +45,12 @@ public class Preferences
     public string JamiDromeApiKey { get; set; } = "";
     /// <summary>This install's id as a jam speaker, so the server can tell devices apart.</summary>
     public string JamDeviceId { get; set; } = "";
+
+    /// <summary>This install's Sendspin server id: speakers remember the server they last played
+    /// from by it, so it stays the same across restarts.</summary>
+    public string SendspinServerId { get; set; } = "";
+    /// <summary>Sendspin speakers added by address (ws:// URLs), for networks without mDNS.</summary>
+    public List<string> SendspinManualSpeakers { get; set; } = new();
 }
 
 /// <summary>Reads/writes preferences.json in the LunaDrome-Uno settings folder.</summary>
