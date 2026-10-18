@@ -1,5 +1,6 @@
 using LunaDrome.Core.Sendspin;
 using LunaDrome.Core.Services;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using LunaDrome.Services;
 
@@ -14,6 +15,7 @@ public sealed partial class MainPage
     private static readonly TimeSpan SendspinRescanAfter = TimeSpan.FromSeconds(10);
 
     private SendspinOutput? _sendspin;
+    private SendspinCredentials? _sendspinCredentials;
     private readonly SendspinMediaControls _sendspinControls = new();
     private readonly Dictionary<Windows.Media.Playback.MediaPlayer, SendspinSource> _sendspinSources = new();
     private IReadOnlyList<SendspinSpeakerInfo> _sendspinFound = [];
@@ -42,10 +44,45 @@ public sealed partial class MainPage
             _prefs.SendspinServerId = Guid.NewGuid().ToString("N");
             PreferencesService.Save(_prefs);
         }
-        _sendspin = new SendspinOutput(_prefs.SendspinServerId, $"LunaDrome ({Environment.MachineName})") { Log = Log };
+        _sendspinCredentials = SendspinCredentialsFromPrefs();
+        _sendspin = new SendspinOutput(_sendspinCredentials, $"LunaDrome ({Environment.MachineName})") { Log = Log };
         _sendspin.SpeakerLost += (speaker, reason) => DispatcherQueue.TryEnqueue(() => OnSendspinSpeakerLost(speaker, reason));
         _sendspin.SpeakersChanged += () => DispatcherQueue.TryEnqueue(UpdateOutputButton);
         return _sendspin;
+    }
+
+    /// <summary>The encrypted protocol's identity (made once, kept in the preferences,
+    /// encrypted) and the pairing records.</summary>
+    private SendspinCredentials SendspinCredentialsFromPrefs()
+    {
+        byte[]? key = null;
+        if (!string.IsNullOrEmpty(_prefs.SendspinServerKey))
+        {
+            try { key = Convert.FromBase64String(CredentialProtector.Unprotect(_prefs.SendspinServerKey) ?? ""); }
+            catch (Exception ex) { Log($"sendspin: stored server key unreadable, making a new one: {ex.Message}"); }
+        }
+        if (key is not { Length: 32 })
+        {
+            key = X25519Keys.NewPrivate();
+            _prefs.SendspinServerKey = CredentialProtector.Protect(Convert.ToBase64String(key));
+            PreferencesService.Save(_prefs);
+        }
+        return new SendspinCredentials(_prefs.SendspinServerId, key,
+            clientId =>
+            {
+                if (!_prefs.SendspinPairings.TryGetValue(clientId, out var protectedPsk)) return null;
+                try { return Convert.FromBase64String(CredentialProtector.Unprotect(protectedPsk) ?? ""); }
+                catch { return null; }
+            },
+            (clientId, psk) =>
+            {
+                DispatcherQueue.TryEnqueue(() =>
+                {
+                    if (psk == null) _prefs.SendspinPairings.Remove(clientId);
+                    else _prefs.SendspinPairings[clientId] = CredentialProtector.Protect(Convert.ToBase64String(psk));
+                    PreferencesService.Save(_prefs);
+                });
+            });
     }
 
     private async Task ScanSendspinAsync()
@@ -218,6 +255,142 @@ public sealed partial class MainPage
         await AddSendspinSpeakerAsync(new SendspinSpeakerInfo($"{url.Host}:{url.Port}", url));
     }
 
+    // ---- pairing (encrypted speakers that don't allow unpaired access) ----
+
+    /// <summary>Pairs with a connected speaker that won't play unpaired, then adds it.
+    /// Null when the user cancelled or pairing failed (already told why).</summary>
+    private async Task<SendspinSpeaker?> PairSendspinAsync(SendspinSpeaker speaker)
+    {
+        var pairing = new SendspinPairing(speaker, _sendspinCredentials!);
+        var dynamic = SendspinPairing.OffersDynamicCode(speaker);
+        var codeMethod = dynamic || SendspinPairing.OffersStaticCode(speaker);
+        var tokenMethod = SendspinPairing.OffersToken(speaker);
+        string? status = null;
+        pairing.Status += text => status = text;
+        Log($"sendspin: {speaker.Name} needs pairing (methods {string.Join(",", speaker.PairMethods)}{(speaker.CredentialMismatch ? ", it lost the earlier pairing" : "")})");
+        try
+        {
+            var useToken = !codeMethod;
+            if (codeMethod)
+            {
+                try
+                {
+                    await pairing.PairWithCodeAsync(dynamic, retry => OnUiAsync(async () =>
+                    {
+                        var (code, wantsToken) = await AskPairingCodeAsync(speaker, dynamic, retry, tokenMethod, status);
+                        useToken = wantsToken;
+                        return code;
+                    }), CancellationToken.None);
+                }
+                catch (SendspinPairingException ex) when (ex.Cancelled && useToken)
+                {
+                    // Switching to the token: the code attempt was cancelled for it.
+                }
+            }
+            if (useToken)
+            {
+                if (!tokenMethod)
+                    throw new SendspinPairingException($"{speaker.Name} can't be paired by token.");
+                var token = await AskPairingTokenAsync(speaker);
+                if (token == null)
+                    throw new SendspinPairingException("Pairing cancelled.", cancelled: true);
+                await pairing.PairWithTokenAsync(token, CancellationToken.None);
+            }
+            Log($"sendspin: paired with {speaker.Name}");
+            await _sendspin!.AdmitAsync(speaker);
+            ShowToast($"Paired with {speaker.Name}");
+            return speaker;
+        }
+        catch (Exception ex) when (ex is SendspinPairingException or SendspinProtocolException or OperationCanceledException)
+        {
+            Log($"sendspin: pairing with {speaker.Name} ended: {ex.Message}");
+            if (ex is not SendspinPairingException { Cancelled: true })
+                ShowToast(ex.Message);
+            await speaker.DisposeAsync();
+            return null;
+        }
+    }
+
+    private Task<T> OnUiAsync<T>(Func<Task<T>> action)
+    {
+        var done = new TaskCompletionSource<T>();
+        DispatcherQueue.TryEnqueue(async () =>
+        {
+            try { done.SetResult(await action()); }
+            catch (Exception ex) { done.SetException(ex); }
+        });
+        return done.Task;
+    }
+
+    /// <summary>Asks for the code the speaker shows. Returns (code or null, wants the token instead).</summary>
+    private async Task<(string? Code, bool WantsToken)> AskPairingCodeAsync(SendspinSpeaker speaker, bool dynamic, bool retry,
+        bool offerToken, string? status)
+    {
+        var digits = dynamic ? 6 : 8;
+        var box = new TextBox
+        {
+            PlaceholderText = dynamic ? "123-456" : "1234-5678",
+            MaxLength = digits + 2,
+            InputScope = new InputScope { Names = { new InputScopeName(InputScopeNameValue.Number) } },
+        };
+        var lines = new StackPanel { Spacing = 8 };
+        if (retry)
+            lines.Children.Add(new TextBlock { Text = "That code didn't match. Check it and try again.", TextWrapping = TextWrapping.Wrap });
+        lines.Children.Add(new TextBlock
+        {
+            Text = dynamic
+                ? $"{speaker.Name} shows a {digits}-digit code for LunaDrome (a Bluetooth bridge shows it on its web page). Type it here."
+                : $"Type {speaker.Name}'s {digits}-digit pairing code (on its label or in its settings). It may ask for a button press first.",
+            TextWrapping = TextWrapping.Wrap,
+        });
+        if (!string.IsNullOrEmpty(status) && !status.StartsWith("Waiting", StringComparison.Ordinal))
+            lines.Children.Add(new TextBlock { Text = status, TextWrapping = TextWrapping.Wrap, Opacity = 0.7 });
+        lines.Children.Add(box);
+        var dialog = new ContentDialog
+        {
+            Title = $"Pair with {speaker.Name}",
+            Content = lines,
+            PrimaryButtonText = "Pair",
+            SecondaryButtonText = offerToken ? "Use a pairing token" : "",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Primary,
+            XamlRoot = this.XamlRoot,
+        };
+        ContentDialogResult result;
+        try { result = await dialog.ShowAsync(); }
+        catch { return (null, false); }
+        return result switch
+        {
+            ContentDialogResult.Primary => (box.Text, false),
+            ContentDialogResult.Secondary => (null, true),
+            _ => (null, false),
+        };
+    }
+
+    private async Task<string?> AskPairingTokenAsync(SendspinSpeaker speaker)
+    {
+        var box = new TextBox { PlaceholderText = "SP:0…", MinWidth = 320 };
+        var dialog = new ContentDialog
+        {
+            Title = $"Pair with {speaker.Name}",
+            Content = new StackPanel
+            {
+                Spacing = 8,
+                Children =
+                {
+                    new TextBlock { Text = "Paste the speaker's pairing token (starts with SP:0, from its label, leaflet or web page).", TextWrapping = TextWrapping.Wrap },
+                    box,
+                },
+            },
+            PrimaryButtonText = "Pair",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Primary,
+            XamlRoot = this.XamlRoot,
+        };
+        try { return await dialog.ShowAsync() == ContentDialogResult.Primary ? box.Text : null; }
+        catch { return null; }
+    }
+
     // ---- switching ----
 
     private async Task AddSendspinSpeakerAsync(SendspinSpeakerInfo info)
@@ -229,8 +402,20 @@ public sealed partial class MainPage
         try
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-            var speaker = await output.AddSpeakerAsync(info.Url, timeout.Token);
-            Log($"sendspin: connected to {speaker.Name} ({speaker.SoftwareVersion}), roles {string.Join(",", speaker.ActiveRoles)}");
+            SendspinSpeaker speaker;
+            try
+            {
+                speaker = await output.AddSpeakerAsync(info.Url, timeout.Token);
+            }
+            catch (SendspinPairingRequiredException need)
+            {
+                _sendspinConnecting.Remove(info.Key);
+                UpdateOutputButton();
+                if (await PairSendspinAsync(need.Speaker) is not { } paired)
+                    return;
+                speaker = paired;
+            }
+            Log($"sendspin: connected to {speaker.Name} ({speaker.SoftwareVersion}, {(speaker.Encrypted ? $"encrypted, psk {speaker.PskCategory}" : "unencrypted")}), roles {string.Join(",", speaker.ActiveRoles)}");
             if (!_sendspinActive)
                 RouteToSendspin(true);
             ShowToast($"Playing on {speaker.Name}");

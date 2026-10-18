@@ -80,6 +80,12 @@ public sealed class SendspinSpeaker : IAsyncDisposable
     public IReadOnlyList<string> PairMethods { get; private set; } = [];
     /// <summary>Encrypted: the dynamic code's formats ("digits", "qr_code"), if offered.</summary>
     public IReadOnlyList<string> DynamicCodeFormats { get; private set; } = [];
+    /// <summary>Encrypted, but from before spec #167/#177 (aiosendspin 9.x): its hello still lists
+    /// player commands (or trust_level). It expects the 9-byte audio header without send_ahead
+    /// - sending 13 bytes would put 4 stray bytes into its audio.</summary>
+    public bool PreSendAheadWire { get; private set; }
+    /// <summary>The client/hello as received (diagnostics).</summary>
+    public string HelloJson { get; private set; } = "";
     /// <summary>True when the speaker is connected but won't play until it's paired.</summary>
     public bool NeedsPairing { get; private set; }
     public byte[] HandshakeHash { get; private set; } = [];
@@ -108,6 +114,9 @@ public sealed class SendspinSpeaker : IAsyncDisposable
     public SendspinFormat? PreferredFormat { get; private set; }
     /// <summary>True once the initial client/state arrived; audio may only go out after that.</summary>
     public bool HasState { get; private set; }
+
+    /// <summary>Whether audio chunks carry send_ahead (13-byte header) for this speaker.</summary>
+    private bool SendsAhead => Encrypted && !PreSendAheadWire;
 
     public bool IsPlayer => ActiveRoles.Contains("player@v1");
     public bool HasMetadata => ActiveRoles.Contains("metadata@v1");
@@ -290,6 +299,7 @@ public sealed class SendspinSpeaker : IAsyncDisposable
 
     private void ReadHello(JsonObject hello)
     {
+        HelloJson = hello.ToJsonString();
         if ((string?)hello["client_id"] is { } legacyId) ClientId = legacyId;
         Name = (string?)hello["name"] ?? ClientId;
         ProductName = (string?)hello["device_info"]?["product_name"];
@@ -304,14 +314,18 @@ public sealed class SendspinSpeaker : IAsyncDisposable
             // Older revision: commands in the hello; the encrypted one sends them in client/state.
             if (player["supported_commands"] is JsonArray commands)
             {
+                if (Encrypted) PreSendAheadWire = true;
                 var list = commands.Select(c => (string?)c).ToList();
                 CanSetVolume = list.Contains("volume");
                 CanMute = list.Contains("mute");
             }
         }
+        if (Encrypted && hello["trust_level"] != null) PreSendAheadWire = true;
         if (hello["unpaired_access"] is JsonObject unpaired)
             UnpairedAccess = (bool?)unpaired["enabled"] ?? false;
-        if (hello["supported_pair_methods"] is JsonObject methods)
+        if (hello["supported_pair_methods"] is JsonArray methodList)
+            PairMethods = methodList.Select(m => (string?)m).OfType<string>().ToList();   // older hellos: a list
+        else if (hello["supported_pair_methods"] is JsonObject methods)
         {
             PairMethods = methods.Select(kv => kv.Key).ToList();
             DynamicCodeFormats = methods["dynamic_pairing_code"]?["formats"]?.AsArray()
@@ -487,7 +501,7 @@ public sealed class SendspinSpeaker : IAsyncDisposable
                     BinaryPrimitives.WriteInt16LittleEndian(encoded.AsSpan(2 * i), samples[i]);
             }
         }
-        var size = encoded.Length + (Encrypted ? 13 : 9);
+        var size = encoded.Length + (SendsAhead ? 13 : 9);
         lock (_lock)
         {
             // Buffer accounting: a chunk counts until it has finished playing on the speaker.
@@ -578,11 +592,11 @@ public sealed class SendspinSpeaker : IAsyncDisposable
                 {
                     // The header is finished here, as late as possible: send_ahead reports the
                     // lead in hand at transmission (0 = late, saturating at uint.MaxValue).
-                    var headerSize = Encrypted ? 13 : 9;
+                    var headerSize = SendsAhead ? 13 : 9;
                     var frame = new byte[headerSize + item.Audio.Length];
                     frame[0] = AudioChunkType;
                     BinaryPrimitives.WriteInt64BigEndian(frame.AsSpan(1, 8), item.TimestampUs);
-                    if (Encrypted)
+                    if (SendsAhead)
                     {
                         var ahead = item.TimestampUs - SendspinClock.NowUs;
                         BinaryPrimitives.WriteUInt32BigEndian(frame.AsSpan(9, 4),
