@@ -12,6 +12,8 @@
     <!-- Sendspin encryption (Noise: X25519, ChaCha20-Poly1305, AES-GCM) and pairing (CPace):
          managed, so the same code runs on Windows, Linux, Android and iOS. -->
     <PackageReference Include="BouncyCastle.Cryptography" Version="2.7.0" />
+    <!-- MP3 decoding (pure C#) for Sendspin streaming on phones. -->
+    <PackageReference Include="NLayer" Version="3.0.0" />
   </ItemGroup>
 
 </Project>
