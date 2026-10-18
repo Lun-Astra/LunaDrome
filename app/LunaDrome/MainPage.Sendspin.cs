@@ -25,7 +25,10 @@ public sealed partial class MainPage
     private bool _sendspinActive;
     private string? _sendspinStatus;
 
-    private static bool SendspinSupported => !OperatingSystem.IsAndroid() && !OperatingSystem.IsIOS();
+    // Desktop: LibVLC hands over its audio. Phones: the song is decoded separately (SendspinFollower).
+    private static bool SendspinSupported => true;
+
+    private static string ThisDeviceName => OperatingSystem.IsAndroid() || OperatingSystem.IsIOS() ? "This phone" : "This computer";
 
     private void InitSendspin()
     {
@@ -97,7 +100,17 @@ public sealed partial class MainPage
         {
             try
             {
+#if ANDROID
+                // Android drops multicast (mDNS) unless the app holds a MulticastLock while it listens.
+                var wifi = (Android.Net.Wifi.WifiManager?)Android.App.Application.Context.GetSystemService(Android.Content.Context.WifiService);
+                var multicast = wifi?.CreateMulticastLock("LunaDrome Sendspin discovery");
+                multicast?.Acquire();
+                IReadOnlyList<SendspinSpeakerInfo> found;
+                try { found = await SendspinDiscovery.BrowseAsync(TimeSpan.FromSeconds(3), CancellationToken.None); }
+                finally { multicast?.Release(); }
+#else
                 var found = await SendspinDiscovery.BrowseAsync(TimeSpan.FromSeconds(3), CancellationToken.None);
+#endif
                 Log($"sendspin: found {found.Count} speaker(s): {string.Join(", ", found.Select(f => $"{f.Name} {f.Url}"))}");
                 _sendspinFound = found;
             }
@@ -111,9 +124,11 @@ public sealed partial class MainPage
 
     // ---- the picker ----
 
-    private async void OutputButton_Click(object sender, RoutedEventArgs e)
+    private void OutputButton_Click(object sender, RoutedEventArgs e) => ShowOutputPicker((FrameworkElement)sender);
+
+    /// <summary>The "Play on" menu, from the output button or (phones) a swipe down on the playback bar.</summary>
+    private async void ShowOutputPicker(FrameworkElement anchor)
     {
-        var anchor = (FrameworkElement)sender;
         var flyout = new MenuFlyout();
         FillOutputFlyout(flyout);
         flyout.ShowAt(anchor);
@@ -129,7 +144,7 @@ public sealed partial class MainPage
         flyout.Items.Clear();
         flyout.Items.Add(new MenuFlyoutItem { Text = "Play on", IsEnabled = false });
 
-        var local = new ToggleMenuFlyoutItem { Text = "This computer", IsChecked = !_sendspinActive };
+        var local = new ToggleMenuFlyoutItem { Text = ThisDeviceName, IsChecked = !_sendspinActive };
         local.Click += (_, _) => _ = PlayOnThisComputerAsync();
         flyout.Items.Add(local);
 
@@ -188,7 +203,7 @@ public sealed partial class MainPage
             OutputIcon.Stroke = stroke;
         ToolTipService.SetToolTip(OutputButton, count switch
         {
-            0 => "Play on: this computer",
+            0 => $"Play on: {ThisDeviceName.ToLowerInvariant()}",
             1 => $"Play on: {_sendspin!.Speakers[0].Name}",
             _ => $"Play on: {count} speakers",
         });
@@ -453,7 +468,7 @@ public sealed partial class MainPage
         foreach (var speaker in _sendspin.Speakers)
             await _sendspin.RemoveSpeakerAsync(speaker);
         UpdateOutputButton();
-        ShowToast("Playing on this computer");
+        ShowToast($"Playing on {ThisDeviceName.ToLowerInvariant()}");
     }
 
     private void OnSendspinSpeakerLost(SendspinSpeaker speaker, string reason)
@@ -471,7 +486,7 @@ public sealed partial class MainPage
         if (others == 0 && _sendspinActive)
         {
             RouteToSendspin(false);
-            ShowToast($"{speaker.Name} disconnected ({why}) - playing on this computer");
+            ShowToast($"{speaker.Name} disconnected ({why}) - playing on {ThisDeviceName.ToLowerInvariant()}");
         }
         else
         {
@@ -495,11 +510,12 @@ public sealed partial class MainPage
         foreach (var player in new[] { _player, _sparePlayer }.OfType<Windows.Media.Playback.MediaPlayer>())
             ApplySendspinRoute(player);
         _sendspinControls.Output = on ? _sendspin : null;
+        ApplyPlaybackVolume();   // muted while followed; back to the slider on this device
         Log($"sendspin: output {(on ? "on" : "off")} (was {(wasPlaying ? "playing" : "paused")} at {position:mm\\:ss})");
 
         if (JamOwnsPlayback)
         {
-            ShowToast(on ? "The speakers take over with the next jam song" : "This computer takes over with the next jam song");
+            ShowToast(on ? "The speakers take over with the next jam song" : $"{ThisDeviceName} takes over with the next jam song");
         }
         else if (loaded && _current != null)
         {
@@ -525,15 +541,16 @@ public sealed partial class MainPage
         {
             if (!_sendspinSources.TryGetValue(player, out var source))
                 _sendspinSources[player] = source = _sendspin.CreateSource();
-            if (!SendspinTap.TryAttach(player, source))
+            if (!SendspinTap.TryAttach(player, source, DispatcherQueue, Log))
                 Log("sendspin: couldn't reach the VLC player to take its audio");
             // The level LunaDrome wants (MediaPlayer.Volume may already hold VLC's 0 by now).
             SendspinTap.SetGain(player, ReferenceEquals(player, _player) && _fadingOut == null ? PlaybackVolume : 0);
         }
         else if (SendspinTap.IsAttached(player))
         {
+            var followed = SendspinTap.MutesPlayer(player);
             SendspinTap.Detach(player);
-            if (!LocalAudioModules.Any(module => VlcAudioOutput.TrySet(player, module)))
+            if (!followed && !LocalAudioModules.Any(module => VlcAudioOutput.TrySet(player, module)))
                 Log("sendspin: couldn't switch the player back to the sound card");
         }
     }
