@@ -64,6 +64,10 @@ public sealed class SendspinOutput : IAsyncDisposable
 
     internal void Trace(string message) => Log?.Invoke("sendspin: " + message);
 
+    /// <summary>Each chunk as it goes out, with the time the speakers play it (see
+    /// <see cref="SendspinClock"/>); called on the pump thread, so keep it quick.</summary>
+    public event MixedAudioHandler? Mixed;
+
     public event Action? SpeakersChanged;
     /// <summary>A speaker's play/pause/next/previous/stop button (volume and mute are handled here).</summary>
     public event Action<string>? ControllerCommand;
@@ -386,6 +390,7 @@ public sealed class SendspinOutput : IAsyncDisposable
                 source.MixInto(_mix, ChunkFrames);
 
             ToPcm16(_mix, _pcm);
+            Mixed?.Invoke(timestamp, _pcm);
             foreach (var speaker in _speakers)
                 if (speaker.StreamFormat != null) speaker.SendAudio(timestamp, ChunkUs, _pcm);
             _framesOut += ChunkFrames;
@@ -464,3 +469,6 @@ public sealed class SendspinPairingRequiredException(SendspinSpeaker speaker)
 {
     public SendspinSpeaker Speaker { get; } = speaker;
 }
+
+/// <summary>A mixed chunk (16-bit interleaved stereo) and when the speakers play it.</summary>
+public delegate void MixedAudioHandler(long timestampUs, ReadOnlySpan<short> samples);

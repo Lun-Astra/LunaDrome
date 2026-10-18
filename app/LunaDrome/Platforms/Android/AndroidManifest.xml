@@ -8,6 +8,8 @@
   <!-- Finding Sendspin speakers (mDNS): Android drops multicast unless a MulticastLock is held. -->
   <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
   <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+  <!-- Built-in updates: the downloaded APK is handed to the system installer (AndroidUpdateInstaller). -->
+  <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
   <!-- Navidrome / SpotiDrome / JamiDrome often run on a LAN over plain http. -->
   <!-- Android 11+ only lets us see Android Auto's connection state (CarConnection.cs) when we say so. -->
   <queries>

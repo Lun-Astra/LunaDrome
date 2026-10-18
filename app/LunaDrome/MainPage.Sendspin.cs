@@ -35,7 +35,10 @@ public sealed partial class MainPage
         OutputButton.Visibility = SendspinSupported ? Visibility.Visible : Visibility.Collapsed;
         _sendspinControls.CommandReceived += command => DispatcherQueue.TryEnqueue(() => HandleMediaCommand(command));
         if (SendspinSupported)
+        {
             _ = ScanSendspinAsync();   // so the list is ready when the picker opens
+            _ = ScanDlnaAsync();
+        }
     }
 
     private SendspinOutput EnsureSendspinOutput()
@@ -134,7 +137,7 @@ public sealed partial class MainPage
         flyout.ShowAt(anchor);
         if (DateTime.UtcNow - _sendspinLastScan > SendspinRescanAfter || _sendspinScan is { IsCompleted: false })
         {
-            await ScanSendspinAsync();
+            await Task.WhenAll(ScanSendspinAsync(), ScanDlnaAsync());
             FillOutputFlyout(flyout);   // the open menu picks up what the scan found
         }
     }
@@ -144,8 +147,12 @@ public sealed partial class MainPage
         flyout.Items.Clear();
         flyout.Items.Add(new MenuFlyoutItem { Text = "Play on", IsEnabled = false });
 
-        var local = new ToggleMenuFlyoutItem { Text = ThisDeviceName, IsChecked = !_sendspinActive };
-        local.Click += (_, _) => _ = PlayOnThisComputerAsync();
+        var local = new ToggleMenuFlyoutItem { Text = ThisDeviceName, IsChecked = !_sendspinActive && !DlnaActive };
+        local.Click += (_, _) =>
+        {
+            PlayOnThisDeviceFromDlna();
+            _ = PlayOnThisComputerAsync();
+        };
         flyout.Items.Add(local);
 
         var connected = _sendspin?.Speakers ?? [];
@@ -184,6 +191,7 @@ public sealed partial class MainPage
             flyout.Items.Add(new MenuFlyoutItem { Text = "No Sendspin speakers found", IsEnabled = false });
         // For networks where mDNS doesn't get through (VLANs, Docker): type the address.
         AddMenuItem(flyout, "Add a speaker by address…", () => _ = AddSendspinByAddressAsync());
+        AddDlnaItems(flyout);
 
         var status = _sendspinStatus ?? (_sendspinActive && _sendspin != null
             ? $"Speakers play {_sendspin.Latency.TotalSeconds:0.0} s behind this screen"
@@ -198,10 +206,10 @@ public sealed partial class MainPage
     private void UpdateOutputButton()
     {
         var count = _sendspin?.Speakers.Count ?? 0;
-        if (Application.Current.Resources.TryGetValue(_sendspinActive ? "TextPrimaryBrush" : "TextSecondaryBrush", out var brush)
+        if (Application.Current.Resources.TryGetValue(_sendspinActive || DlnaActive ? "TextPrimaryBrush" : "TextSecondaryBrush", out var brush)
             && brush is Brush stroke)
             OutputIcon.Stroke = stroke;
-        ToolTipService.SetToolTip(OutputButton, count switch
+        ToolTipService.SetToolTip(OutputButton, _dlna != null ? $"Play on: {_dlna.Renderer.Name}" : count switch
         {
             0 => $"Play on: {ThisDeviceName.ToLowerInvariant()}",
             1 => $"Play on: {_sendspin!.Speakers[0].Name}",
@@ -410,6 +418,7 @@ public sealed partial class MainPage
 
     private async Task AddSendspinSpeakerAsync(SendspinSpeakerInfo info)
     {
+        PlayOnThisDeviceFromDlna();   // one output at a time
         var output = EnsureSendspinOutput();
         _sendspinConnecting.Add(info.Key);
         _sendspinStatus = null;
@@ -511,6 +520,7 @@ public sealed partial class MainPage
             ApplySendspinRoute(player);
         _sendspinControls.Output = on ? _sendspin : null;
         ApplyPlaybackVolume();   // muted while followed; back to the slider on this device
+        RestartVisualizer();
         Log($"sendspin: output {(on ? "on" : "off")} (was {(wasPlaying ? "playing" : "paused")} at {position:mm\\:ss})");
 
         if (JamOwnsPlayback)

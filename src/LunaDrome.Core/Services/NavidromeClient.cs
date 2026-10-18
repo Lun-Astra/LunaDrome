@@ -426,6 +426,30 @@ public class NavidromeClient
         _ => BuildUrl("stream.view", ("id", songId)),
     };
 
+    /// <summary>A stream for another device to fetch (a DLNA renderer): the same quality, but MP3
+    /// instead of Opus, which few TVs and receivers play. Original stays the original file.
+    /// Renderers can't seek in a converted stream, so it starts at <paramref name="from"/>
+    /// instead (Subsonic's timeOffset) and Converted says a seek means fetching it again.</summary>
+    public (string Url, string MimeType, bool Converted) GetDeviceStreamUrl(string songId, TimeSpan from = default)
+    {
+        var kbps = StreamQuality switch
+        {
+            StreamQuality.VeryHigh or StreamQuality.High => 320,
+            StreamQuality.Normal => 192,
+            StreamQuality.Low => 128,
+            _ => 0,
+        };
+        if (kbps == 0)
+            return (BuildUrl("stream.view", ("id", songId)), "*", false);
+        // No estimateContentLength: from an offset the estimate (for the whole song) would be
+        // too long, and the renderer would wait at the end for bytes that never come.
+        var offset = (int)from.TotalSeconds;
+        var url = offset > 0
+            ? BuildUrl("stream.view", ("id", songId), ("format", "mp3"), ("maxBitRate", kbps.ToString()), ("timeOffset", offset.ToString()))
+            : BuildUrl("stream.view", ("id", songId), ("format", "mp3"), ("maxBitRate", kbps.ToString()));
+        return (url, "audio/mpeg", true);
+    }
+
     private string Converted(string songId, string format, int kbps, bool estimateLength) => estimateLength
         ? BuildUrl("stream.view", ("id", songId), ("format", format), ("maxBitRate", kbps.ToString()),
                    ("estimateContentLength", "true"))
