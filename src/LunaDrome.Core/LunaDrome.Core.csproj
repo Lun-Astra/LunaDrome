@@ -9,6 +9,9 @@
   <ItemGroup>
     <!-- mDNS discovery of Sendspin speakers (_sendspin._tcp). -->
     <PackageReference Include="Zeroconf" Version="3.7.16" />
+    <!-- Sendspin encryption (Noise: X25519, ChaCha20-Poly1305, AES-GCM) and pairing (CPace):
+         managed, so the same code runs on Windows, Linux, Android and iOS. -->
+    <PackageReference Include="BouncyCastle.Cryptography" Version="2.7.0" />
   </ItemGroup>
 
 </Project>
