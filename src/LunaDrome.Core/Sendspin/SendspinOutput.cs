@@ -183,6 +183,7 @@ public sealed class SendspinOutput : IAsyncDisposable
 
     private void OnSpeakerStateChanged(SendspinSpeaker speaker)
     {
+        Trace($"{speaker.Name} reports state={speaker.State} volume={speaker.Volume} muted={speaker.Muted} delay={speaker.StaticDelayMs}ms");
         lock (_lock)
         {
             if (_controller != null || _speakers.Any(s => s.HasController))
@@ -196,6 +197,7 @@ public sealed class SendspinOutput : IAsyncDisposable
 
     private void OnSpeakerCommand(SendspinSpeaker speaker, string command, int? volume, bool? mute)
     {
+        Trace($"{speaker.Name} sent controller command {command}{(volume is { } vol ? $" volume={vol}" : "")}{(mute is { } mu ? $" mute={mu}" : "")}");
         switch (command)
         {
             case "volume" when volume is { } v:
@@ -231,7 +233,11 @@ public sealed class SendspinOutput : IAsyncDisposable
                 if (clamped != proposed) { delta += proposed - clamped; free.Remove(s); }
             }
         }
-        foreach (var (s, v) in target) s.SetVolume((int)Math.Round(v));
+        foreach (var (s, v) in target)
+        {
+            Trace($"group volume {volume}: setting {s.Name} to {(int)Math.Round(v)} (was {s.Volume})");
+            s.SetVolume((int)Math.Round(v));
+        }
     }
 
     private void OnSpeakerClosed(SendspinSpeaker speaker, string reason)
