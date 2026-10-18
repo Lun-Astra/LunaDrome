@@ -58,8 +58,10 @@ internal sealed class SendspinTap
     /// sets a player's volume (slider, crossfade, sleep timer).</summary>
     public static void SetGain(Windows.Media.Playback.MediaPlayer player, double volume)
     {
+        // Same curve as VLC's own output (DirectSound: 60·log10(v) dB, i.e. amplitude v³), so the
+        // slider sounds the same on the speakers as on this computer; linear made 10% still loud.
         if (Taps.TryGetValue(player, out var tap))
-            tap._source.Gain = (float)volume;
+            tap._source.Gain = (float)Math.Pow(Math.Clamp(volume, 0, 1), 3);
     }
 
     /// <summary>Stops taking the player's audio; the caller then picks a sound-card output
