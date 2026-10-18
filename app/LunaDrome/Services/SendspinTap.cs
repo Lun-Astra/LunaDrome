@@ -39,11 +39,22 @@ internal sealed class SendspinTap
         _volume = (_, _, _) => { };
     }
 
-    public static bool IsAttached(Windows.Media.Playback.MediaPlayer player) => Taps.TryGetValue(player, out _);
+    /// <summary>LUNADROME_SENDSPIN_FOLLOWER=1: use the phones' way (decode the song separately,
+    /// player muted) instead of VLC's audio - to test that path on a desktop.</summary>
+    private static readonly bool UseFollower = Environment.GetEnvironmentVariable("LUNADROME_SENDSPIN_FOLLOWER") == "1";
+
+    public static bool IsAttached(Windows.Media.Playback.MediaPlayer player) =>
+        Taps.TryGetValue(player, out _) || SendspinFollower.IsAttached(player);
+
+    /// <summary>The player must stay silent (its audio isn't intercepted, only followed).</summary>
+    public static bool MutesPlayer(Windows.Media.Playback.MediaPlayer player) => SendspinFollower.IsAttached(player);
 
     /// <summary>Routes the player's audio into <paramref name="source"/>.</summary>
-    public static bool TryAttach(Windows.Media.Playback.MediaPlayer player, SendspinSource source)
+    public static bool TryAttach(Windows.Media.Playback.MediaPlayer player, SendspinSource source,
+        Microsoft.UI.Dispatching.DispatcherQueue dispatcher, Action<string> log)
     {
+        if (UseFollower)
+            return SendspinFollower.TryAttach(player, source, dispatcher, log);
         if (VlcAudioOutput.GetVlcPlayer(player) is not LibVLCSharp.Shared.MediaPlayer vlc)
             return false;
         var tap = new SendspinTap(source);
@@ -58,6 +69,7 @@ internal sealed class SendspinTap
     /// sets a player's volume (slider, crossfade, sleep timer).</summary>
     public static void SetGain(Windows.Media.Playback.MediaPlayer player, double volume)
     {
+        SendspinFollower.SetGain(player, volume);
         // Same curve as VLC's own output (DirectSound: 60·log10(v) dB, i.e. amplitude v³), so the
         // slider sounds the same on the speakers as on this computer; linear made 10% still loud.
         if (Taps.TryGetValue(player, out var tap))
@@ -68,6 +80,7 @@ internal sealed class SendspinTap
     /// (<see cref="VlcAudioOutput.TrySet"/>), which replaces the callbacks.</summary>
     public static void Detach(Windows.Media.Playback.MediaPlayer player)
     {
+        SendspinFollower.Detach(player);
         if (!Taps.TryGetValue(player, out var tap))
             return;
         Taps.Remove(player);

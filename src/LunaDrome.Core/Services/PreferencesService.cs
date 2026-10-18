@@ -49,6 +49,11 @@ public class Preferences
     /// <summary>This install's Sendspin server id: speakers remember the server they last played
     /// from by it, so it stays the same across restarts.</summary>
     public string SendspinServerId { get; set; } = "";
+    /// <summary>This install's Sendspin identity for the encrypted protocol: its Curve25519
+    /// private key (encrypted with CredentialProtector); the public key is its server_id.</summary>
+    public string SendspinServerKey { get; set; } = "";
+    /// <summary>Pairings with Sendspin speakers: client_id → long-term PSK (encrypted).</summary>
+    public Dictionary<string, string> SendspinPairings { get; set; } = new();
     /// <summary>Sendspin speakers added by address (ws:// URLs), for networks without mDNS.</summary>
     public List<string> SendspinManualSpeakers { get; set; } = new();
 }

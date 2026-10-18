@@ -27,7 +27,8 @@ public sealed partial class MainPage
     /// <summary>Sets a player's volume, and the level of its audio on Sendspin speakers.</summary>
     private static void SetPlayerVolume(Windows.Media.Playback.MediaPlayer player, double volume)
     {
-        player.Volume = volume;
+        // Followed by Sendspin (phones): the player plays muted, the speakers get the volume.
+        player.Volume = SendspinTap.MutesPlayer(player) ? 0 : volume;
         SendspinTap.SetGain(player, volume);
     }
 

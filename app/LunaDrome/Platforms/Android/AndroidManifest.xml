@@ -5,6 +5,9 @@
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
   <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+  <!-- Finding Sendspin speakers (mDNS): Android drops multicast unless a MulticastLock is held. -->
+  <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+  <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
   <!-- Navidrome / SpotiDrome / JamiDrome often run on a LAN over plain http. -->
   <!-- Android 11+ only lets us see Android Auto's connection state (CarConnection.cs) when we say so. -->
   <queries>

@@ -57,7 +57,9 @@ public sealed class SendspinSource
             samples[..first].CopyTo(_ring.AsSpan(end, first));
             samples[first..].CopyTo(_ring.AsSpan(0, samples.Length - first));
             _count += samples.Length;
-            State = SourceState.Playing;
+            // New audio means playing - unless it's paused: a write still in flight when the pause
+            // came must not undo it (only Resume does).
+            if (State != SourceState.Paused) State = SourceState.Playing;
 
             // Backpressure: block the player's audio thread (VLC allows it) until the output has
             // taken enough. Bounded, and only while the output is consuming, so it can't freeze
@@ -108,6 +110,10 @@ public sealed class SendspinSource
                 _start = 0;
                 _count = 0;
             }
+            // A flush ends a pause too (a new song opened while paused never sends "resume");
+            // the next audio written makes it playing again.
+            if (State == SourceState.Paused) State = SourceState.Idle;
+            Monitor.PulseAll(_lock);
         }
         if (softened)
         {

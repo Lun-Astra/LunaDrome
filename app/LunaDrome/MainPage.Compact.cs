@@ -253,23 +253,41 @@ public sealed partial class MainPage
         CompactPlayerView.SizeChanged += (_, _) => SizeCompactArt();
         CompactLyricsCard.RegisterPropertyChangedCallback(VisibilityProperty, (_, _) => SizeCompactArt());
 
-        // Swipe the playback bar's now-playing info: left = next song, right = previous. Android
-        // only (like swiping a song row to queue it): on desktop a mouse drag there did it too.
-        if (!OperatingSystem.IsAndroid())
+        // Swipe the playback bar's now-playing info: left = next song, right = previous (Android,
+        // like swiping a song row to queue it; on desktop a mouse drag there did it too), and down
+        // = the "Play on" menu, this phone or Sendspin speakers (Android and iPhone).
+        var android = OperatingSystem.IsAndroid();
+        if (!android && !OperatingSystem.IsIOS())
             return;
-        NowPlayingInfoPanel.ManipulationMode = ManipulationModes.TranslateX;
+        NowPlayingInfoPanel.ManipulationMode = (android ? ManipulationModes.TranslateX | ManipulationModes.TranslateRailsX : 0)
+            | ManipulationModes.TranslateY | ManipulationModes.TranslateRailsY;
         NowPlayingInfoPanel.RenderTransform = new TranslateTransform();
         NowPlayingInfoPanel.ManipulationDelta += (_, e) =>
         {
-            if (IsCompact)
-                ((TranslateTransform)NowPlayingInfoPanel.RenderTransform).X = Math.Clamp(e.Cumulative.Translation.X, -120, 120);
+            if (!IsCompact)
+                return;
+            var t = (TranslateTransform)NowPlayingInfoPanel.RenderTransform;
+            var (dx, dy) = (e.Cumulative.Translation.X, e.Cumulative.Translation.Y);
+            if (android && Math.Abs(dx) >= Math.Abs(dy))
+                t.X = Math.Clamp(dx, -120, 120);
+            else
+                t.Y = Math.Clamp(dy, 0, 24);   // a little give, downward only
         };
         NowPlayingInfoPanel.ManipulationCompleted += (_, e) =>
         {
-            ((TranslateTransform)NowPlayingInfoPanel.RenderTransform).X = 0;
-            if (!IsCompact || _current == null || JamOwnsPlayback)
+            var t = (TranslateTransform)NowPlayingInfoPanel.RenderTransform;
+            t.X = 0;
+            t.Y = 0;
+            if (!IsCompact)
                 return;
-            var dx = e.Cumulative.Translation.X;
+            var (dx, dy) = (e.Cumulative.Translation.X, e.Cumulative.Translation.Y);
+            if (dy >= SwipeDistance * 0.6 && dy > Math.Abs(dx))
+            {
+                ShowOutputPicker(PlaybackBarBorder);
+                return;
+            }
+            if (!android || _current == null || JamOwnsPlayback)
+                return;
             if (dx <= -SwipeDistance)
                 PlayNext();
             else if (dx >= SwipeDistance)

@@ -35,6 +35,14 @@
 		<key>UIApplicationSupportsIndirectInputEvents</key>
 		<true/>
 		<!-- Keep playing with the screen locked / another app in front. -->
+		<!-- Finding Sendspin speakers (Bonjour): iOS asks for local-network access and only shows
+		     the services listed here (Zeroconf browses them with NSNetServiceBrowser). -->
+		<key>NSLocalNetworkUsageDescription</key>
+		<string>LunaDrome looks for Sendspin speakers on your network so it can play on them.</string>
+		<key>NSBonjourServices</key>
+		<array>
+			<string>_sendspin._tcp</string>
+		</array>
 		<key>UIBackgroundModes</key>
 		<array>
 			<string>audio</string>

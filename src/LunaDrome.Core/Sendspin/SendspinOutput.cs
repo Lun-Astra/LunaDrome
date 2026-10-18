@@ -1,4 +1,3 @@
-using System.Runtime.InteropServices;
 using System.Text.Json.Nodes;
 
 namespace LunaDrome.Core.Sendspin;
@@ -14,13 +13,16 @@ public sealed class SendspinOutput : IAsyncDisposable
     public const int SampleRate = 48000;
     public const int Channels = 2;
     public static readonly SendspinFormat PcmFormat = new("pcm", SampleRate, Channels, 16);
+    /// <summary>Lossless and about half of PCM's bitrate; one FLAC frame per chunk.</summary>
+    public static readonly SendspinFormat FlacFormat = new("flac", SampleRate, Channels, 16);
 
-    private const int ChunkFrames = SampleRate / 50;                  // 20 ms
+    internal const int ChunkFrames = SampleRate / 50;                 // 20 ms
     private const long ChunkUs = ChunkFrames * 1_000_000L / SampleRate;
     private const int PrebufferFrames = SampleRate / 10;              // wait for 100 ms before (re)starting
     private const long MinLeadUs = 200_000, MaxLeadUs = 5_000_000;
     private static readonly TimeSpan EndStreamAfterIdle = TimeSpan.FromSeconds(30);
 
+    private readonly SendspinCredentials _credentials;
     private readonly string _serverId, _serverName;
     private readonly object _lock = new();
     private readonly List<SendspinSource> _sources = [];
@@ -28,7 +30,7 @@ public sealed class SendspinOutput : IAsyncDisposable
     private readonly Thread _pump;
     private readonly CancellationTokenSource _cts = new();
     private readonly int[] _mix = new int[ChunkFrames * Channels];
-    private readonly byte[] _pcm = new byte[ChunkFrames * Channels * 2];
+    private readonly short[] _pcm = new short[ChunkFrames * Channels];
 
     // Timeline (pump thread + _lock).
     private volatile bool _running;
@@ -38,9 +40,10 @@ public sealed class SendspinOutput : IAsyncDisposable
     private bool _groupPlaying;
     private JsonObject? _metadata, _controller;
 
-    public SendspinOutput(string serverId, string serverName)
+    public SendspinOutput(SendspinCredentials credentials, string serverName)
     {
-        _serverId = serverId;
+        _credentials = credentials;
+        _serverId = credentials.LegacyServerId;   // also the group id
         _serverName = serverName;
         _pump = new Thread(PumpLoop) { IsBackground = true, Name = "Sendspin pump", Priority = ThreadPriority.AboveNormal };
         _pump.Start();
@@ -88,16 +91,34 @@ public sealed class SendspinOutput : IAsyncDisposable
         speaker.Closed += OnSpeakerClosed;
         try
         {
-            await speaker.ConnectAsync(_serverId, _serverName, forPlayback: true, cancellationToken).ConfigureAwait(false);
-            if (speaker.IsPlayer && !speaker.SupportedFormats.Contains(PcmFormat))
+            await speaker.ConnectAsync(_credentials, _serverName, forPlayback: true, cancellationToken).ConfigureAwait(false);
+            if (speaker.NeedsPairing)
+                throw new SendspinPairingRequiredException(speaker);
+            if (speaker.IsPlayer && FormatFor(speaker) == null)
                 throw new SendspinProtocolException(
-                    $"{speaker.Name} doesn't accept {PcmFormat}, the only format LunaDrome sends so far.");
+                    $"{speaker.Name} doesn't accept {PcmFormat} or {FlacFormat}, the formats LunaDrome sends.");
+        }
+        catch (SendspinPairingRequiredException)
+        {
+            throw;   // the connection stays open: pairing runs on it (the caller owns it now)
         }
         catch
         {
             await speaker.DisposeAsync().ConfigureAwait(false);
             throw;
         }
+        return await AdmitAsync(speaker).ConfigureAwait(false);
+    }
+
+    /// <summary>Adds a connected speaker that may play (also after pairing) to the group.</summary>
+    public async Task<SendspinSpeaker> AdmitAsync(SendspinSpeaker speaker)
+    {
+        speaker.StateChanged -= OnSpeakerStateChanged;
+        speaker.ControllerCommand -= OnSpeakerCommand;
+        speaker.Closed -= OnSpeakerClosed;
+        speaker.StateChanged += OnSpeakerStateChanged;
+        speaker.ControllerCommand += OnSpeakerCommand;
+        speaker.Closed += OnSpeakerClosed;
         List<SendspinSpeaker> replaced;
         lock (_lock)
         {
@@ -107,7 +128,7 @@ public sealed class SendspinOutput : IAsyncDisposable
             speaker.SendGroupUpdate(_groupPlaying, _serverId, _serverName);
             speaker.SendServerState(_metadata, _controller ?? DefaultController());
             // Joining mid-song: it gets chunks from now on (all timestamped ahead, so it starts in sync).
-            if (_running && speaker.IsPlayer) speaker.StartStream(PcmFormat);
+            if (_running && MayStream(speaker)) speaker.StartStream(FormatFor(speaker)!);
         }
         foreach (var old in replaced) await old.DisposeAsync().ConfigureAwait(false);
         SpeakersChanged?.Invoke();
@@ -133,9 +154,13 @@ public sealed class SendspinOutput : IAsyncDisposable
     {
         lock (_lock)
         {
+            // Stamped "now" (a future stamp would be a scheduled update): what the speakers
+            // play now is the player's position minus the delay they run behind.
+            var behindMs = playing ? (long)Latency.TotalMilliseconds : 0;
+            positionMs = Math.Max(0, positionMs - behindMs);
             _metadata = new JsonObject
             {
-                ["timestamp"] = SendspinClock.NowUs + (_running ? _leadUs : ComputeLeadUs()),
+                ["timestamp"] = SendspinClock.NowUs,
                 ["title"] = title,
                 ["artist"] = artist,
                 ["album_artist"] = albumArtist,
@@ -179,10 +204,37 @@ public sealed class SendspinOutput : IAsyncDisposable
         };
     }
 
+    /// <summary>Whether LunaDrome can send this format.</summary>
+    public static bool Produces(SendspinFormat format) => format == PcmFormat || format == FlacFormat;
+
+    /// <summary>The format the speaker currently prefers if LunaDrome makes it, else its most
+    /// preferred one (its list is in priority order) that LunaDrome produces, or null.</summary>
+    public static SendspinFormat? FormatFor(SendspinSpeaker speaker) =>
+        speaker.PreferredFormat is { } preferred && Produces(preferred) && speaker.SupportedFormats.Contains(preferred)
+            ? preferred
+            : speaker.SupportedFormats.FirstOrDefault(Produces);
+
+    /// <summary>A player that has said it's ready (the encrypted revision forbids stream/start
+    /// before client/state reports available: true).</summary>
+    private static bool MayStream(SendspinSpeaker speaker) =>
+        speaker.IsPlayer && FormatFor(speaker) != null && (!speaker.Encrypted || (speaker.HasState && speaker.IsAvailable));
+
     // ---- speaker events ----
 
     private void OnSpeakerStateChanged(SendspinSpeaker speaker)
     {
+        lock (_lock)
+        {
+            if (_speakers.Contains(speaker))
+            {
+                if (speaker.StreamFormat != null && speaker.Encrypted && !speaker.IsAvailable)
+                    speaker.EndStream();                                   // taken over by something else
+                else if (speaker.StreamFormat == null && _running && MayStream(speaker))
+                    speaker.StartStream(FormatFor(speaker)!);              // ready now
+                else if (speaker.StreamFormat != null && FormatFor(speaker) is { } wanted && wanted != speaker.StreamFormat)
+                    speaker.StartStream(wanted);                           // its preferred format changed
+            }
+        }
         Trace($"{speaker.Name} reports state={speaker.State} volume={speaker.Volume} muted={speaker.Muted} delay={speaker.StaticDelayMs}ms");
         lock (_lock)
         {
@@ -350,7 +402,7 @@ public sealed class SendspinOutput : IAsyncDisposable
         _running = true;
         Trace($"timeline started, lead {_leadUs / 1000} ms{(_timelineStartUs == _nextFreeUs ? " (continuing)" : "")}");
         foreach (var speaker in _speakers)
-            if (speaker.StreamFormat == null && speaker.IsPlayer) speaker.StartStream(PcmFormat);
+            if (speaker.StreamFormat == null && MayStream(speaker)) speaker.StartStream(FormatFor(speaker)!);
         if (!_groupPlaying)
         {
             _groupPlaying = true;
@@ -379,13 +431,10 @@ public sealed class SendspinOutput : IAsyncDisposable
         }
     }
 
-    private static void ToPcm16(int[] mix, byte[] pcm)
+    private static void ToPcm16(int[] mix, short[] samples)
     {
-        var samples = MemoryMarshal.Cast<byte, short>(pcm.AsSpan());
         for (var i = 0; i < mix.Length; i++)
             samples[i] = (short)Math.Clamp(mix[i], short.MinValue, short.MaxValue);
-        if (!BitConverter.IsLittleEndian)
-            for (var i = 0; i < samples.Length; i++) samples[i] = System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(samples[i]);
     }
 
     public async ValueTask DisposeAsync()
@@ -406,4 +455,12 @@ public sealed class SendspinOutput : IAsyncDisposable
         foreach (var speaker in speakers) await speaker.DisposeAsync().ConfigureAwait(false);
         _cts.Dispose();
     }
+}
+
+/// <summary>The speaker is connected but needs pairing before it may play; the connection is
+/// left open for the pairing (<see cref="SendspinPairing"/>) and belongs to the caller.</summary>
+public sealed class SendspinPairingRequiredException(SendspinSpeaker speaker)
+    : Exception($"{speaker.Name} needs to be paired with LunaDrome first.")
+{
+    public SendspinSpeaker Speaker { get; } = speaker;
 }
