@@ -94,6 +94,7 @@ public sealed partial class MainPage : Page
     // the latest bands once per display frame (see OnVisualizerRenderFrame).
     private readonly SpectrumAnalyzer _spectrum = new();
     private readonly LoopbackCapture _loopback;
+    private LunaDrome.Core.Sendspin.SendspinSpectrumFeed? _sendspinSpectrum;
     private readonly float[] _visualizerLatestBands = new float[SpectrumAnalyzer.BandCount];
     private readonly float[] _visualizerSmoothed = new float[SpectrumAnalyzer.BandCount];
     private bool _visualizerRenderHooked;
@@ -112,6 +113,13 @@ public sealed partial class MainPage : Page
         this.InitializeComponent();
 #if ANDROID
         ShareLogButton.Visibility = Visibility.Visible;
+        UpdateInstallReceiver.Failed += reason => DispatcherQueue.TryEnqueue(() =>
+        {
+            _updateInProgress = false;
+            if (_update != null)
+                UpdateButton.Content = $"Update to v{_update.Version}";
+            ShowToast($"Update not installed: {reason}");
+        });
 #endif
         InitCompactLayout();
         InitSendspin();
@@ -123,6 +131,7 @@ public sealed partial class MainPage : Page
             _loopback.Dispose();
             _prefetcher.Dispose();
             _mediaControls?.Dispose();
+            StopDlna();
             DisposeSendspin();
         };
         _visualizerTimer.Tick += OnVisualizerRenderFrame;
@@ -650,6 +659,9 @@ public sealed partial class MainPage : Page
             ? $"Download and install LunaDrome v{update.Version} (you're on v{UpdateChecker.CurrentVersion})"
             : $"Open the LunaDrome v{update.Version} download page (you're on v{UpdateChecker.CurrentVersion})");
         UpdateButton.Visibility = Visibility.Visible;
+        // Phones: the button sits in the "More" menu, so say it where it's seen.
+        if (IsCompact && UpdateChecker.CanInstallInPlace)
+            ShowToast($"LunaDrome v{update.Version} is available", "Update", () => UpdateButton_Click(UpdateButton, new RoutedEventArgs()));
     }
 
     private async void UpdateButton_Click(object sender, RoutedEventArgs e)
@@ -663,10 +675,28 @@ public sealed partial class MainPage : Page
             return;
         }
 
+#if ANDROID
+        if (!AndroidUpdateInstaller.MayInstall)
+        {
+            var allow = new ContentDialog
+            {
+                Title = "Allow LunaDrome to install updates",
+                Content = "Android asks once: turn on \"Allow from this source\" for LunaDrome on the next screen, then come back and tap Update again.",
+                PrimaryButtonText = "Open settings",
+                CloseButtonText = "Not now",
+                XamlRoot = this.XamlRoot
+            };
+            if (await allow.ShowAsync() == ContentDialogResult.Primary)
+                AndroidUpdateInstaller.OpenInstallPermissionSettings();
+            return;
+        }
+#endif
         var confirm = new ContentDialog
         {
             Title = $"Update to LunaDrome v{update.Version}",
-            Content = "LunaDrome will download the update, close, install it and start again. Your queue is kept.",
+            Content = OperatingSystem.IsAndroid()
+                ? "LunaDrome will download the update and Android will ask to install it. Your login, queue and settings are kept."
+                : "LunaDrome will download the update, close, install it and start again. Your queue is kept.",
             PrimaryButtonText = "Update",
             CloseButtonText = "Not now",
             XamlRoot = this.XamlRoot
@@ -681,8 +711,13 @@ public sealed partial class MainPage : Page
             var installer = await UpdateChecker.DownloadInstallerAsync(update, progress);
             UpdateButton.Content = "Installing...";
             SaveQueueState();
+#if ANDROID
+            // Android shows its own prompt and closes the app itself when it installs.
+            await AndroidUpdateInstaller.InstallAsync(installer);
+#else
             UpdateChecker.RunInstaller(installer);
             Application.Current.Exit();
+#endif
         }
         catch (Exception ex)
         {
@@ -2484,7 +2519,11 @@ public sealed partial class MainPage : Page
         _visualizerLastTicks = 0;
         _visualizerForceDraw = true;
         Array.Clear(_visualizerSmoothed);
-        _loopback.Start();
+        // On Sendspin speakers this device is silent: follow the mix they play instead.
+        if (_sendspinActive && _sendspin != null)
+            _sendspinSpectrum = new LunaDrome.Core.Sendspin.SendspinSpectrumFeed(_sendspin, _spectrum);
+        else
+            _loopback.Start();
         _visualizerTimer.Start();
     }
 
@@ -2496,6 +2535,17 @@ public sealed partial class MainPage : Page
         _visualizerRenderHooked = false;
         _visualizerTimer.Stop();
         _loopback.Stop();
+        _sendspinSpectrum?.Dispose();
+        _sendspinSpectrum = null;
+    }
+
+    /// <summary>The output changed: the visualizer switches to listening to the new one.</summary>
+    private void RestartVisualizer()
+    {
+        if (!_visualizerRenderHooked)
+            return;
+        StopVisualizer();
+        StartVisualizer();
     }
 
     // Every ~16ms: pull the latest bands, shape them, smooth them over time, hand them to the
@@ -2522,6 +2572,7 @@ public sealed partial class MainPage : Page
         var riseKeep = (float)Math.Pow(VisualizerRiseKeep, frames);
         var fallKeep = (float)Math.Pow(VisualizerFallKeep, frames);
 
+        _sendspinSpectrum?.Pump();
         _spectrum.CopyLatestBandsTo(_visualizerLatestBands);
         float maxChange = 0;
         for (var i = 0; i < _visualizerSmoothed.Length; i++)

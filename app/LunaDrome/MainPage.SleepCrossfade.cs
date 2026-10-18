@@ -24,12 +24,13 @@ public sealed partial class MainPage
             SetPlayerVolume(_player, PlaybackVolume);
     }
 
-    /// <summary>Sets a player's volume, and the level of its audio on Sendspin speakers.</summary>
+    /// <summary>Sets a player's volume, and the level of its audio on Sendspin speakers or a DLNA renderer.</summary>
     private static void SetPlayerVolume(Windows.Media.Playback.MediaPlayer player, double volume)
     {
-        // Followed by Sendspin (phones): the player plays muted, the speakers get the volume.
-        player.Volume = SendspinTap.MutesPlayer(player) ? 0 : volume;
+        // Followed by Sendspin (phones) or DLNA: the player plays muted, the speakers get the volume.
+        player.Volume = SendspinTap.MutesPlayer(player) || DlnaFollower.IsAttached(player) ? 0 : volume;
         SendspinTap.SetGain(player, volume);
+        DlnaFollower.SetVolume(player, volume);
     }
 
     /// <summary>Every progress tick (and when media opens): puts the volume back if VLC changed it.</summary>
@@ -41,8 +42,9 @@ public sealed partial class MainPage
     {
         if (_fadingOut != null)
             return;   // the fade timer sets both volumes
-        // On Sendspin VLC reports 0 (its audio goes to a callback, which gets the real volume).
-        if (SendspinTap.IsAttached(_player))
+        // On Sendspin VLC reports 0 (its audio goes to a callback, which gets the real volume);
+        // on DLNA the player is muted on purpose.
+        if (SendspinTap.IsAttached(_player) || DlnaFollower.IsAttached(_player))
             return;
         var wanted = PlaybackVolume;
         if (Math.Abs(_player.Volume - wanted) > 0.005)
@@ -285,7 +287,8 @@ public sealed partial class MainPage
     {
         var seconds = _prefs.CrossfadeSeconds;
         // Desktop only: on Android a second player can take the audio focus from the first.
-        if (seconds <= 0 || OperatingSystem.IsAndroid() || _fadingOut != null || JamOwnsPlayback || !_isPlaying)
+        // Not on DLNA either: the renderer plays one song at a time.
+        if (seconds <= 0 || OperatingSystem.IsAndroid() || _fadingOut != null || JamOwnsPlayback || !_isPlaying || DlnaActive)
             return;
         if (_sleepAtSongEnd || _repeatMode == RepeatMode.One)
             return;

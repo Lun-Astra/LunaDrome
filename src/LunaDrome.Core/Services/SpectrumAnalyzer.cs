@@ -21,7 +21,7 @@ public sealed class SpectrumAnalyzer
     // one broad, flat-topped hump. 4096 samples gives ~11 Hz bins (and narrow bands are
     // interpolated between bins); a new spectrum still comes every 1024 samples (overlapping
     // windows), so the update rate stays ~43 per second.
-    private const int FftLength = 4096; // power of two
+    public const int FftLength = 4096; // power of two
     private const int HopLength = 1024;
 
     // #32: music has far more energy in the bass than in the highs, so after auto-gain the left
