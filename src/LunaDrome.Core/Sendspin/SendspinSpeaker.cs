@@ -25,6 +25,7 @@ public sealed class SendspinSpeaker : IAsyncDisposable
     private readonly CancellationTokenSource _cts = new();
     private readonly Queue<(long EndUs, int Bytes)> _inFlight = new();
     private readonly object _lock = new();
+    private FlacEncoder? _flac;
     private long _inFlightBytes;
     private Task? _receiveLoop, _sendLoop;
     private int _closed;
@@ -136,21 +137,28 @@ public sealed class SendspinSpeaker : IAsyncDisposable
 
     // ---- outgoing ----
 
-    /// <summary>Starts (or reconfigures) the audio stream.</summary>
+    /// <summary>Starts (or reconfigures) the audio stream. FLAC gets its own encoder, so its
+    /// frame numbers start with the stream.</summary>
     public void StartStream(SendspinFormat format)
     {
-        lock (_lock) { _inFlight.Clear(); _inFlightBytes = 0; }
-        StreamFormat = format;
-        EnqueueJson("stream/start", new JsonObject
+        lock (_lock)
         {
-            ["player"] = new JsonObject
-            {
-                ["codec"] = format.Codec,
-                ["sample_rate"] = format.SampleRate,
-                ["channels"] = format.Channels,
-                ["bit_depth"] = format.BitDepth,
-            },
-        });
+            _inFlight.Clear();
+            _inFlightBytes = 0;
+            _flac = format.Codec == "flac"
+                ? new FlacEncoder(format.SampleRate, format.Channels, SendspinOutput.ChunkFrames)
+                : null;
+            StreamFormat = format;
+        }
+        var player = new JsonObject
+        {
+            ["codec"] = format.Codec,
+            ["sample_rate"] = format.SampleRate,
+            ["channels"] = format.Channels,
+            ["bit_depth"] = format.BitDepth,
+        };
+        if (_flac != null) player["codec_header"] = Convert.ToBase64String(_flac.Header());
+        EnqueueJson("stream/start", new JsonObject { ["player"] = player });
     }
 
     /// <summary>Drops the speaker's buffered audio but keeps the stream (pause, seek, skip).</summary>
@@ -165,15 +173,29 @@ public sealed class SendspinSpeaker : IAsyncDisposable
     {
         if (StreamFormat == null) return;
         StreamFormat = null;
-        lock (_lock) { _inFlight.Clear(); _inFlightBytes = 0; }
+        lock (_lock) { _inFlight.Clear(); _inFlightBytes = 0; _flac = null; }
         EnqueueJson("stream/end", new JsonObject { ["roles"] = new JsonArray("player") });
     }
 
-    /// <summary>Queues one audio chunk whose first sample plays at <paramref name="timestampUs"/>
-    /// (server clock). False when it was skipped because the speaker's buffer is full.</summary>
-    public bool SendAudio(long timestampUs, long durationUs, ReadOnlySpan<byte> encoded)
+    /// <summary>Queues one chunk of interleaved 16-bit samples (encoded for this speaker's
+    /// stream format) whose first sample plays at <paramref name="timestampUs"/> (server clock).
+    /// False when it was skipped because the speaker's buffer is full.</summary>
+    public bool SendAudio(long timestampUs, long durationUs, ReadOnlySpan<short> samples)
     {
         if (StreamFormat == null || !HasState) return false;
+        byte[] encoded;
+        lock (_lock)
+        {
+            if (_flac != null)
+                encoded = _flac.EncodeFrame(samples);
+            else
+            {
+                // PCM: little-endian signed 16-bit.
+                encoded = new byte[samples.Length * 2];
+                for (var i = 0; i < samples.Length; i++)
+                    BinaryPrimitives.WriteInt16LittleEndian(encoded.AsSpan(2 * i), samples[i]);
+            }
+        }
         var size = encoded.Length + 9;
         lock (_lock)
         {
@@ -295,8 +317,14 @@ public sealed class SendspinSpeaker : IAsyncDisposable
                             ControllerCommand?.Invoke(this, command, (int?)controller["volume"], (bool?)controller["mute"]);
                         break;
                     case "stream/request-format":
-                        // Only one format is produced; answering with it is the defined response.
-                        if (StreamFormat is { } current) StartStream(current);
+                        // Switch when it's a format LunaDrome makes; otherwise answer with the current one.
+                        if (StreamFormat is { } current && payload["player"] is JsonObject wanted)
+                        {
+                            var requested = new SendspinFormat((string?)wanted["codec"] ?? current.Codec,
+                                (int?)wanted["sample_rate"] ?? current.SampleRate, (int?)wanted["channels"] ?? current.Channels,
+                                (int?)wanted["bit_depth"] ?? current.BitDepth);
+                            StartStream(SendspinOutput.Produces(requested) ? requested : current);
+                        }
                         break;
                     case "client/goodbye":
                         reason = (string?)payload["reason"] ?? "goodbye";

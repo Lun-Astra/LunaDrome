@@ -1,4 +1,3 @@
-using System.Runtime.InteropServices;
 using System.Text.Json.Nodes;
 
 namespace LunaDrome.Core.Sendspin;
@@ -14,8 +13,10 @@ public sealed class SendspinOutput : IAsyncDisposable
     public const int SampleRate = 48000;
     public const int Channels = 2;
     public static readonly SendspinFormat PcmFormat = new("pcm", SampleRate, Channels, 16);
+    /// <summary>Lossless and about half of PCM's bitrate; one FLAC frame per chunk.</summary>
+    public static readonly SendspinFormat FlacFormat = new("flac", SampleRate, Channels, 16);
 
-    private const int ChunkFrames = SampleRate / 50;                  // 20 ms
+    internal const int ChunkFrames = SampleRate / 50;                 // 20 ms
     private const long ChunkUs = ChunkFrames * 1_000_000L / SampleRate;
     private const int PrebufferFrames = SampleRate / 10;              // wait for 100 ms before (re)starting
     private const long MinLeadUs = 200_000, MaxLeadUs = 5_000_000;
@@ -28,7 +29,7 @@ public sealed class SendspinOutput : IAsyncDisposable
     private readonly Thread _pump;
     private readonly CancellationTokenSource _cts = new();
     private readonly int[] _mix = new int[ChunkFrames * Channels];
-    private readonly byte[] _pcm = new byte[ChunkFrames * Channels * 2];
+    private readonly short[] _pcm = new short[ChunkFrames * Channels];
 
     // Timeline (pump thread + _lock).
     private volatile bool _running;
@@ -89,9 +90,9 @@ public sealed class SendspinOutput : IAsyncDisposable
         try
         {
             await speaker.ConnectAsync(_serverId, _serverName, forPlayback: true, cancellationToken).ConfigureAwait(false);
-            if (speaker.IsPlayer && !speaker.SupportedFormats.Contains(PcmFormat))
+            if (speaker.IsPlayer && FormatFor(speaker) == null)
                 throw new SendspinProtocolException(
-                    $"{speaker.Name} doesn't accept {PcmFormat}, the only format LunaDrome sends so far.");
+                    $"{speaker.Name} doesn't accept {PcmFormat} or {FlacFormat}, the formats LunaDrome sends.");
         }
         catch
         {
@@ -107,7 +108,7 @@ public sealed class SendspinOutput : IAsyncDisposable
             speaker.SendGroupUpdate(_groupPlaying, _serverId, _serverName);
             speaker.SendServerState(_metadata, _controller ?? DefaultController());
             // Joining mid-song: it gets chunks from now on (all timestamped ahead, so it starts in sync).
-            if (_running && speaker.IsPlayer) speaker.StartStream(PcmFormat);
+            if (_running && speaker.IsPlayer) speaker.StartStream(FormatFor(speaker)!);
         }
         foreach (var old in replaced) await old.DisposeAsync().ConfigureAwait(false);
         SpeakersChanged?.Invoke();
@@ -178,6 +179,14 @@ public sealed class SendspinOutput : IAsyncDisposable
             ["shuffle"] = (bool?)_controller?["shuffle"] ?? false,
         };
     }
+
+    /// <summary>Whether LunaDrome can send this format.</summary>
+    public static bool Produces(SendspinFormat format) => format == PcmFormat || format == FlacFormat;
+
+    /// <summary>The speaker's most preferred format (its list is in priority order) that
+    /// LunaDrome produces, or null.</summary>
+    public static SendspinFormat? FormatFor(SendspinSpeaker speaker) =>
+        speaker.SupportedFormats.FirstOrDefault(Produces);
 
     // ---- speaker events ----
 
@@ -350,7 +359,7 @@ public sealed class SendspinOutput : IAsyncDisposable
         _running = true;
         Trace($"timeline started, lead {_leadUs / 1000} ms{(_timelineStartUs == _nextFreeUs ? " (continuing)" : "")}");
         foreach (var speaker in _speakers)
-            if (speaker.StreamFormat == null && speaker.IsPlayer) speaker.StartStream(PcmFormat);
+            if (speaker.StreamFormat == null && speaker.IsPlayer) speaker.StartStream(FormatFor(speaker)!);
         if (!_groupPlaying)
         {
             _groupPlaying = true;
@@ -379,13 +388,10 @@ public sealed class SendspinOutput : IAsyncDisposable
         }
     }
 
-    private static void ToPcm16(int[] mix, byte[] pcm)
+    private static void ToPcm16(int[] mix, short[] samples)
     {
-        var samples = MemoryMarshal.Cast<byte, short>(pcm.AsSpan());
         for (var i = 0; i < mix.Length; i++)
             samples[i] = (short)Math.Clamp(mix[i], short.MinValue, short.MaxValue);
-        if (!BitConverter.IsLittleEndian)
-            for (var i = 0; i < samples.Length; i++) samples[i] = System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(samples[i]);
     }
 
     public async ValueTask DisposeAsync()
