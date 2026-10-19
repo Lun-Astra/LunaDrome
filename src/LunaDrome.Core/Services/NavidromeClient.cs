@@ -327,6 +327,60 @@ public class NavidromeClient
         return server;
     }
 
+    private readonly Dictionary<string, string?> _publicCovers = new();
+
+    /// <summary>
+    /// An album cover anyone can load without logging in, for places outside LunaDrome (Discord's
+    /// servers fetch the image themselves): Navidrome's /share/img link from getAlbumInfo2, whose
+    /// token only unlocks that one image. Null when there is none, or when the server is only on
+    /// this network (nobody outside could load it anyway). Looked up once per album.
+    /// </summary>
+    public async Task<string?> GetPublicCoverUrlAsync(string albumId)
+    {
+        if (string.IsNullOrEmpty(albumId) || !Uri.TryCreate(ServerUrl, UriKind.Absolute, out var server) || IsLocalOnly(server))
+            return null;
+        lock (_publicCovers)
+            if (_publicCovers.TryGetValue(albumId, out var known))
+                return known;
+
+        string? cover = null;
+        try
+        {
+            var json = await _http.GetStringAsync(BuildUrl("getAlbumInfo2.view", ("id", albumId)));
+            var info = JsonSerializer.Deserialize<SubsonicEnvelope<AlbumInfoResponse>>(json, JsonOptions)?.Response?.AlbumInfo;
+            var link = info?.MediumImageUrl ?? info?.LargeImageUrl ?? info?.SmallImageUrl;
+            if (Uri.TryCreate(link, UriKind.Absolute, out var url) && url.AbsolutePath.Contains("/share/img/", StringComparison.Ordinal))
+            {
+                // Behind a reverse proxy Navidrome writes http:// links; the address the user signed
+                // in with says whether the server answers on https (Discord only loads https images).
+                if (url.Scheme == Uri.UriSchemeHttp && server.Scheme == Uri.UriSchemeHttps
+                    && string.Equals(url.Host, server.Host, StringComparison.OrdinalIgnoreCase))
+                    url = new UriBuilder(url) { Scheme = Uri.UriSchemeHttps, Port = server.Port }.Uri;
+                if (url.Scheme == Uri.UriSchemeHttps)
+                    cover = url.AbsoluteUri;
+            }
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
+        {
+            return null;   // not remembered: may work next time
+        }
+        lock (_publicCovers)
+            _publicCovers[albumId] = cover;
+        return cover;
+    }
+
+    private static bool IsLocalOnly(Uri server)
+    {
+        if (server.IsLoopback || server.Host.EndsWith(".local", StringComparison.OrdinalIgnoreCase) || !server.Host.Contains('.'))
+            return true;
+        if (!System.Net.IPAddress.TryParse(server.Host, out var ip))
+            return false;
+        var b = ip.GetAddressBytes();
+        return ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork
+            ? b[0] == 10 || (b[0] == 172 && b[1] >= 16 && b[1] < 32) || (b[0] == 192 && b[1] == 168) || (b[0] == 169 && b[1] == 254) || (b[0] == 100 && b[1] >= 64 && b[1] < 128)
+            : ip.IsIPv6LinkLocal || ip.IsIPv6SiteLocal || ip.IsIPv6UniqueLocal;
+    }
+
     private async Task<(List<LyricLine> Lines, bool Synced)> GetServerLyricsAsync(string songId, string artist, string title)
     {
         try

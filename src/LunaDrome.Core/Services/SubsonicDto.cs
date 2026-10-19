@@ -27,6 +27,18 @@ internal class PingResponse : SubsonicResponseBase
 {
 }
 
+internal class AlbumInfoResponse : SubsonicResponseBase
+{
+    public AlbumInfoDto? AlbumInfo { get; set; }
+}
+
+internal class AlbumInfoDto
+{
+    public string? SmallImageUrl { get; set; }
+    public string? MediumImageUrl { get; set; }
+    public string? LargeImageUrl { get; set; }
+}
+
 internal class ArtistsResponse : SubsonicResponseBase
 {
     public ArtistsPayload? Artists { get; set; }

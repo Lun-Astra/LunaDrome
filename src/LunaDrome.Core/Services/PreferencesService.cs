@@ -17,6 +17,8 @@ public class Preferences
     public bool CheckForUpdates { get; set; } = true;
     /// <summary>Show the playing song on the user's Discord profile (desktop). Off by default.</summary>
     public bool DiscordPresence { get; set; }
+    /// <summary>With it: the album cover (a public link to it on the user's server) instead of the logo.</summary>
+    public bool DiscordAlbumArt { get; set; } = true;
 
     public double Volume { get; set; } = 0.8;
 
