@@ -308,6 +308,8 @@ public sealed partial class MainPage : Page
         OnlineLyricsCheck.IsChecked = _prefs.OnlineLyrics;
         AutoUpdateCheck.IsChecked = _prefs.CheckForUpdates;
         DiscordPresenceCheck.IsChecked = _prefs.DiscordPresence;
+        DiscordAlbumArtCheck.IsChecked = _prefs.DiscordAlbumArt;
+        DiscordAlbumArtCheck.IsEnabled = _prefs.DiscordPresence;
         DiscordPresenceSetting.Visibility = OperatingSystem.IsAndroid() ? Visibility.Collapsed : Visibility.Visible;
         RefreshSpotiDromeSettings();
         RefreshJamiDromeSettings();
@@ -529,9 +531,15 @@ public sealed partial class MainPage : Page
         _prefs.OnlineLyrics = OnlineLyricsCheck.IsChecked == true;
         _prefs.CheckForUpdates = AutoUpdateCheck.IsChecked == true;
         _prefs.DiscordPresence = DiscordPresenceCheck.IsChecked == true;
+        _prefs.DiscordAlbumArt = DiscordAlbumArtCheck.IsChecked == true;
         PreferencesService.Save(_prefs);
+        DiscordAlbumArtCheck.IsEnabled = _prefs.DiscordPresence;
         if (_discord != null)
+        {
             _discord.Enabled = _prefs.DiscordPresence;
+            _discord.ShowAlbumArt = _prefs.DiscordAlbumArt;
+            _discord.Refresh();
+        }
 
         if (!_prefs.PrefetchNextTrack)
         {
@@ -2905,7 +2913,11 @@ public sealed partial class MainPage : Page
 
 #if !ANDROID && !__IOS__
         // Discord status (desktop), fed by the same updates; on/off from Settings.
-        _discord ??= new DiscordMediaControls(Log) { Enabled = _prefs.DiscordPresence };
+        _discord ??= new DiscordMediaControls(Log, song => _client.GetPublicCoverUrlAsync(song.AlbumId))
+        {
+            Enabled = _prefs.DiscordPresence,
+            ShowAlbumArt = _prefs.DiscordAlbumArt,
+        };
 #endif
         _osMediaControls = MediaControls.Create();
         Log($"media controls: {_osMediaControls?.GetType().Name ?? "not available yet"}");

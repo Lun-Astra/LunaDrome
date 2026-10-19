@@ -966,6 +966,8 @@
                     <StackPanel x:Name="DiscordPresenceSetting">
                       <CheckBox x:Name="DiscordPresenceCheck" Content="Show what I'm listening to on Discord" Click="PreferenceCheck_Click"/>
                       <TextBlock Style="{StaticResource SettingsHintStyle}" Text="While a song plays, your Discord profile shows &quot;Listening to LunaDrome&quot; with the song, artist and album. Needs the Discord app running on this computer."/>
+                      <CheckBox x:Name="DiscordAlbumArtCheck" Content="With the album cover" Margin="0,8,0,0" Click="PreferenceCheck_Click"/>
+                      <TextBlock Style="{StaticResource SettingsHintStyle}" Text="Shows the cover instead of the LunaDrome logo, using your server's public cover link (no login in it, but it does show your server's address). Only when your server can be reached from the internet."/>
                     </StackPanel>
                     <StackPanel>
                       <CheckBox x:Name="OnlineLyricsCheck" Content="Find lyrics online (LRCLIB)" Click="PreferenceCheck_Click"/>

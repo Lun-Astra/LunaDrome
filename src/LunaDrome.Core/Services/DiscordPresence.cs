@@ -14,8 +14,9 @@ namespace LunaDrome.Core.Services;
 /// Updates come from the UI thread and only record the wanted state; one background loop
 /// connects (retrying while Discord isn't running) and sends the newest state, at most once per
 /// <see cref="MinSendGap"/> (Discord drops activity updates sent faster than ~5 per 20s).
-/// The image is the app's "lunadrome" art asset, never the Navidrome cover URL: that carries
-/// the user's login token.
+/// The image is the album's public cover link when there is one (Navidrome's /share/img, see
+/// NavidromeClient.GetPublicCoverUrlAsync) with the app's "lunadrome" art asset as the small
+/// badge, else that asset alone - never the normal cover URL: that carries the login token.
 /// </summary>
 public sealed class DiscordPresence : IDisposable
 {
@@ -24,7 +25,10 @@ public sealed class DiscordPresence : IDisposable
     private static readonly TimeSpan MinSendGap = TimeSpan.FromSeconds(4);
     private static readonly TimeSpan RetryDelay = TimeSpan.FromSeconds(15);
 
-    private sealed record Activity(string Title, string Artist, string Album, DateTimeOffset Start, DateTimeOffset End);
+    private sealed record Activity(string Title, string Artist, string Album, DateTimeOffset Start, DateTimeOffset End, string? ImageUrl);
+
+    // Discord refuses an activity whose image key/URL is longer than this.
+    private const int MaxImageLength = 256;
 
     private readonly object _lock = new();
     private readonly SemaphoreSlim _changed = new(0);
@@ -56,16 +60,19 @@ public sealed class DiscordPresence : IDisposable
     }
 
     /// <summary>Show a playing song. <paramref name="position"/>/<paramref name="duration"/> set the
-    /// progress bar; call again after a seek.</summary>
-    public void SetPlaying(string title, string artist, string album, TimeSpan position, TimeSpan duration)
+    /// progress bar; call again after a seek. <paramref name="imageUrl"/>: a public https image
+    /// (the album cover) to show instead of the LunaDrome logo.</summary>
+    public void SetPlaying(string title, string artist, string album, TimeSpan position, TimeSpan duration, string? imageUrl = null)
     {
         var start = DateTimeOffset.UtcNow - position;
-        var activity = new Activity(title, artist, album, start, start + duration);
+        if (imageUrl is { Length: > MaxImageLength })
+            imageUrl = null;
+        var activity = new Activity(title, artist, album, start, start + duration, imageUrl);
         lock (_lock)
         {
             // A position report just confirming the same song + timing isn't a change (the player
             // reports every ~0.4s; only a seek moves the start by more than a couple of seconds).
-            if (_wanted is { } w && w.Title == title && w.Artist == artist && w.Album == album
+            if (_wanted is { } w && w.Title == title && w.Artist == artist && w.Album == album && w.ImageUrl == imageUrl
                 && Math.Abs((w.Start - start).TotalSeconds) < 2.5 && Math.Abs((w.End - activity.End).TotalSeconds) < 2.5)
                 return;
             _wanted = activity;
@@ -324,11 +331,20 @@ public sealed class DiscordPresence : IDisposable
                     ["start"] = activity.Start.ToUnixTimeMilliseconds(),
                     ["end"] = activity.End.ToUnixTimeMilliseconds()
                 },
-                ["assets"] = new JsonObject
-                {
-                    ["large_image"] = "lunadrome",
-                    ["large_text"] = Fit(string.IsNullOrWhiteSpace(activity.Album) ? "LunaDrome" : activity.Album)
-                }
+                ["assets"] = activity.ImageUrl == null
+                    ? new JsonObject
+                    {
+                        ["large_image"] = "lunadrome",
+                        ["large_text"] = Fit(string.IsNullOrWhiteSpace(activity.Album) ? "LunaDrome" : activity.Album)
+                    }
+                    : new JsonObject
+                    {
+                        // An https URL works in place of an asset key; Discord's media proxy fetches it.
+                        ["large_image"] = activity.ImageUrl,
+                        ["large_text"] = Fit(string.IsNullOrWhiteSpace(activity.Album) ? "LunaDrome" : activity.Album),
+                        ["small_image"] = "lunadrome",
+                        ["small_text"] = "LunaDrome"
+                    }
             };
         }
 
