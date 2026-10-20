@@ -252,6 +252,9 @@ public class NavidromeClient
         AlbumName = s.Album,
         ArtistId = s.ArtistId,
         ArtistName = s.Artist,
+        Artists = s.Artists is { Count: > 1 } list
+            ? list.Where(a => !string.IsNullOrEmpty(a.Id)).Select(a => new ArtistRef(a.Id, a.Name)).ToList()
+            : [],
         AlbumArtistName = string.IsNullOrEmpty(s.AlbumArtist) ? s.Artist : s.AlbumArtist,
         Genre = s.Genre,
         Track = s.Track,

@@ -1577,8 +1577,23 @@ public sealed partial class MainPage : Page
     private async void SongArtistText_Tapped(object sender, TappedRoutedEventArgs e)
     {
         e.Handled = true;
-        if (sender is FrameworkElement { Tag: Song song })
+        if (sender is FrameworkElement { Tag: Song song } anchor)
+            await GoToSongArtistAsync(song, anchor);
+    }
+
+    /// <summary>The song's artist page; with several artists ("Jeff Williams, Casey Lee
+    /// Williams") a menu to pick which one.</summary>
+    private async Task GoToSongArtistAsync(Song song, FrameworkElement anchor)
+    {
+        if (song.Artists.Count < 2)
+        {
             await NavigateToArtistAsync(song.ArtistId, song.ArtistName);
+            return;
+        }
+        var flyout = new MenuFlyout();
+        foreach (var artist in song.Artists)
+            AddMenuItem(flyout, artist.Name, async () => await NavigateToArtistAsync(artist.Id, artist.Name));
+        flyout.ShowAt(anchor);
     }
 
     // ================= Tracks (library-wide) =================
@@ -2128,7 +2143,7 @@ public sealed partial class MainPage : Page
             return;   // phone: tapping the bar opens the player instead (PlaybackBar_Tapped)
         e.Handled = true;
         if (_current?.Song is { } song)
-            await NavigateToArtistAsync(song.ArtistId, song.ArtistName);
+            await GoToSongArtistAsync(song, (FrameworkElement)sender);
     }
 
     private async void SidePanelTabButton_Checked(object sender, RoutedEventArgs e)
