@@ -65,6 +65,24 @@ Grab the latest build from the [Releases](https://github.com/Lun-Astra/LunaDrome
 - **Other Linux (x64):** extract `LunaDrome-<version>-linux-x64.tar.gz`, run `./install.sh`
   (or `sudo ./install.sh --system`); needs libvlc, and `parec` for the visualizer.
 
+### Navidrome server settings
+
+A few LunaDrome features need a setting on the Navidrome server (in `navidrome.toml`, or the
+matching `ND_...` environment variable for Docker; restart Navidrome afterwards):
+
+| Setting | Needed for |
+|---|---|
+| `EnableSharing = true` (`ND_ENABLESHARING=true`) | **Share song** - without it Navidrome refuses to make share links. |
+| `Subsonic.ArtistParticipations = true` (`ND_SUBSONIC_ARTISTPARTICIPATIONS=true`) | **Songs by several artists** - an artist's page then also lists albums they only appear on (e.g. a featured singer on someone else's album). Without it, only albums where they're the album artist show up. |
+
+Songs by several artists also need each artist tagged separately (a multi-valued `ARTISTS`
+tag); a single "Artist A, Artist B" text becomes one combined artist, because Navidrome doesn't
+split on commas. SpotiDrome writes these tags itself, and Settings > Library Maintenance >
+Split Combined Artists adds them to songs it downloaded earlier.
+
+**Discord album covers** use Navidrome's public cover links, so they only show when the server
+can be reached from the internet over https; otherwise Discord shows the LunaDrome logo.
+
 Releases are built by GitHub Actions (`.github/workflows/release.yml`) when a version tag is
 pushed: `git tag v3.4.0 && git push origin v3.4.0`. Installer sources are in `installer/`.
 
