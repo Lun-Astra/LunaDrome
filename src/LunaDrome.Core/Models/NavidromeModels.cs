@@ -123,3 +123,6 @@ public class Playlist
 
 /// <summary>One artist of a song: enough to open the artist's page.</summary>
 public sealed record ArtistRef(string Id, string Name);
+
+/// <summary>An album cover anyone can load (see NavidromeClient.GetPublicCoverAsync), or why there is none.</summary>
+public sealed record PublicCover(string? Url, string? WhyNot);

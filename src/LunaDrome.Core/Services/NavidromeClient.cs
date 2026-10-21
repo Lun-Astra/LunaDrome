@@ -330,46 +330,80 @@ public class NavidromeClient
         return server;
     }
 
-    private readonly Dictionary<string, string?> _publicCovers = new();
+    private readonly Dictionary<string, PublicCover> _publicCovers = new();
+    private readonly Dictionary<string, bool> _httpsHosts = new();
 
     /// <summary>
     /// An album cover anyone can load without logging in, for places outside LunaDrome (Discord's
     /// servers fetch the image themselves): Navidrome's /share/img link from getAlbumInfo2, whose
     /// token only unlocks that one image. Null when there is none, or when the server is only on
-    /// this network (nobody outside could load it anyway). Looked up once per album.
+    /// this network (nobody outside could load it anyway); <see cref="PublicCover.WhyNot"/> then
+    /// says why. Looked up once per album.
     /// </summary>
-    public async Task<string?> GetPublicCoverUrlAsync(string albumId)
+    public async Task<PublicCover> GetPublicCoverAsync(string albumId)
     {
-        if (string.IsNullOrEmpty(albumId) || !Uri.TryCreate(ServerUrl, UriKind.Absolute, out var server) || IsLocalOnly(server))
-            return null;
+        if (string.IsNullOrEmpty(albumId))
+            return new(null, "the song has no album");
+        if (!Uri.TryCreate(ServerUrl, UriKind.Absolute, out var server) || IsLocalOnly(server))
+            return new(null, $"the server address ({server?.Host ?? ServerUrl}) is only reachable on this network");
         lock (_publicCovers)
             if (_publicCovers.TryGetValue(albumId, out var known))
                 return known;
 
-        string? cover = null;
+        PublicCover cover;
         try
         {
             var json = await _http.GetStringAsync(BuildUrl("getAlbumInfo2.view", ("id", albumId)));
             var info = JsonSerializer.Deserialize<SubsonicEnvelope<AlbumInfoResponse>>(json, JsonOptions)?.Response?.AlbumInfo;
             var link = info?.MediumImageUrl ?? info?.LargeImageUrl ?? info?.SmallImageUrl;
-            if (Uri.TryCreate(link, UriKind.Absolute, out var url) && url.AbsolutePath.Contains("/share/img/", StringComparison.Ordinal))
-            {
-                // Behind a reverse proxy Navidrome writes http:// links; the address the user signed
-                // in with says whether the server answers on https (Discord only loads https images).
-                if (url.Scheme == Uri.UriSchemeHttp && server.Scheme == Uri.UriSchemeHttps
-                    && string.Equals(url.Host, server.Host, StringComparison.OrdinalIgnoreCase))
-                    url = new UriBuilder(url) { Scheme = Uri.UriSchemeHttps, Port = server.Port }.Uri;
-                if (url.Scheme == Uri.UriSchemeHttps)
-                    cover = url.AbsoluteUri;
-            }
+            if (!Uri.TryCreate(link, UriKind.Absolute, out var url) || !url.AbsolutePath.Contains("/share/img/", StringComparison.Ordinal))
+                cover = new(null, "the server gives no public cover link (Navidrome 0.53+ needed)");
+            else if (await ToHttpsAsync(url, server) is { } https)
+                cover = new(https.AbsoluteUri, null);
+            else
+                cover = new(null, $"the server doesn't answer on https at {url.Host} (Discord only loads https images)");
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
         {
-            return null;   // not remembered: may work next time
+            return new(null, $"looking it up failed: {ex.Message}");   // not remembered: may work next time
         }
         lock (_publicCovers)
             _publicCovers[albumId] = cover;
         return cover;
+    }
+
+    // Behind a reverse proxy Navidrome writes http:// links. When the user signed in over https the
+    // host answers on https; when they signed in over http it may still (a proxy with a
+    // certificate) - asked once per host.
+    private async Task<Uri?> ToHttpsAsync(Uri url, Uri server)
+    {
+        if (url.Scheme == Uri.UriSchemeHttps)
+            return url;
+        var sameHost = string.Equals(url.Host, server.Host, StringComparison.OrdinalIgnoreCase);
+        if (sameHost && server.Scheme == Uri.UriSchemeHttps)
+            return new UriBuilder(url) { Scheme = Uri.UriSchemeHttps, Port = server.Port }.Uri;
+        var https = new UriBuilder(url) { Scheme = Uri.UriSchemeHttps, Port = -1 }.Uri;
+        bool? known;
+        lock (_httpsHosts)
+            known = _httpsHosts.TryGetValue(url.Host, out var k) ? k : null;
+        var works = known ?? false;
+        if (known == null)
+        {
+            try
+            {
+                using var probe = new HttpRequestMessage(HttpMethod.Get, https);
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(6));
+                using var response = await _http.SendAsync(probe, HttpCompletionOption.ResponseHeadersRead, cts.Token);
+                works = response.IsSuccessStatusCode && response.Content.Headers.ContentType?.MediaType?.StartsWith("image/") == true;
+            }
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+            {
+                works = false;
+            }
+            lock (_httpsHosts)
+                _httpsHosts[url.Host] = works;
+        }
+        return works ? https : null;
     }
 
     private static bool IsLocalOnly(Uri server)

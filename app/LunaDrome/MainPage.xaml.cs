@@ -2928,7 +2928,7 @@ public sealed partial class MainPage : Page
 
 #if !ANDROID && !__IOS__
         // Discord status (desktop), fed by the same updates; on/off from Settings.
-        _discord ??= new DiscordMediaControls(Log, song => _client.GetPublicCoverUrlAsync(song.AlbumId))
+        _discord ??= new DiscordMediaControls(Log, song => _client.GetPublicCoverAsync(song.AlbumId))
         {
             Enabled = _prefs.DiscordPresence,
             ShowAlbumArt = _prefs.DiscordAlbumArt,
