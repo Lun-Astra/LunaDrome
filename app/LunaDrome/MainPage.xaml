@@ -634,6 +634,8 @@
                            Style="{StaticResource NavItemStyle}" Checked="Nav_Checked"/>
               <RadioButton x:Name="NavGenres" Content="Genres" Tag="Genres" GroupName="MainNav"
                            Style="{StaticResource NavItemStyle}" Checked="Nav_Checked"/>
+              <RadioButton x:Name="NavStats" Content="Stats" Tag="Stats" GroupName="MainNav"
+                           Style="{StaticResource NavItemStyle}" Checked="Nav_Checked"/>
               <!-- JamiDrome (shown once connected in Settings); the dot = this PC is playing the jam. -->
               <RadioButton x:Name="NavJam" Tag="Jam" GroupName="MainNav" Visibility="Collapsed"
                            Style="{StaticResource NavItemStyle}" Checked="Nav_Checked" AutomationProperties.Name="Jam">
@@ -1525,6 +1527,14 @@
                         ItemTemplate="{StaticResource TracksPageRowTemplate}" ItemContainerStyle="{StaticResource SongItemStyle}"
                         DoubleTapped="TrackList_DoubleTapped" RightTapped="TrackList_RightTapped"/>
             </Grid>
+
+            <!-- Listening stats (MainPage.Stats.cs builds the content). -->
+            <ScrollViewer x:Name="StatsPage" Visibility="Collapsed" controls:WheelScroll.Enabled="True" VerticalScrollBarVisibility="Auto">
+              <StackPanel Margin="0,0,16,16" MaxWidth="1100" HorizontalAlignment="Stretch">
+                <TextBlock Text="LISTENING STATS" Style="{StaticResource SectionHeaderStyle}" Margin="2,0,0,16"/>
+                <StackPanel x:Name="StatsContent"/>
+              </StackPanel>
+            </ScrollViewer>
 
             <!-- Genres (all): the Home genre tiles, plus album/song counts; click opens the genre. -->
             <Grid x:Name="GenresPage" Visibility="Collapsed">

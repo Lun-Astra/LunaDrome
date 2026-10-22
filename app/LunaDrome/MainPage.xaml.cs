@@ -765,6 +765,7 @@ public sealed partial class MainPage : Page
         SongsPage.Visibility = Visibility.Collapsed;
         GenreAlbumsPage.Visibility = Visibility.Collapsed;
         GenresPage.Visibility = Visibility.Collapsed;
+        StatsPage.Visibility = Visibility.Collapsed;
         PlaylistsPage.Visibility = Visibility.Collapsed;
         SettingsPage.Visibility = Visibility.Collapsed;
         SearchPage.Visibility = Visibility.Collapsed;
@@ -792,6 +793,7 @@ public sealed partial class MainPage : Page
         NavAlbums.IsChecked = false;
         NavSongs.IsChecked = false;
         NavGenres.IsChecked = false;
+        NavStats.IsChecked = false;
         NavJam.IsChecked = false;
         if (!keepPlaylist)
             PlaylistsList.SelectedItem = null;
@@ -846,6 +848,10 @@ public sealed partial class MainPage : Page
                     _genresPageLoaded = true;
                     _ = LoadAllGenresAsync();
                 }
+                break;
+            case "Stats":
+                ShowPage(StatsPage, () => Reselect(NavStats));
+                _ = LoadStatsAsync();   // fresh every time: play counts change while listening
                 break;
             case "Jam":
                 ShowJamPage();
