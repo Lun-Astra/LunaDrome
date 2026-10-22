@@ -1653,6 +1653,8 @@ public sealed partial class MainPage : Page
         var view = _trackViews[key];
         var filtered = FilterSongs(view.Raw, view.Search.Text?.Trim() ?? "");
         view.List.ItemsSource = SortSongs(filtered, view.SortKey, view.Ascending);
+        if (key == "PlaylistTracks")
+            UpdatePlaylistReorder();
     }
 
     private static IEnumerable<Song> FilterSongs(IEnumerable<Song> source, string search)
@@ -1806,6 +1808,7 @@ public sealed partial class MainPage : Page
         if (key == "PlaylistTracks")
         {
             flyout.Items.Add(new MenuFlyoutSeparator());
+            AddPlaylistMoveItems(flyout, song);
             AddMenuItem(flyout, "Remove from playlist", async () => await RemoveFromPlaylistAsync(song));
         }
 
@@ -1962,6 +1965,7 @@ public sealed partial class MainPage : Page
 
         var flyout = PlaylistQueueMenu(playlist);
         flyout.Items.Add(new MenuFlyoutSeparator());
+        AddMenuItem(flyout, "Rename playlist…", async () => await RenamePlaylistAsync(playlist));
         AddMenuItem(flyout, "Delete playlist", async () => await DeletePlaylistAsync(playlist));
         flyout.ShowAt(PlaylistsList, e.GetPosition(PlaylistsList));
         e.Handled = true;
@@ -2024,14 +2028,15 @@ public sealed partial class MainPage : Page
         await LoadPlaylistsAsync();
     }
 
-    private async Task<string?> PromptForPlaylistNameAsync()
+    private async Task<string?> PromptForPlaylistNameAsync(string title = "New playlist", string button = "Create", string name = "")
     {
-        var nameBox = new TextBox { PlaceholderText = "Playlist name" };
+        var nameBox = new TextBox { PlaceholderText = "Playlist name", Text = name };
+        nameBox.SelectAll();
         var dialog = new ContentDialog
         {
-            Title = "New playlist",
+            Title = title,
             Content = nameBox,
-            PrimaryButtonText = "Create",
+            PrimaryButtonText = button,
             CloseButtonText = "Cancel",
             XamlRoot = this.XamlRoot
         };

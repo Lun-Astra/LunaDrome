@@ -334,7 +334,14 @@ public class NavidromeClient
         var envelope = JsonSerializer.Deserialize<SubsonicEnvelope<PlaylistDetailResponse>>(json, JsonOptions);
         var entries = envelope?.Response?.Playlist?.Entry ?? new List<SongDto>();
 
-        return entries.Select(MapSong).ToList();
+        // PlaylistIndex = position on the server: what "remove from playlist" needs (it was lost
+        // in the switch to the Uno app, so removing silently did nothing).
+        return entries.Select((entry, index) =>
+        {
+            var song = MapSong(entry);
+            song.PlaylistIndex = index;
+            return song;
+        }).ToList();
     }
 
     // Returns the new playlist's id, or null if the server response didn't include one.

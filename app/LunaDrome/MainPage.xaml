@@ -1614,6 +1614,11 @@
                           Style="{StaticResource PrimaryButtonStyle}" Click="PlayMenuButton_Click" AutomationProperties.Name="Play menu" ToolTipService.ToolTip="Play">
                     <Polygon Points="0,0 9,5.5 0,11" Fill="{StaticResource OnAccentBrush}" Margin="2,0,0,0"/>
                   </Button>
+                  <Button Width="30" Height="30" Margin="6,0,0,0" VerticalAlignment="Center" Style="{StaticResource IconButtonStyle}"
+                          Click="PlaylistRenameButton_Click" AutomationProperties.Name="Rename playlist" ToolTipService.ToolTip="Rename playlist">
+                    <Path Width="13" Height="13" Stretch="Uniform" Stroke="{StaticResource TextPrimaryBrush}" StrokeThickness="1.5"
+                          StrokeLineJoin="Round" Data="M10,1.5 L12.5,4 L4.5,12 L1.5,12.5 L2,9.5 Z M8.5,3 L11,5.5"/>
+                  </Button>
                 </StackPanel>
                 <TextBox x:Name="PlaylistTrackSearchBox" Grid.Column="2" PlaceholderText="Search" Tag="PlaylistTracks"
                          TextChanged="TrackSearchBox_TextChanged"/>
@@ -1626,6 +1631,8 @@
               </StackPanel>
               <controls:TrackListHeader Grid.Row="2" Layout="{StaticResource TrackColumns}"/>
               <ListView Grid.Row="3" x:Name="PlaylistSongsList" Tag="PlaylistTracks" SelectionMode="Single"
+                        DragItemsStarting="PlaylistSongsList_DragItemsStarting" DragOver="PlaylistSongsList_DragOver"
+                        Drop="PlaylistSongsList_Drop" DragItemsCompleted="PlaylistSongsList_DragItemsCompleted"
                         ItemTemplate="{StaticResource TrackRowTemplate}" ItemContainerStyle="{StaticResource SongItemStyle}"
                         DoubleTapped="TrackList_DoubleTapped" RightTapped="TrackList_RightTapped"/>
             </Grid>
