@@ -779,7 +779,7 @@ public sealed partial class MainPage : Page
         ExitSelection();         // a selection belongs to the page it was made on
         CloseCompactSidebar();   // any page opened from the phone menu closes it
         page.Visibility = Visibility.Visible;
-        Motion.FadeIn(page);
+        Motion.FadeIn(page, rise: 12);
     }
 
     // Opening an artist/genre/playlist acts like its own page: exactly one thing in the sidebar
@@ -1563,6 +1563,8 @@ public sealed partial class MainPage : Page
         e.Handled = true;
         if (_current?.Song is not { } song)
             return;
+        if (sender is Panel { Children: [UIElement heart, ..] })
+            Motion.Pop(heart);
         try
         {
             if (song.IsFavorited)
@@ -1581,6 +1583,8 @@ public sealed partial class MainPage : Page
         e.Handled = true;
         if (sender is not FrameworkElement { Tag: Song song })
             return;
+        if (sender is Panel { Children: [UIElement heart, ..] })
+            Motion.Pop(heart);
 
         try
         {
@@ -2727,6 +2731,8 @@ public sealed partial class MainPage : Page
         _pendingSeek = TimeSpan.Zero;
     }
 
+    private string? _shownSongId;
+
     // Marks the playing row and fills the now-playing bar / full-screen player (null = clear).
     private async void SetCurrent(QueueEntry? entry)
     {
@@ -2762,6 +2768,15 @@ public sealed partial class MainPage : Page
 
         entry.IsCurrent = true;
         var song = entry.Song;
+        if (song.Id != _shownSongId)
+        {
+            // A new song eases in (not on a refresh of the same one).
+            _shownSongId = song.Id;
+            Motion.SwapIn(NowPlayingArtBox);
+            Motion.FadeIn(NowPlayingTextPanel, rise: 6);
+            Motion.SwapIn(FullScreenArtBox);
+            Motion.SwapIn(CompactArtBox);
+        }
         NowPlayingText.Text = song.Title;
         ArtistLinks.Fill(NowPlayingSubText, song);
         _showingPlaybackError = false;
@@ -2786,6 +2801,8 @@ public sealed partial class MainPage : Page
 
     private void SetPlaying(bool playing)
     {
+        if (playing != _isPlaying && VisualTreeHelper.GetParent(PlayIcon) is UIElement icon)
+            Motion.PopIn(icon);
         _isPlaying = playing;
         PlayIcon.Visibility = playing ? Visibility.Collapsed : Visibility.Visible;
         PauseIcon.Visibility = playing ? Visibility.Visible : Visibility.Collapsed;
