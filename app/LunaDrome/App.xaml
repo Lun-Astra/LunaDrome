@@ -562,6 +562,7 @@
         <Setter Property="Height" Value="20"/>
         <Setter Property="MinHeight" Value="20"/>
         <Setter Property="IsThumbToolTipEnabled" Value="False"/>
+        <Setter Property="controls:Motion.ThumbGrow" Value="True"/>
         <Setter Property="UseSystemFocusVisuals" Value="False"/>
         <Setter Property="Template">
           <Setter.Value>

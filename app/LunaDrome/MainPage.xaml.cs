@@ -1753,6 +1753,27 @@ public sealed partial class MainPage : Page
         PlayQueueFrom(shuffle ? songs.OrderBy(_ => _random.Next()).ToList() : songs, 0);
     }
 
+    // The play button a row shows on hover: plays the list it's in (as shown) from that song.
+    private void RowPlay_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        e.Handled = true;
+        if (InSelectionMode || sender is not FrameworkElement { Tag: Song song } button)
+            return;
+
+        DependencyObject? node = button;
+        while (node != null && node is not ListView && node != AlbumSongsList)
+            node = VisualTreeHelper.GetParent(node);
+        var source = node switch
+        {
+            ListView { ItemsSource: List<Song> list } => list,
+            _ when node == AlbumSongsList => AlbumSongsList.ItemsSource as List<Song>,
+            _ => null
+        };
+        var index = source?.IndexOf(song) ?? -1;
+        if (index >= 0)
+            PlayQueueFrom(source!, index);
+    }
+
     // Double-click a row to play: queues the whole list as shown (search + sort), from that track.
     private void TrackList_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
     {
@@ -2750,6 +2771,7 @@ public sealed partial class MainPage : Page
 
         if (entry == null)
         {
+            NowPlaying.SetCurrent(null);
             NowPlayingText.Text = "Nothing playing";
             NowPlayingSubText.Text = "";
             NowPlayingFavorite.Visibility = Visibility.Collapsed;
@@ -2768,6 +2790,7 @@ public sealed partial class MainPage : Page
 
         entry.IsCurrent = true;
         var song = entry.Song;
+        NowPlaying.SetCurrent(song.Id);
         if (song.Id != _shownSongId)
         {
             // A new song eases in (not on a refresh of the same one).
@@ -2804,6 +2827,7 @@ public sealed partial class MainPage : Page
         if (playing != _isPlaying && VisualTreeHelper.GetParent(PlayIcon) is UIElement icon)
             Motion.PopIn(icon);
         _isPlaying = playing;
+        NowPlaying.SetPlaying(playing);
         PlayIcon.Visibility = playing ? Visibility.Collapsed : Visibility.Visible;
         PauseIcon.Visibility = playing ? Visibility.Visible : Visibility.Collapsed;
         _mediaControls?.SetPlaybackState(_current == null && !JamOwnsPlayback ? null : playing);
