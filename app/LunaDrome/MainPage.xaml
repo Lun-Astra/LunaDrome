@@ -429,7 +429,7 @@
           <StackPanel VerticalAlignment="Center">
             <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis"/>
             <Border Background="Transparent" Margin="0,2,0,0" HorizontalAlignment="Left" controls:Motion.ClickableText="True" Tag="{Binding}" Tapped="SongArtistText_Tapped" ToolTipService.ToolTip="Go to artist">
-              <TextBlock Text="{Binding ArtistName}" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis"/>
+              <TextBlock controls:ArtistLinks.Song="{Binding}" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis"/>
             </Border>
           </StackPanel>
         </StackPanel>
@@ -452,7 +452,7 @@
           <StackPanel VerticalAlignment="Center">
             <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis"/>
             <Border Background="Transparent" Margin="0,2,0,0" HorizontalAlignment="Left" controls:Motion.ClickableText="True" Tag="{Binding}" Tapped="SongArtistText_Tapped" ToolTipService.ToolTip="Go to artist">
-              <TextBlock Text="{Binding ArtistName}" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis"/>
+              <TextBlock controls:ArtistLinks.Song="{Binding}" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis"/>
             </Border>
           </StackPanel>
         </StackPanel>
@@ -493,7 +493,7 @@
         <StackPanel Grid.Column="2" VerticalAlignment="Center">
           <TextBlock Text="{Binding Song.Title}" FontWeight="{Binding TitleFontWeight}" TextTrimming="CharacterEllipsis"/>
           <Border Background="Transparent" Margin="0,3,0,0" HorizontalAlignment="Left" controls:Motion.ClickableText="True" Tag="{Binding Song}" Tapped="SongArtistText_Tapped" ToolTipService.ToolTip="Go to artist">
-            <TextBlock Text="{Binding Song.ArtistName}" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis"/>
+            <TextBlock controls:ArtistLinks.Song="{Binding Song}" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis"/>
           </Border>
         </StackPanel>
         <TextBlock Grid.Column="3" Text="{Binding Song.DurationDisplay}" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}"
@@ -518,7 +518,7 @@
         <StackPanel Grid.Column="2" VerticalAlignment="Center">
           <TextBlock Text="{Binding Song.Title}" FontWeight="{Binding TitleFontWeight}" TextTrimming="CharacterEllipsis"/>
           <Border Background="Transparent" Margin="0,2,0,0" HorizontalAlignment="Left" controls:Motion.ClickableText="True" Tag="{Binding Song}" Tapped="SongArtistText_Tapped" ToolTipService.ToolTip="Go to artist">
-            <TextBlock Text="{Binding Song.ArtistName}" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis"/>
+            <TextBlock controls:ArtistLinks.Song="{Binding Song}" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis"/>
           </Border>
         </StackPanel>
       </Grid>
@@ -682,7 +682,7 @@
 
                 <StackPanel x:Name="SearchArtistsSection" Visibility="Collapsed">
                   <TextBlock Text="Artists" FontSize="20" FontWeight="Bold" Margin="0,12,0,0"/>
-                  <muxc:ItemsRepeater x:Name="SearchArtistsList" ItemTemplate="{StaticResource SearchArtistTemplate}">
+                  <muxc:ItemsRepeater x:Name="SearchArtistsList" controls:Motion.EnterStagger="True" ItemTemplate="{StaticResource SearchArtistTemplate}">
                     <muxc:ItemsRepeater.Layout>
                       <muxc:UniformGridLayout MinItemWidth="130" MinItemHeight="150" ItemsStretch="None" MinColumnSpacing="0" MinRowSpacing="0"/>
                     </muxc:ItemsRepeater.Layout>
@@ -691,7 +691,7 @@
 
                 <StackPanel x:Name="SearchAlbumsSection" Visibility="Collapsed">
                   <TextBlock Text="Albums" FontSize="20" FontWeight="Bold" Margin="0,12,0,0"/>
-                  <muxc:ItemsRepeater x:Name="SearchAlbumsList" ItemTemplate="{StaticResource LargeAlbumCardTemplate}">
+                  <muxc:ItemsRepeater x:Name="SearchAlbumsList" controls:Motion.EnterStagger="True" ItemTemplate="{StaticResource LargeAlbumCardTemplate}">
                     <muxc:ItemsRepeater.Layout>
                       <muxc:UniformGridLayout MinItemWidth="162" MinItemHeight="224" ItemsStretch="None" MinColumnSpacing="0" MinRowSpacing="0"/>
                     </muxc:ItemsRepeater.Layout>
@@ -768,7 +768,7 @@
                         <!-- Albums tab -->
                         <StackPanel x:Name="YtAlbumsPanel" Visibility="Collapsed">
                           <StackPanel x:Name="YtAlbumsSection" Visibility="Collapsed">
-                            <muxc:ItemsRepeater x:Name="YtAlbumsList" ItemTemplate="{StaticResource YtAlbumCardTemplate}">
+                            <muxc:ItemsRepeater x:Name="YtAlbumsList" controls:Motion.EnterStagger="True" ItemTemplate="{StaticResource YtAlbumCardTemplate}">
                               <muxc:ItemsRepeater.Layout>
                                 <muxc:UniformGridLayout MinItemWidth="162" MinItemHeight="224" ItemsStretch="None" MinColumnSpacing="0" MinRowSpacing="0"/>
                               </muxc:ItemsRepeater.Layout>
@@ -1124,7 +1124,7 @@
                     <Button Content="View more ›" Style="{StaticResource LinkButtonStyle}" HorizontalAlignment="Right"
                             VerticalAlignment="Center" Click="HomeMoreGenresButton_Click" AutomationProperties.Name="View more genres"/>
                   </Grid>
-                  <muxc:ItemsRepeater x:Name="HomeGenresList">
+                  <muxc:ItemsRepeater x:Name="HomeGenresList" controls:Motion.EnterStagger="True">
                     <muxc:ItemsRepeater.Layout>
                       <muxc:UniformGridLayout MinColumnSpacing="16" MinRowSpacing="12" ItemsStretch="Fill"
                                               MinItemWidth="200" MinItemHeight="48"/>
@@ -1322,7 +1322,7 @@
                   </Border>
                   <Rectangle Grid.Column="2" Height="1" Margin="14,0,0,0" Fill="{StaticResource BorderBrush2}" VerticalAlignment="Center"/>
                 </Grid>
-                <muxc:ItemsRepeater x:Name="ArtistAlbumsList" ItemTemplate="{StaticResource FeishinAlbumCardTemplate}">
+                <muxc:ItemsRepeater x:Name="ArtistAlbumsList" controls:Motion.EnterStagger="True" ItemTemplate="{StaticResource FeishinAlbumCardTemplate}">
                   <muxc:ItemsRepeater.Layout>
                     <muxc:UniformGridLayout x:Name="ArtistAlbumsLayout" MinItemWidth="184" MinItemHeight="268" ItemsStretch="None"
                                             MinColumnSpacing="0" MinRowSpacing="0"/>
@@ -1431,7 +1431,7 @@
                         HorizontalAlignment="Center" VerticalAlignment="Center"
                         Data="M8,15 C8,15 1,10.5 1,5.8 C1,3 3,1.3 5.4,1.3 C6.9,1.3 7.7,2.1 8,2.6 C8.3,2.1 9.1,1.3 10.6,1.3 C13,1.3 15,3 15,5.8 C15,10.5 8,15 8,15 Z"/>
                 </Grid>
-                <muxc:ItemsRepeater x:Name="AlbumSongsList" ItemTemplate="{StaticResource AlbumTrackRowTemplate}"
+                <muxc:ItemsRepeater x:Name="AlbumSongsList" controls:Motion.EnterStagger="True" ItemTemplate="{StaticResource AlbumTrackRowTemplate}"
                                     ElementPrepared="AlbumSongsList_ElementPrepared"/>
               </StackPanel>
             </ScrollViewer>
@@ -1452,7 +1452,7 @@
                 <TextBox x:Name="AllAlbumsSearchBox" Grid.Column="2" PlaceholderText="Search" TextChanged="AllAlbumsSearchBox_TextChanged"/>
               </Grid>
               <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" controls:WheelScroll.Enabled="True">
-                <muxc:ItemsRepeater x:Name="AllAlbumsList" ItemTemplate="{StaticResource LargeAlbumCardTemplate}">
+                <muxc:ItemsRepeater x:Name="AllAlbumsList" controls:Motion.EnterStagger="True" ItemTemplate="{StaticResource LargeAlbumCardTemplate}">
                   <muxc:ItemsRepeater.Layout>
                     <muxc:UniformGridLayout MinItemWidth="162" MinItemHeight="224" ItemsStretch="None"
                                             MinColumnSpacing="0" MinRowSpacing="0"/>
@@ -1516,7 +1516,7 @@
                 <TextBox x:Name="AllGenresSearchBox" Grid.Column="3" PlaceholderText="Search" TextChanged="AllGenresSearchBox_TextChanged"/>
               </Grid>
               <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" controls:WheelScroll.Enabled="True">
-                <muxc:ItemsRepeater x:Name="AllGenresList" Margin="0,0,16,16">
+                <muxc:ItemsRepeater x:Name="AllGenresList" controls:Motion.EnterStagger="True" Margin="0,0,16,16">
                   <muxc:ItemsRepeater.Layout>
                     <muxc:UniformGridLayout MinColumnSpacing="16" MinRowSpacing="12" ItemsStretch="Fill"
                                             MinItemWidth="220" MinItemHeight="60"/>
@@ -1551,7 +1551,7 @@
               <TextBlock x:Name="GenreAlbumsHeader" Grid.Row="0" Text="GENRE" Style="{StaticResource SectionHeaderStyle}"
                          Margin="0,0,0,10"/>
               <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" controls:WheelScroll.Enabled="True">
-                <muxc:ItemsRepeater x:Name="GenreAlbumsList" ItemTemplate="{StaticResource LargeAlbumCardTemplate}">
+                <muxc:ItemsRepeater x:Name="GenreAlbumsList" controls:Motion.EnterStagger="True" ItemTemplate="{StaticResource LargeAlbumCardTemplate}">
                   <muxc:ItemsRepeater.Layout>
                     <muxc:UniformGridLayout MinItemWidth="162" MinItemHeight="224" ItemsStretch="None"
                                             MinColumnSpacing="0" MinRowSpacing="0"/>

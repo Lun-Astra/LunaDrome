@@ -335,7 +335,11 @@ public sealed partial class MainPage
             return;
 
         CompactTitleText.Text = _current != null || JamOwnsPlayback ? NowPlayingText.Text : "Nothing playing";
-        CompactArtistText.Text = NowPlayingSubText.Text;
+        // The bar's artist line as links (a song by several artists) or as the text it shows.
+        if (NowPlayingSubText.Inlines.OfType<Microsoft.UI.Xaml.Documents.Hyperlink>().Any() && _current?.Song is { } linked)
+            Controls.ArtistLinks.Fill(CompactArtistText, linked);
+        else
+            CompactArtistText.Text = NowPlayingSubText.Text;
         CompactArt.Background = FullScreenArt.Background ?? NowPlayingArt.Background;
         CompactPlayIcon.Visibility = PlayIcon.Visibility;
         CompactPauseIcon.Visibility = PauseIcon.Visibility;

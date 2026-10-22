@@ -137,6 +137,7 @@ public sealed partial class MainPage : Page
             DisposeSendspin();
         };
         _visualizerTimer.Tick += OnVisualizerRenderFrame;
+        ArtistLinks.Clicked += artist => _ = NavigateToArtistAsync(artist.Id, artist.Name);
 
         _trackViews = new()
         {
@@ -778,7 +779,7 @@ public sealed partial class MainPage : Page
         ExitSelection();         // a selection belongs to the page it was made on
         CloseCompactSidebar();   // any page opened from the phone menu closes it
         page.Visibility = Visibility.Visible;
-        Motion.FadeIn(page);
+        Motion.FadeIn(page, rise: 12);
     }
 
     // Opening an artist/genre/playlist acts like its own page: exactly one thing in the sidebar
@@ -1562,6 +1563,8 @@ public sealed partial class MainPage : Page
         e.Handled = true;
         if (_current?.Song is not { } song)
             return;
+        if (sender is Panel { Children: [UIElement heart, ..] })
+            Motion.Pop(heart);
         try
         {
             if (song.IsFavorited)
@@ -1580,6 +1583,8 @@ public sealed partial class MainPage : Page
         e.Handled = true;
         if (sender is not FrameworkElement { Tag: Song song })
             return;
+        if (sender is Panel { Children: [UIElement heart, ..] })
+            Motion.Pop(heart);
 
         try
         {
@@ -1603,19 +1608,12 @@ public sealed partial class MainPage : Page
             await GoToSongArtistAsync(song, anchor);
     }
 
-    /// <summary>The song's artist page; with several artists ("Jeff Williams, Casey Lee
-    /// Williams") a menu to pick which one.</summary>
+    /// <summary>The song's artist page. With several artists each name is its own link
+    /// (ArtistLinks), so a tap elsewhere on the line does nothing.</summary>
     private async Task GoToSongArtistAsync(Song song, FrameworkElement anchor)
     {
-        if (song.Artists.Count < 2)
-        {
+        if (!ArtistLinks.HasLinks(song))
             await NavigateToArtistAsync(song.ArtistId, song.ArtistName);
-            return;
-        }
-        var flyout = new MenuFlyout();
-        foreach (var artist in song.Artists)
-            AddMenuItem(flyout, artist.Name, async () => await NavigateToArtistAsync(artist.Id, artist.Name));
-        flyout.ShowAt(anchor);
     }
 
     // ================= Tracks (library-wide) =================
@@ -2733,6 +2731,8 @@ public sealed partial class MainPage : Page
         _pendingSeek = TimeSpan.Zero;
     }
 
+    private string? _shownSongId;
+
     // Marks the playing row and fills the now-playing bar / full-screen player (null = clear).
     private async void SetCurrent(QueueEntry? entry)
     {
@@ -2768,14 +2768,23 @@ public sealed partial class MainPage : Page
 
         entry.IsCurrent = true;
         var song = entry.Song;
+        if (song.Id != _shownSongId)
+        {
+            // A new song eases in (not on a refresh of the same one).
+            _shownSongId = song.Id;
+            Motion.SwapIn(NowPlayingArtBox);
+            Motion.FadeIn(NowPlayingTextPanel, rise: 6);
+            Motion.SwapIn(FullScreenArtBox);
+            Motion.SwapIn(CompactArtBox);
+        }
         NowPlayingText.Text = song.Title;
-        NowPlayingSubText.Text = song.ArtistName;
+        ArtistLinks.Fill(NowPlayingSubText, song);
         _showingPlaybackError = false;
         NowPlayingFavorite.Visibility = Visibility.Visible;
         UpdateNowPlayingFavorite(song);
         SetImage(NowPlayingArt, song.CoverArtUrl ?? _client.GetCoverArtUrl(song.AlbumId, 240));
         FullScreenTitleText.Text = song.Title;
-        FullScreenArtistText.Text = song.ArtistName;
+        ArtistLinks.Fill(FullScreenArtistText, song);
         // The full-screen art is 360x360 - fetch a bigger rendition than the 240px list thumbnails.
         SetImage(FullScreenArt, _client.GetCoverArtUrl(song.AlbumId, 720));
         ScrollQueuesTo(entry);
@@ -2792,6 +2801,8 @@ public sealed partial class MainPage : Page
 
     private void SetPlaying(bool playing)
     {
+        if (playing != _isPlaying && VisualTreeHelper.GetParent(PlayIcon) is UIElement icon)
+            Motion.PopIn(icon);
         _isPlaying = playing;
         PlayIcon.Visibility = playing ? Visibility.Collapsed : Visibility.Visible;
         PauseIcon.Visibility = playing ? Visibility.Visible : Visibility.Collapsed;
@@ -3255,7 +3266,7 @@ public sealed partial class MainPage : Page
             {
                 Log("player recovered after a reported failure - clearing the error");
                 _showingPlaybackError = false;
-                NowPlayingSubText.Text = _current.Song.ArtistName;
+                ArtistLinks.Fill(NowPlayingSubText, _current.Song);
             }
             if (!_isPlaying)
             {

@@ -1,4 +1,5 @@
 using Microsoft.UI.Xaml.Input;
+using ItemsRepeater = Microsoft.UI.Xaml.Controls.ItemsRepeater;
 using Microsoft.UI.Xaml.Media.Animation;
 
 namespace LunaDrome.Controls;
@@ -11,6 +12,8 @@ namespace LunaDrome.Controls;
 ///   PressScale - shrinks to 0.94 while pressed (WPF's tactile button feedback).
 ///   HoverScale - grows to the given scale while hovered (album cards: 1.035).
 ///   HoverFade  - fades 0 -> 1 while hovered (album cards' play overlay).
+/// Plus one-shot helpers called from code: FadeIn (pages, optionally rising), Pop (heart),
+/// PopIn (play/pause icon swap) and SwapIn (now-playing cover when the song changes).
 /// </summary>
 public static class Motion
 {
@@ -244,19 +247,41 @@ public static class Motion
     private static readonly DependencyProperty RestBackgroundProperty =
         DependencyProperty.RegisterAttached("RestBackground", typeof(Brush), typeof(Motion), new PropertyMetadata(null));
 
+    // The colour eases between the two: the Border gets its own brush on first hover (the rest
+    // brush is a shared resource - animating that would recolour every tile at once).
     private static readonly PointerEventHandler HoverBackgroundEntered = (s, _) =>
     {
         var border = (Border)s;
-        border.SetValue(RestBackgroundProperty, border.Background);
-        border.Background = GetHoverBackground(border);
+        if (border.GetValue(RestBackgroundProperty) == null)
+            border.SetValue(RestBackgroundProperty, border.Background);
+        if (GetHoverBackground(border) is SolidColorBrush hover)
+            AnimateBackground(border, hover.Color);
     };
 
     private static readonly PointerEventHandler HoverBackgroundExited = (s, _) =>
     {
         var border = (Border)s;
-        if (border.GetValue(RestBackgroundProperty) is Brush rest)
-            border.Background = rest;
+        if (border.GetValue(RestBackgroundProperty) is SolidColorBrush rest)
+            AnimateBackground(border, rest.Color);
     };
+
+    private static void AnimateBackground(Border border, Windows.UI.Color to)
+    {
+        if (border.Background is not SolidColorBrush own || own == border.GetValue(RestBackgroundProperty))
+            border.Background = own = new SolidColorBrush((border.Background as SolidColorBrush)?.Color ?? to);
+
+        var color = new ColorAnimation
+        {
+            To = to,
+            Duration = Hover,
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+        };
+        Storyboard.SetTarget(color, own);
+        Storyboard.SetTargetProperty(color, nameof(SolidColorBrush.Color));
+        var storyboard = new Storyboard();
+        storyboard.Children.Add(color);
+        storyboard.Begin();
+    }
 
     private static void OnHoverBackgroundChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
@@ -270,6 +295,70 @@ public static class Motion
             border.PointerEntered += HoverBackgroundEntered;
             border.PointerExited += HoverBackgroundExited;
         }
+    }
+
+    // --- EnterStagger: an ItemsRepeater's items fade + rise in one after another when its
+    // ItemsSource is (re)set - album grids opening, a new sort. Items prepared later (scrolling)
+    // just appear, and only the first 24 animate so a big grid isn't held back. ---
+
+    public static readonly DependencyProperty EnterStaggerProperty =
+        DependencyProperty.RegisterAttached("EnterStagger", typeof(bool), typeof(Motion),
+            new PropertyMetadata(false, OnEnterStaggerChanged));
+
+    public static bool GetEnterStagger(DependencyObject d) => (bool)d.GetValue(EnterStaggerProperty);
+    public static void SetEnterStagger(DependencyObject d, bool value) => d.SetValue(EnterStaggerProperty, value);
+
+    private sealed class StaggerState
+    {
+        public long ArmedAt;
+        public int Count;
+    }
+
+    private static readonly DependencyProperty StaggerStateProperty =
+        DependencyProperty.RegisterAttached("StaggerState", typeof(StaggerState), typeof(Motion), new PropertyMetadata(null));
+
+    private static void OnEnterStaggerChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is not ItemsRepeater repeater || !(bool)e.NewValue || repeater.GetValue(StaggerStateProperty) != null)
+            return;
+
+        var state = new StaggerState { ArmedAt = Environment.TickCount64 };
+        repeater.SetValue(StaggerStateProperty, state);
+        repeater.RegisterPropertyChangedCallback(ItemsRepeater.ItemsSourceProperty, (_, _) =>
+        {
+            state.ArmedAt = Environment.TickCount64;
+            state.Count = 0;
+        });
+        repeater.ElementPrepared += (_, args) =>
+        {
+            if (Environment.TickCount64 - state.ArmedAt > 600 || state.Count >= 24)
+                return;
+            EnterItem(args.Element, TimeSpan.FromMilliseconds(state.Count++ * 25));
+        };
+    }
+
+    private static void EnterItem(UIElement element, TimeSpan delay)
+    {
+        var transform = EnsureTransform(element);
+        element.Opacity = 0;
+        transform.TranslateY = 14;
+        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+        var fade = Animate(element, nameof(UIElement.Opacity), 1, TimeSpan.FromMilliseconds(260), ease);
+        var rise = Animate(transform, nameof(CompositeTransform.TranslateY), 0, TimeSpan.FromMilliseconds(320), ease);
+        fade.BeginTime = rise.BeginTime = delay;
+
+        var storyboard = new Storyboard();
+        storyboard.Children.Add(fade);
+        storyboard.Children.Add(rise);
+        // Recycled containers come back for other items later: leave plain local values behind,
+        // not a held animation.
+        storyboard.Completed += (_, _) =>
+        {
+            element.Opacity = 1;
+            transform.TranslateY = 0;
+            storyboard.Stop();
+        };
+        storyboard.Begin();
     }
 
     // --- Animation plumbing ---
@@ -304,11 +393,81 @@ public static class Motion
         storyboard.Begin();
     }
 
-    /// <summary>Page-switch fade, same 0.18s as the WPF app's FadeIn.</summary>
-    public static void FadeIn(UIElement element)
+    /// <summary>Page-switch fade, same 0.18s as the WPF app's FadeIn. With <paramref name="rise"/>
+    /// the element also slides up that many pixels into place (pages: 12).</summary>
+    public static void FadeIn(UIElement element, double rise = 0)
     {
         element.Opacity = 0;
-        AnimateOpacity(element, 1, TimeSpan.FromMilliseconds(180));
+        AnimateOpacity(element, 1, TimeSpan.FromMilliseconds(rise > 0 ? 240 : 180));
+        if (rise > 0)
+        {
+            var transform = EnsureTransform(element);
+            transform.TranslateY = rise;
+            Run(Animate(transform, nameof(CompositeTransform.TranslateY), 0, TimeSpan.FromMilliseconds(240),
+                new CubicEase { EasingMode = EasingMode.EaseOut }));
+        }
+    }
+
+    /// <summary>A quick bump: grows to 1.3 and settles back (favorite heart toggled).</summary>
+    public static void Pop(UIElement element)
+    {
+        var transform = EnsureTransform(element);
+        Run(Bump(transform, nameof(CompositeTransform.ScaleX)), Bump(transform, nameof(CompositeTransform.ScaleY)));
+
+        static Timeline Bump(CompositeTransform target, string property)
+        {
+            var bump = new DoubleAnimationUsingKeyFrames();
+            bump.KeyFrames.Add(new EasingDoubleKeyFrame
+            {
+                KeyTime = TimeSpan.FromMilliseconds(110), Value = 1.3,
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+            });
+            bump.KeyFrames.Add(new EasingDoubleKeyFrame
+            {
+                KeyTime = TimeSpan.FromMilliseconds(320), Value = 1,
+                EasingFunction = new BackEase { EasingMode = EasingMode.EaseOut, Amplitude = 0.5 }
+            });
+            Storyboard.SetTarget(bump, target);
+            Storyboard.SetTargetProperty(bump, property);
+            return bump;
+        }
+    }
+
+    /// <summary>Grows in from 0.6 with a slight overshoot (play/pause icon swap).</summary>
+    public static void PopIn(UIElement element) => ScaleFrom(element, 0.6, 220);
+
+    /// <summary>Fades in from 0.96 scale (now-playing cover when the song changes).</summary>
+    public static void SwapIn(UIElement element)
+    {
+        element.Opacity = 0;
+        AnimateOpacity(element, 1, TimeSpan.FromMilliseconds(260));
+        ScaleFrom(element, 0.94, 300);
+    }
+
+    private static void ScaleFrom(UIElement element, double from, int ms)
+    {
+        var transform = EnsureTransform(element);
+        transform.ScaleX = transform.ScaleY = from;
+        var ease = new BackEase { EasingMode = EasingMode.EaseOut, Amplitude = 0.4 };
+        Run(Animate(transform, nameof(CompositeTransform.ScaleX), 1, TimeSpan.FromMilliseconds(ms), ease),
+            Animate(transform, nameof(CompositeTransform.ScaleY), 1, TimeSpan.FromMilliseconds(ms), ease));
+    }
+
+    private static DoubleAnimation Animate(DependencyObject target, string property, double to, TimeSpan duration,
+        EasingFunctionBase ease)
+    {
+        var animation = new DoubleAnimation { To = to, Duration = duration, EasingFunction = ease };
+        Storyboard.SetTarget(animation, target);
+        Storyboard.SetTargetProperty(animation, property);
+        return animation;
+    }
+
+    private static void Run(params Timeline[] animations)
+    {
+        var storyboard = new Storyboard();
+        foreach (var animation in animations)
+            storyboard.Children.Add(animation);
+        storyboard.Begin();
     }
 
     private static void AnimateOpacity(UIElement element, double to) => AnimateOpacity(element, to, Hover);

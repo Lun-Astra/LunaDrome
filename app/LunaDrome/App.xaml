@@ -27,6 +27,10 @@
       <SolidColorBrush x:Key="OnAccentBrush" Color="#FF141517"/>
       <SolidColorBrush x:Key="TextPrimaryBrush" Color="#FFECEDEE"/>
       <SolidColorBrush x:Key="TextSecondaryBrush" Color="#FF909296"/>
+      <!-- Artist links (Controls/ArtistLinks): grey like the text around them, white under the pointer -->
+      <SolidColorBrush x:Key="HyperlinkForeground" Color="#FF909296"/>
+      <SolidColorBrush x:Key="HyperlinkForegroundPointerOver" Color="#FFECEDEE"/>
+      <SolidColorBrush x:Key="HyperlinkForegroundPressed" Color="#FFECEDEE"/>
 
       <FontFamily x:Key="AppFont">Segoe UI</FontFamily>
       <FontFamily x:Key="ContentControlThemeFontFamily">Segoe UI</FontFamily>
@@ -74,31 +78,50 @@
               <Grid x:Name="Root">
                 <VisualStateManager.VisualStateGroups>
                   <VisualStateGroup x:Name="CommonStates">
+                    <VisualStateGroup.Transitions>
+                      <VisualTransition To="PointerOver">
+                        <Storyboard>
+                          <ObjectAnimationUsingKeyFrames Storyboard.TargetName="HoverLayer" Storyboard.TargetProperty="Visibility"><DiscreteObjectKeyFrame KeyTime="0" Value="Visible"/></ObjectAnimationUsingKeyFrames>
+                          <DoubleAnimation Storyboard.TargetName="HoverLayer" Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.15"/>
+                        </Storyboard>
+                      </VisualTransition>
+                      <VisualTransition To="Normal">
+                        <Storyboard>
+                          <ObjectAnimationUsingKeyFrames Storyboard.TargetName="HoverLayer" Storyboard.TargetProperty="Visibility"><DiscreteObjectKeyFrame KeyTime="0" Value="Visible"/></ObjectAnimationUsingKeyFrames>
+                          <DoubleAnimation Storyboard.TargetName="HoverLayer" Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.15"/>
+                        </Storyboard>
+                      </VisualTransition>
+                    </VisualStateGroup.Transitions>
                     <VisualState x:Name="Normal"/>
                     <VisualState x:Name="PointerOver">
-                      <VisualState.Setters>
-                        <Setter Target="Bd.Background" Value="{StaticResource HoverBrush}"/>
-                      </VisualState.Setters>
+                      <Storyboard>
+                        <ObjectAnimationUsingKeyFrames Storyboard.TargetName="HoverLayer" Storyboard.TargetProperty="Visibility"><DiscreteObjectKeyFrame KeyTime="0" Value="Visible"/></ObjectAnimationUsingKeyFrames>
+                        <DoubleAnimation Storyboard.TargetName="HoverLayer" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
+                      </Storyboard>
                     </VisualState>
                     <VisualState x:Name="Pressed">
+                      <Storyboard>
+                        <ObjectAnimationUsingKeyFrames Storyboard.TargetName="HoverLayer" Storyboard.TargetProperty="Visibility"><DiscreteObjectKeyFrame KeyTime="0" Value="Visible"/></ObjectAnimationUsingKeyFrames>
+                        <DoubleAnimation Storyboard.TargetName="HoverLayer" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
+                      </Storyboard>
                       <VisualState.Setters>
-                        <Setter Target="Bd.Background" Value="{StaticResource HoverBrush}"/>
-                        <Setter Target="Bd.Opacity" Value="0.8"/>
+                        <Setter Target="Root.Opacity" Value="0.8"/>
                       </VisualState.Setters>
                     </VisualState>
                     <VisualState x:Name="Disabled">
                       <VisualState.Setters>
-                        <Setter Target="Bd.Opacity" Value="0.4"/>
+                        <Setter Target="Root.Opacity" Value="0.4"/>
                       </VisualState.Setters>
                     </VisualState>
                   </VisualStateGroup>
                 </VisualStateManager.VisualStateGroups>
-                <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="16">
-                  <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
-                                    VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
-                                    Margin="{TemplateBinding Padding}"
-                                    Foreground="{TemplateBinding Foreground}"/>
-                </Border>
+                <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="16"/>
+                <Border x:Name="HoverLayer" Background="{StaticResource HoverBrush}" CornerRadius="16"
+                        Opacity="0" Visibility="Collapsed"/>
+                <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                  VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                  Margin="{TemplateBinding Padding}"
+                                  Foreground="{TemplateBinding Foreground}"/>
               </Grid>
             </ControlTemplate>
           </Setter.Value>
@@ -127,16 +150,28 @@
               <Grid>
                 <VisualStateManager.VisualStateGroups>
                   <VisualStateGroup x:Name="CommonStates">
+                    <VisualStateGroup.Transitions>
+                      <VisualTransition To="PointerOver">
+                        <Storyboard>
+                          <DoubleAnimation Storyboard.TargetName="Bd" Storyboard.TargetProperty="Opacity" To="0.85" Duration="0:0:0.15"/>
+                        </Storyboard>
+                      </VisualTransition>
+                      <VisualTransition To="Normal">
+                        <Storyboard>
+                          <DoubleAnimation Storyboard.TargetName="Bd" Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.15"/>
+                        </Storyboard>
+                      </VisualTransition>
+                    </VisualStateGroup.Transitions>
                     <VisualState x:Name="Normal"/>
                     <VisualState x:Name="PointerOver">
-                      <VisualState.Setters>
-                        <Setter Target="Bd.Opacity" Value="0.85"/>
-                      </VisualState.Setters>
+                      <Storyboard>
+                        <DoubleAnimation Storyboard.TargetName="Bd" Storyboard.TargetProperty="Opacity" To="0.85" Duration="0"/>
+                      </Storyboard>
                     </VisualState>
                     <VisualState x:Name="Pressed">
-                      <VisualState.Setters>
-                        <Setter Target="Bd.Opacity" Value="0.7"/>
-                      </VisualState.Setters>
+                      <Storyboard>
+                        <DoubleAnimation Storyboard.TargetName="Bd" Storyboard.TargetProperty="Opacity" To="0.7" Duration="0"/>
+                      </Storyboard>
                     </VisualState>
                     <VisualState x:Name="Disabled">
                       <VisualState.Setters>
@@ -167,16 +202,28 @@
               <Grid>
                 <VisualStateManager.VisualStateGroups>
                   <VisualStateGroup x:Name="CommonStates">
+                    <VisualStateGroup.Transitions>
+                      <VisualTransition To="PointerOver">
+                        <Storyboard>
+                          <DoubleAnimation Storyboard.TargetName="Bd" Storyboard.TargetProperty="Opacity" To="0.85" Duration="0:0:0.15"/>
+                        </Storyboard>
+                      </VisualTransition>
+                      <VisualTransition To="Normal">
+                        <Storyboard>
+                          <DoubleAnimation Storyboard.TargetName="Bd" Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.15"/>
+                        </Storyboard>
+                      </VisualTransition>
+                    </VisualStateGroup.Transitions>
                     <VisualState x:Name="Normal"/>
                     <VisualState x:Name="PointerOver">
-                      <VisualState.Setters>
-                        <Setter Target="Bd.Opacity" Value="0.85"/>
-                      </VisualState.Setters>
+                      <Storyboard>
+                        <DoubleAnimation Storyboard.TargetName="Bd" Storyboard.TargetProperty="Opacity" To="0.85" Duration="0"/>
+                      </Storyboard>
                     </VisualState>
                     <VisualState x:Name="Pressed">
-                      <VisualState.Setters>
-                        <Setter Target="Bd.Opacity" Value="0.7"/>
-                      </VisualState.Setters>
+                      <Storyboard>
+                        <DoubleAnimation Storyboard.TargetName="Bd" Storyboard.TargetProperty="Opacity" To="0.7" Duration="0"/>
+                      </Storyboard>
                     </VisualState>
                     <VisualState x:Name="Disabled">
                       <VisualState.Setters>
@@ -223,24 +270,36 @@
               <Grid>
                 <VisualStateManager.VisualStateGroups>
                   <VisualStateGroup x:Name="CommonStates">
+                    <VisualStateGroup.Transitions>
+                      <VisualTransition To="PointerOver">
+                        <Storyboard>
+                          <DoubleAnimation Storyboard.TargetName="HoverLayer" Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.15"/>
+                        </Storyboard>
+                      </VisualTransition>
+                      <VisualTransition To="Normal">
+                        <Storyboard>
+                          <DoubleAnimation Storyboard.TargetName="HoverLayer" Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.15"/>
+                        </Storyboard>
+                      </VisualTransition>
+                    </VisualStateGroup.Transitions>
                     <VisualState x:Name="Normal"/>
                     <VisualState x:Name="PointerOver">
-                      <VisualState.Setters>
-                        <Setter Target="Bd.Background" Value="#99000000"/>
-                      </VisualState.Setters>
+                      <Storyboard>
+                        <DoubleAnimation Storyboard.TargetName="HoverLayer" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
+                      </Storyboard>
                     </VisualState>
                     <VisualState x:Name="Pressed">
-                      <VisualState.Setters>
-                        <Setter Target="Bd.Background" Value="#99000000"/>
-                      </VisualState.Setters>
+                      <Storyboard>
+                        <DoubleAnimation Storyboard.TargetName="HoverLayer" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
+                      </Storyboard>
                     </VisualState>
                     <VisualState x:Name="Disabled"/>
                   </VisualStateGroup>
                 </VisualStateManager.VisualStateGroups>
-                <Border x:Name="Bd" CornerRadius="18" Background="#66000000">
-                  <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
-                                    Foreground="{TemplateBinding Foreground}" Margin="0,0,0,2"/>
-                </Border>
+                <Border x:Name="Bd" CornerRadius="18" Background="#66000000"/>
+                <Border x:Name="HoverLayer" CornerRadius="18" Background="#55000000" Opacity="0"/>
+                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                  Foreground="{TemplateBinding Foreground}" Margin="0,0,0,2"/>
               </Grid>
             </ControlTemplate>
           </Setter.Value>
@@ -265,24 +324,48 @@
               <Grid Background="Transparent">
                 <VisualStateManager.VisualStateGroups>
                   <VisualStateGroup x:Name="CommonStates">
+                    <VisualStateGroup.Transitions>
+                      <VisualTransition To="PointerOver">
+                        <Storyboard>
+                          <DoubleAnimation Storyboard.TargetName="HoverLayer" Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.15"/>
+                        </Storyboard>
+                      </VisualTransition>
+                      <VisualTransition To="Normal">
+                        <Storyboard>
+                          <DoubleAnimation Storyboard.TargetName="HoverLayer" Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.15"/>
+                        </Storyboard>
+                      </VisualTransition>
+                    </VisualStateGroup.Transitions>
                     <VisualState x:Name="Normal"/>
                     <VisualState x:Name="PointerOver">
-                      <VisualState.Setters>
-                        <Setter Target="HoverLayer.Opacity" Value="1"/>
-                      </VisualState.Setters>
+                      <Storyboard>
+                        <DoubleAnimation Storyboard.TargetName="HoverLayer" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
+                      </Storyboard>
                     </VisualState>
                     <VisualState x:Name="Pressed">
-                      <VisualState.Setters>
-                        <Setter Target="HoverLayer.Opacity" Value="1"/>
-                      </VisualState.Setters>
+                      <Storyboard>
+                        <DoubleAnimation Storyboard.TargetName="HoverLayer" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
+                      </Storyboard>
                     </VisualState>
                     <VisualState x:Name="Disabled"/>
                   </VisualStateGroup>
                   <VisualStateGroup x:Name="CheckStates">
+                    <VisualStateGroup.Transitions>
+                      <VisualTransition To="Checked">
+                        <Storyboard>
+                          <DoubleAnimation Storyboard.TargetName="CheckedLayer" Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.2"/>
+                        </Storyboard>
+                      </VisualTransition>
+                      <VisualTransition To="Unchecked">
+                        <Storyboard>
+                          <DoubleAnimation Storyboard.TargetName="CheckedLayer" Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.2"/>
+                        </Storyboard>
+                      </VisualTransition>
+                    </VisualStateGroup.Transitions>
                     <VisualState x:Name="Checked">
-                      <VisualState.Setters>
-                        <Setter Target="CheckedLayer.Opacity" Value="1"/>
-                      </VisualState.Setters>
+                      <Storyboard>
+                        <DoubleAnimation Storyboard.TargetName="CheckedLayer" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
+                      </Storyboard>
                     </VisualState>
                     <VisualState x:Name="Unchecked"/>
                     <VisualState x:Name="Indeterminate"/>
@@ -314,23 +397,49 @@
               <Grid Background="Transparent" Margin="2,0">
                 <VisualStateManager.VisualStateGroups>
                   <VisualStateGroup x:Name="CommonStates">
+                    <VisualStateGroup.Transitions>
+                      <VisualTransition To="PointerOver">
+                        <Storyboard>
+                          <DoubleAnimation Storyboard.TargetName="HoverLayer" Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.15"/>
+                        </Storyboard>
+                      </VisualTransition>
+                      <VisualTransition To="Normal">
+                        <Storyboard>
+                          <DoubleAnimation Storyboard.TargetName="HoverLayer" Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.15"/>
+                        </Storyboard>
+                      </VisualTransition>
+                    </VisualStateGroup.Transitions>
                     <VisualState x:Name="Normal"/>
                     <VisualState x:Name="PointerOver">
-                      <VisualState.Setters>
-                        <Setter Target="HoverLayer.Opacity" Value="1"/>
-                      </VisualState.Setters>
+                      <Storyboard>
+                        <DoubleAnimation Storyboard.TargetName="HoverLayer" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
+                      </Storyboard>
                     </VisualState>
                     <VisualState x:Name="Pressed">
-                      <VisualState.Setters>
-                        <Setter Target="HoverLayer.Opacity" Value="1"/>
-                      </VisualState.Setters>
+                      <Storyboard>
+                        <DoubleAnimation Storyboard.TargetName="HoverLayer" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
+                      </Storyboard>
                     </VisualState>
                     <VisualState x:Name="Disabled"/>
                   </VisualStateGroup>
                   <VisualStateGroup x:Name="CheckStates">
+                    <VisualStateGroup.Transitions>
+                      <VisualTransition To="Checked">
+                        <Storyboard>
+                          <DoubleAnimation Storyboard.TargetName="CheckedLayer" Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.2"/>
+                        </Storyboard>
+                      </VisualTransition>
+                      <VisualTransition To="Unchecked">
+                        <Storyboard>
+                          <DoubleAnimation Storyboard.TargetName="CheckedLayer" Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.2"/>
+                        </Storyboard>
+                      </VisualTransition>
+                    </VisualStateGroup.Transitions>
                     <VisualState x:Name="Checked">
+                      <Storyboard>
+                        <DoubleAnimation Storyboard.TargetName="CheckedLayer" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
+                      </Storyboard>
                       <VisualState.Setters>
-                        <Setter Target="CheckedLayer.Opacity" Value="1"/>
                         <Setter Target="Label.Foreground" Value="{StaticResource TextPrimaryBrush}"/>
                       </VisualState.Setters>
                     </VisualState>
@@ -365,33 +474,59 @@
               <Grid Background="Transparent">
                 <VisualStateManager.VisualStateGroups>
                   <VisualStateGroup x:Name="CommonStates">
+                    <VisualStateGroup.Transitions>
+                      <VisualTransition To="PointerOver">
+                        <Storyboard>
+                          <DoubleAnimation Storyboard.TargetName="HoverLayer" Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.15"/>
+                          <DoubleAnimation Storyboard.TargetName="SelectedLayer" Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.15"/>
+                        </Storyboard>
+                      </VisualTransition>
+                      <VisualTransition To="Normal">
+                        <Storyboard>
+                          <DoubleAnimation Storyboard.TargetName="HoverLayer" Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.15"/>
+                          <DoubleAnimation Storyboard.TargetName="SelectedLayer" Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.15"/>
+                        </Storyboard>
+                      </VisualTransition>
+                      <VisualTransition To="Selected">
+                        <Storyboard>
+                          <DoubleAnimation Storyboard.TargetName="HoverLayer" Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.15"/>
+                          <DoubleAnimation Storyboard.TargetName="SelectedLayer" Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.15"/>
+                        </Storyboard>
+                      </VisualTransition>
+                      <VisualTransition To="PointerOverSelected">
+                        <Storyboard>
+                          <DoubleAnimation Storyboard.TargetName="HoverLayer" Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.15"/>
+                          <DoubleAnimation Storyboard.TargetName="SelectedLayer" Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.15"/>
+                        </Storyboard>
+                      </VisualTransition>
+                    </VisualStateGroup.Transitions>
                     <VisualState x:Name="Normal"/>
                     <VisualState x:Name="PointerOver">
-                      <VisualState.Setters>
-                        <Setter Target="HoverLayer.Opacity" Value="1"/>
-                      </VisualState.Setters>
+                      <Storyboard>
+                        <DoubleAnimation Storyboard.TargetName="HoverLayer" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
+                      </Storyboard>
                     </VisualState>
                     <VisualState x:Name="Pressed">
-                      <VisualState.Setters>
-                        <Setter Target="HoverLayer.Opacity" Value="1"/>
-                      </VisualState.Setters>
+                      <Storyboard>
+                        <DoubleAnimation Storyboard.TargetName="HoverLayer" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
+                      </Storyboard>
                     </VisualState>
                     <VisualState x:Name="Selected">
-                      <VisualState.Setters>
-                        <Setter Target="SelectedLayer.Opacity" Value="1"/>
-                      </VisualState.Setters>
+                      <Storyboard>
+                        <DoubleAnimation Storyboard.TargetName="SelectedLayer" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
+                      </Storyboard>
                     </VisualState>
                     <VisualState x:Name="PointerOverSelected">
-                      <VisualState.Setters>
-                        <Setter Target="HoverLayer.Opacity" Value="1"/>
-                        <Setter Target="SelectedLayer.Opacity" Value="1"/>
-                      </VisualState.Setters>
+                      <Storyboard>
+                        <DoubleAnimation Storyboard.TargetName="HoverLayer" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
+                        <DoubleAnimation Storyboard.TargetName="SelectedLayer" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
+                      </Storyboard>
                     </VisualState>
                     <VisualState x:Name="PressedSelected">
-                      <VisualState.Setters>
-                        <Setter Target="HoverLayer.Opacity" Value="1"/>
-                        <Setter Target="SelectedLayer.Opacity" Value="1"/>
-                      </VisualState.Setters>
+                      <Storyboard>
+                        <DoubleAnimation Storyboard.TargetName="HoverLayer" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
+                        <DoubleAnimation Storyboard.TargetName="SelectedLayer" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
+                      </Storyboard>
                     </VisualState>
                   </VisualStateGroup>
                 </VisualStateManager.VisualStateGroups>
