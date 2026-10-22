@@ -83,6 +83,8 @@ public sealed partial class MainPage : Page
     private List<Playlist> _playlists = new();
     private Playlist? _currentPlaylist;
     private Artist? _currentArtist;
+    // Albums on the artist page they're only a guest on: playing them plays just their songs.
+    private HashSet<string> _artistGuestAlbums = new();
     private Album? _currentAlbum;
     private List<Album> _heroAlbums = new();
     private int _heroIndex;
@@ -1213,6 +1215,7 @@ public sealed partial class MainPage : Page
         ArtistDetailPage.ChangeView(null, 0, null, true);
 
         var token = ++_artistLoadToken;
+        _artistGuestAlbums = new();
         ArtistAlbumsList.ItemsSource = null;
         ArtistHeaderNameText.Text = fallbackName;
         ArtistHeaderStatsText.Text = "";
@@ -1228,6 +1231,20 @@ public sealed partial class MainPage : Page
                 return;
 
             _currentArtist = artist;
+            // Also the albums they're only on as a guest (Casey Lee Williams on Jeff Williams' RWBY
+            // albums); a server with Subsonic.ArtistParticipations on already listed them above.
+            try
+            {
+                var appearsOn = await _client.GetAppearsOnAlbumsAsync(artistId, artist.Name, albums.Select(a => a.Id).ToHashSet());
+                if (token != _artistLoadToken)
+                    return;
+                _artistGuestAlbums = appearsOn.Select(a => a.Id).ToHashSet();
+                albums = albums.Concat(appearsOn).ToList();
+            }
+            catch (Exception ex)
+            {
+                Log($"artist: finding the albums {artist.Name} appears on failed: {ex.Message}");
+            }
             foreach (var album in albums)
                 album.CoverArtUrl = _client.GetCoverArtUrl(album.Id, 300);
 
@@ -1285,7 +1302,12 @@ public sealed partial class MainPage : Page
         {
             // Oldest album first so "Play" runs through the discography in release order.
             foreach (var album in albums.OrderBy(a => a.Year ?? 0))
-                songs.AddRange(await _client.GetSongsForAlbumAsync(album.Id));
+            {
+                var tracks = await _client.GetSongsForAlbumAsync(album.Id);
+                if (_artistGuestAlbums.Contains(album.Id) && _currentArtist is { } artist)
+                    tracks = tracks.Where(s => s.ArtistId == artist.Id || s.Artists.Any(a => a.Id == artist.Id)).ToList();
+                songs.AddRange(tracks);
+            }
             PopulateSongArt(songs);
         }
         catch (Exception ex)

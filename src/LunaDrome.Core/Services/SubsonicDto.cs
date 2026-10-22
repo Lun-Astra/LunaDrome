@@ -141,6 +141,7 @@ internal class SongDto
     /// <summary>OpenSubsonic: each artist separately (Navidrome 0.55+).</summary>
     public List<ArtistRefDto>? Artists { get; set; }
     public string? AlbumArtist { get; set; }
+    public List<ArtistRefDto>? AlbumArtists { get; set; }
     public string Genre { get; set; } = "";
     public int Track { get; set; }
     public int Duration { get; set; }

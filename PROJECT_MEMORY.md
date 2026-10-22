@@ -725,3 +725,8 @@ Luna is hopping off for the night. Current state of the app, for picking this ba
 - Real fix found on the way: a user signed in with an **http://** server URL never got covers (https upgrade only happened for https sign-ins). `ToHttpsAsync` now probes the https link once per host (GET, image/* = works) and uses it.
 - DiscordPresence logs who answered the handshake (`data.user.username`; "arrpc" = arRPC from Vesktop/Vencord/Legcord, common on Linux, may not show image URLs) and Discord's `evt: ERROR` replies (previously ignored by DrainAsync).
 - Tested with the fake IPC server (FAKE_USER=arrpc / FAKE_REFUSE=1 / SERVER_URL=http://navidrome.lunastra.nl).
+
+### Artist pages list the albums an artist only appears on — 2026-10-22 (dev)
+- Luna (on v4.3.1): tapping the artist of "Die" (RWBY) only offered Jeff Williams. v4.3.1 doesn't have the artist menu yet (dev only), and Casey Lee Williams' page listed 0 albums: Navidrome's getArtist only returns album-artist albums unless Subsonic.ArtistParticipations is on.
+- `NavidromeClient.GetAppearsOnAlbumsAsync(artistId, name, known)`: search3 for the name (paged, ≤3000 songs), songs whose ArtistId or `artists` contain the id (a namesake doesn't count), grouped by album (ArtistId from the song's `albumArtists`; SongCount = their songs on it). Merged into the artist page after getArtist's albums; `_artistGuestAlbums` makes Play/Next/Last play only their songs from those albums. Rig-verified: Casey Lee Williams = 9 albums, 87 tracks. No server setting needed (README now says ArtistParticipations is optional).
+- README "Connecting to your server": sign in with the https address (Luna 2026-10-22: the Linux user's missing Discord covers were an http sign-in).

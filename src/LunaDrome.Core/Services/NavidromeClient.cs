@@ -216,6 +216,45 @@ public class NavidromeClient
         return (artists, MapAlbums(result.Album), result.Song.Select(MapSong).ToList());
     }
 
+    /// <summary>
+    /// Albums an artist appears on without being their album artist (a featured singer on
+    /// someone else's album). Navidrome's getArtist lists those only with
+    /// Subsonic.ArtistParticipations on, so they're found from the artist's songs instead: a
+    /// search for the name, keeping songs that list this artist (by id, so a namesake doesn't
+    /// count), grouped by album. SongCount is how many of the album's songs they're on.
+    /// </summary>
+    public async Task<List<Album>> GetAppearsOnAlbumsAsync(string artistId, string artistName, ISet<string> knownAlbumIds,
+        int pageSize = 500, int max = 3000)
+    {
+        var songs = new List<SongDto>();
+        while (songs.Count < max && !string.IsNullOrWhiteSpace(artistName))
+        {
+            var url = BuildUrl("search3.view", ("query", artistName), ("songCount", pageSize.ToString()),
+                ("songOffset", songs.Count.ToString()), ("albumCount", "0"), ("artistCount", "0"));
+            var json = await _http.GetStringAsync(url);
+            var page = JsonSerializer.Deserialize<SubsonicEnvelope<Search3Response>>(json, JsonOptions)?.Response?.SearchResult3?.Song;
+            if (page == null || page.Count == 0)
+                break;
+            songs.AddRange(page);
+            if (page.Count < pageSize)
+                break;
+        }
+        return songs
+            .Where(s => !knownAlbumIds.Contains(s.AlbumId) && !string.IsNullOrEmpty(s.AlbumId)
+                        && (s.ArtistId == artistId || s.Artists?.Any(a => a.Id == artistId) == true))
+            .GroupBy(s => s.AlbumId)
+            .Select(g => new Album
+            {
+                Id = g.Key,
+                Name = g.First().Album,
+                ArtistId = g.First().AlbumArtists?.FirstOrDefault()?.Id ?? "",
+                ArtistName = g.First().AlbumArtist ?? g.First().Artist,
+                Year = g.First().Year,
+                SongCount = g.Count(),
+            })
+            .ToList();
+    }
+
     // Library-wide song search. An empty query matches everything on Navidrome; if a
     // different Subsonic-compatible server requires a non-empty pattern, this will need
     // to fall back to iterating albums instead.
