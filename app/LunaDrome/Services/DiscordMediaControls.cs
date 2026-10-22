@@ -11,7 +11,8 @@ namespace LunaDrome.Services;
 public sealed class DiscordMediaControls : IMediaControls
 {
     private readonly DiscordPresence _presence = new();
-    private readonly Func<Song, Task<string?>>? _findCover;
+    private readonly Func<Song, Task<PublicCover>>? _findCover;
+    private readonly Action<string>? _log;
     private Song? _song;
     private string? _coverUrl;    // the current song's public cover, once found
     private bool? _playing;
@@ -19,9 +20,10 @@ public sealed class DiscordMediaControls : IMediaControls
     private TimeSpan _duration;
 
     /// <param name="findCover">Finds a song's public album cover (null: the logo).</param>
-    public DiscordMediaControls(Action<string>? log, Func<Song, Task<string?>>? findCover = null)
+    public DiscordMediaControls(Action<string>? log, Func<Song, Task<PublicCover>>? findCover = null)
     {
         _presence.Log = log;
+        _log = log;
         _findCover = findCover;
     }
 
@@ -57,12 +59,22 @@ public sealed class DiscordMediaControls : IMediaControls
     {
         if (_findCover == null || !Enabled || !ShowAlbumArt)
             return;
-        string? cover;
+        PublicCover cover;
         try { cover = await _findCover(song); }
-        catch { return; }
-        if (cover == null || song.Id != _song?.Id)
+        catch (Exception ex)
+        {
+            _log?.Invoke($"discord: no cover for '{song.AlbumName}': {ex.Message}");
             return;
-        _coverUrl = cover;
+        }
+        if (cover.Url == null)
+        {
+            _log?.Invoke($"discord: no cover for '{song.AlbumName}' - {cover.WhyNot}; showing the logo");
+            return;
+        }
+        if (song.Id != _song?.Id)
+            return;
+        _log?.Invoke($"discord: cover for '{song.AlbumName}' from {new Uri(cover.Url).Host}");
+        _coverUrl = cover.Url;
         Update();
     }
 

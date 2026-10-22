@@ -15,7 +15,7 @@ namespace LunaDrome.Core.Services;
 /// connects (retrying while Discord isn't running) and sends the newest state, at most once per
 /// <see cref="MinSendGap"/> (Discord drops activity updates sent faster than ~5 per 20s).
 /// The image is the album's public cover link when there is one (Navidrome's /share/img, see
-/// NavidromeClient.GetPublicCoverUrlAsync) with the app's "lunadrome" art asset as the small
+/// NavidromeClient.GetPublicCoverAsync) with the app's "lunadrome" art asset as the small
 /// badge, else that asset alone - never the normal cover URL: that carries the login token.
 /// </summary>
 public sealed class DiscordPresence : IDisposable
@@ -248,11 +248,16 @@ public sealed class DiscordPresence : IDisposable
                 if (op != 1 || json?["evt"]?.GetValue<string>() != "READY")
                     throw new IOException($"unexpected handshake reply (op {op}): {json?.ToJsonString()}");
 
-                Log?.Invoke($"discord: connected ({candidate})");
+                // Which app answered: the Discord client, or a stand-in such as arRPC (Vesktop,
+                // Vencord, Legcord on Linux), which may not show image URLs.
+                var who = json?["data"]?["user"]?["username"]?.GetValue<string>();
+                Log?.Invoke($"discord: connected ({candidate}{(who == null ? "" : $", as {who}")})"
+                            + (who == "arrpc" ? " - arRPC: album covers may not show, Discord's own app shows them" : ""));
                 var connected = stream;
+                var log = Log;
                 _ = Task.Run(async () =>
                 {
-                    await DrainAsync(connected, token);
+                    await DrainAsync(connected, log, token);
                     lock (_lock)
                         _lostStream = connected;
                     _changed.Release();
@@ -277,7 +282,7 @@ public sealed class DiscordPresence : IDisposable
     }
 
     // Discord answers every command; read those replies so the pipe never fills up, and answer pings.
-    private static async Task DrainAsync(Stream stream, CancellationToken token)
+    private static async Task DrainAsync(Stream stream, Action<string>? log, CancellationToken token)
     {
         try
         {
@@ -288,6 +293,9 @@ public sealed class DiscordPresence : IDisposable
                     await WriteFrameAsync(stream, 4, json ?? new JsonObject(), token);
                 else if (op == 2)   // CLOSE
                     break;
+                else if (json?["evt"]?.GetValue<string>() == "ERROR")
+                    // Discord refused an activity (e.g. an image it can't use): say what it said.
+                    log?.Invoke($"discord: Discord refused the status: {json["data"]?["message"]?.GetValue<string>() ?? json.ToJsonString()}");
             }
         }
         catch { /* closed; the send loop notices on its next write */ }

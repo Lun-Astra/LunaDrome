@@ -40,6 +40,9 @@ public class Song : System.ComponentModel.INotifyPropertyChanged
     public string AlbumName { get; set; } = "";
     public string ArtistId { get; set; } = "";
     public string ArtistName { get; set; } = "";
+    /// <summary>Each artist of the song separately (Navidrome's OpenSubsonic "artists"), when it
+    /// has several - "Jeff Williams, Casey Lee Williams" is then two entries. Empty otherwise.</summary>
+    public IReadOnlyList<ArtistRef> Artists { get; set; } = [];
     public string AlbumArtistName { get; set; } = "";
     public string Genre { get; set; } = "";
     public int Track { get; set; }
@@ -117,3 +120,9 @@ public class Playlist
     public string? CoverArtUrl { get; set; }
     public string? CoverArtId { get; set; }
 }
+
+/// <summary>One artist of a song: enough to open the artist's page.</summary>
+public sealed record ArtistRef(string Id, string Name);
+
+/// <summary>An album cover anyone can load (see NavidromeClient.GetPublicCoverAsync), or why there is none.</summary>
+public sealed record PublicCover(string? Url, string? WhyNot);

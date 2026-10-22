@@ -124,6 +124,12 @@ internal class AlbumDetailDto
     public List<SongDto> Song { get; set; } = new();
 }
 
+internal class ArtistRefDto
+{
+    public string Id { get; set; } = "";
+    public string Name { get; set; } = "";
+}
+
 internal class SongDto
 {
     public string Id { get; set; } = "";
@@ -132,7 +138,10 @@ internal class SongDto
     public string Album { get; set; } = "";
     public string ArtistId { get; set; } = "";
     public string Artist { get; set; } = "";
+    /// <summary>OpenSubsonic: each artist separately (Navidrome 0.55+).</summary>
+    public List<ArtistRefDto>? Artists { get; set; }
     public string? AlbumArtist { get; set; }
+    public List<ArtistRefDto>? AlbumArtists { get; set; }
     public string Genre { get; set; } = "";
     public int Track { get; set; }
     public int Duration { get; set; }
