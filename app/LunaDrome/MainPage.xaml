@@ -429,7 +429,7 @@
           <StackPanel VerticalAlignment="Center">
             <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis"/>
             <Border Background="Transparent" Margin="0,2,0,0" HorizontalAlignment="Left" controls:Motion.ClickableText="True" Tag="{Binding}" Tapped="SongArtistText_Tapped" ToolTipService.ToolTip="Go to artist">
-              <TextBlock Text="{Binding ArtistName}" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis"/>
+              <TextBlock controls:ArtistLinks.Song="{Binding}" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis"/>
             </Border>
           </StackPanel>
         </StackPanel>
@@ -452,7 +452,7 @@
           <StackPanel VerticalAlignment="Center">
             <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis"/>
             <Border Background="Transparent" Margin="0,2,0,0" HorizontalAlignment="Left" controls:Motion.ClickableText="True" Tag="{Binding}" Tapped="SongArtistText_Tapped" ToolTipService.ToolTip="Go to artist">
-              <TextBlock Text="{Binding ArtistName}" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis"/>
+              <TextBlock controls:ArtistLinks.Song="{Binding}" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis"/>
             </Border>
           </StackPanel>
         </StackPanel>
@@ -493,7 +493,7 @@
         <StackPanel Grid.Column="2" VerticalAlignment="Center">
           <TextBlock Text="{Binding Song.Title}" FontWeight="{Binding TitleFontWeight}" TextTrimming="CharacterEllipsis"/>
           <Border Background="Transparent" Margin="0,3,0,0" HorizontalAlignment="Left" controls:Motion.ClickableText="True" Tag="{Binding Song}" Tapped="SongArtistText_Tapped" ToolTipService.ToolTip="Go to artist">
-            <TextBlock Text="{Binding Song.ArtistName}" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis"/>
+            <TextBlock controls:ArtistLinks.Song="{Binding Song}" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis"/>
           </Border>
         </StackPanel>
         <TextBlock Grid.Column="3" Text="{Binding Song.DurationDisplay}" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}"
@@ -518,7 +518,7 @@
         <StackPanel Grid.Column="2" VerticalAlignment="Center">
           <TextBlock Text="{Binding Song.Title}" FontWeight="{Binding TitleFontWeight}" TextTrimming="CharacterEllipsis"/>
           <Border Background="Transparent" Margin="0,2,0,0" HorizontalAlignment="Left" controls:Motion.ClickableText="True" Tag="{Binding Song}" Tapped="SongArtistText_Tapped" ToolTipService.ToolTip="Go to artist">
-            <TextBlock Text="{Binding Song.ArtistName}" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis"/>
+            <TextBlock controls:ArtistLinks.Song="{Binding Song}" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis"/>
           </Border>
         </StackPanel>
       </Grid>
