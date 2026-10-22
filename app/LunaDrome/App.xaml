@@ -27,6 +27,10 @@
       <SolidColorBrush x:Key="OnAccentBrush" Color="#FF141517"/>
       <SolidColorBrush x:Key="TextPrimaryBrush" Color="#FFECEDEE"/>
       <SolidColorBrush x:Key="TextSecondaryBrush" Color="#FF909296"/>
+      <!-- Artist links (Controls/ArtistLinks): grey like the text around them, white under the pointer -->
+      <SolidColorBrush x:Key="HyperlinkForeground" Color="#FF909296"/>
+      <SolidColorBrush x:Key="HyperlinkForegroundPointerOver" Color="#FFECEDEE"/>
+      <SolidColorBrush x:Key="HyperlinkForegroundPressed" Color="#FFECEDEE"/>
 
       <FontFamily x:Key="AppFont">Segoe UI</FontFamily>
       <FontFamily x:Key="ContentControlThemeFontFamily">Segoe UI</FontFamily>

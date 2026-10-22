@@ -42,8 +42,9 @@ public static class ArtistLinks
             if (i > 0)
                 text.Inlines.Add(new Run { Text = ", " });
             var artist = song.Artists[i];
-            // Same color as the text around it: these read as names, not as web links.
-            var link = new Hyperlink { UnderlineStyle = UnderlineStyle.None, Foreground = text.Foreground };
+            // Grey like the text around it, white under the pointer (Hyperlink* brushes in
+            // App.xaml), so you see which one artist you're about to open.
+            var link = new Hyperlink { UnderlineStyle = UnderlineStyle.None };
             link.Inlines.Add(new Run { Text = artist.Name });
             link.Click += (_, _) => Clicked?.Invoke(artist);
             ToolTipService.SetToolTip(link, $"Go to {artist.Name}");
