@@ -1825,6 +1825,7 @@ public sealed partial class MainPage : Page
         AddMenuItem(flyout, "Play next", () => QueueSongsNext(new() { song }));
         AddMenuItem(flyout, "Add to queue", () => AddToQueue(new() { song }));
         AddMenuItem(flyout, "Play last", () => QueueSongsLast(new() { song }));
+        AddMenuItem(flyout, "Start radio", () => _ = StartSongRadioAsync(song));
         flyout.Items.Add(new MenuFlyoutSeparator());
         flyout.Items.Add(BuildAddToPlaylistSubmenu(new List<Song> { song }));
         AddJamMenuItem(flyout, () => Task.FromResult(new List<Song> { song }));

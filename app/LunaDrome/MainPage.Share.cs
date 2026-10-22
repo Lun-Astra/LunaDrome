@@ -13,6 +13,7 @@ public sealed partial class MainPage
         if (_current?.Song is not { } song)
             return;
         var flyout = new MenuFlyout();
+        AddMenuItem(flyout, "Start radio", () => _ = StartSongRadioAsync(song));
         AddMenuItem(flyout, "Share song…", () => ShowShareDialog(song));
         flyout.ShowAt(NowPlayingTitleLink, e.GetPosition(NowPlayingTitleLink));
         e.Handled = true;
