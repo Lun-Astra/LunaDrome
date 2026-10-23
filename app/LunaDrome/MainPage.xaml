@@ -1710,7 +1710,31 @@
                 </Button>
               </StackPanel>
 
-              <Grid Grid.Row="1" Margin="10,4,16,4" Padding="0,0,0,6" BorderBrush="{StaticResource BorderBrush2}" BorderThickness="0,0,0,1">
+              <StackPanel Grid.Row="1">
+              <!-- Radio (MainPage.Radio.cs): what it's based on + Stop, only while one runs. -->
+              <Border x:Name="SideRadioBanner" Visibility="Collapsed" Margin="10,4,10,6" Padding="12,10,8,10" CornerRadius="8"
+                      Background="{StaticResource RaisedBrush}">
+                <Grid ColumnSpacing="12">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                  </Grid.ColumnDefinitions>
+                  <Border Width="36" Height="36" CornerRadius="18" Background="{StaticResource AccentBrush}">
+                    <Path Width="17" Height="13" Stretch="Uniform" Stroke="{StaticResource OnAccentBrush}" StrokeThickness="1.7"
+                          StrokeStartLineCap="Round" StrokeEndLineCap="Round" HorizontalAlignment="Center" VerticalAlignment="Center"
+                          Data="M8,5 A1.5,1.5 0 1,1 7.99,5 M4.5,2.5 A5,5 0 0,0 4.5,10.5 M11.5,2.5 A5,5 0 0,1 11.5,10.5 M2,0.5 A8,8 0 0,0 2,12.5 M14,0.5 A8,8 0 0,1 14,12.5"/>
+                  </Border>
+                  <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                    <TextBlock x:Name="SideRadioTitle" Text="Radio" FontSize="13" FontWeight="Bold"/>
+                    <TextBlock x:Name="SideRadioSubtitle" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"
+                               TextWrapping="Wrap" MaxLines="2" Margin="0,2,0,0"/>
+                  </StackPanel>
+                  <Button x:Name="SideRadioStopButton" Grid.Column="2" Style="{StaticResource TextButtonStyle}" Content="Stop"
+                          VerticalAlignment="Center" Click="StopRadioButton_Click" ToolTipService.ToolTip="Stop the radio (the queued songs stay)"/>
+                </Grid>
+              </Border>
+              <Grid Margin="10,4,16,4" Padding="0,0,0,6" BorderBrush="{StaticResource BorderBrush2}" BorderThickness="0,0,0,1">
                 <Grid.ColumnDefinitions>
                   <ColumnDefinition Width="34"/>
                   <ColumnDefinition Width="*"/>
@@ -1725,6 +1749,7 @@
                         Data="M7,3.5 L7,7 L9.5,8.5"/>
                 </Grid>
               </Grid>
+              </StackPanel>
 
               <!-- Same queue as the full-screen player's Queue tab, its own list (selection etc.). -->
               <ListView Grid.Row="2" x:Name="SideQueueList" SelectionMode="Extended" Padding="6,0,6,6"
@@ -1772,6 +1797,9 @@
                 <Border x:Name="FullScreenArt" CornerRadius="12"/>
               </Grid>
               <StackPanel x:Name="FullScreenTextPanel" Margin="0,28,0,0" VerticalAlignment="Center">
+                <TextBlock x:Name="FullScreenRadioText" Visibility="Collapsed" FontSize="11" FontWeight="Bold" CharacterSpacing="80"
+                           Foreground="{StaticResource TextSecondaryBrush}" HorizontalAlignment="Center" TextTrimming="CharacterEllipsis"
+                           MaxWidth="360" Margin="0,0,0,8"/>
                 <TextBlock x:Name="FullScreenTitleText" FontSize="24" FontWeight="Bold"
                            HorizontalAlignment="Center" TextAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="360"/>
                 <Border x:Name="FullScreenArtistLink" Background="Transparent" Margin="0,8,0,0" HorizontalAlignment="Center" controls:Motion.ClickableText="True" Tapped="NowPlayingArtist_Tapped" ToolTipService.ToolTip="Go to artist">
@@ -2072,6 +2100,10 @@
               <Border x:Name="NowPlayingArt" CornerRadius="6"/>
             </Grid>
             <StackPanel x:Name="NowPlayingTextPanel" VerticalAlignment="Center" Margin="12,0,0,0">
+              <Border x:Name="NowPlayingRadioBadge" Visibility="Collapsed" HorizontalAlignment="Left" Margin="0,0,0,3"
+                      Padding="5,1,6,1" CornerRadius="3" Background="{StaticResource AccentBrush}">
+                <TextBlock Text="RADIO" FontSize="9" FontWeight="Bold" Foreground="{StaticResource OnAccentBrush}" CharacterSpacing="60"/>
+              </Border>
               <Border x:Name="NowPlayingTitleLink" Background="Transparent" HorizontalAlignment="Left" controls:Motion.ClickableText="True" Tapped="NowPlayingText_Tapped" RightTapped="NowPlayingText_RightTapped" ToolTipService.ToolTip="Show/hide Queue, Lyrics, Visualizer (right-click to share)">
                 <TextBlock x:Name="NowPlayingText" FontWeight="SemiBold" Text="Nothing playing" FontSize="12" TextTrimming="CharacterEllipsis"/>
               </Border>

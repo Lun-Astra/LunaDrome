@@ -194,7 +194,12 @@ public sealed partial class MainPage : Page
 
         QueueList.ItemsSource = _queue;
         SideQueueList.ItemsSource = _queue;
-        _queue.CollectionChanged += (_, _) => RenumberQueue();
+        _queue.CollectionChanged += (_, e) =>
+        {
+            RenumberQueue();
+            if (e.Action == System.Collections.Specialized.NotifyCollectionChangedAction.Remove)
+                MaybeTopUpRadio();   // removing songs from a radio's queue refills it
+        };
 
         // Home cards resize so a whole number of them fills the row width exactly (HomeLayout).
         var homeLayout = (HomeLayout)Resources["HomeLayout"];
@@ -632,6 +637,7 @@ public sealed partial class MainPage : Page
         _pendingSeek = TimeSpan.Zero;
         _unshuffledOrder = null;
         _queue.Clear();
+        EndRadio();
         SetCurrent(null);
         QueueSidePanel.Visibility = Visibility.Collapsed;
         FullScreenPlayerOverlay.Visibility = Visibility.Collapsed;
@@ -2160,8 +2166,11 @@ public sealed partial class MainPage : Page
             RemoveFromQueue(selected);
     }
 
-    private void SideQueueClear_Click(object sender, RoutedEventArgs e) =>
+    private void SideQueueClear_Click(object sender, RoutedEventArgs e)
+    {
+        EndRadio();
         RemoveFromQueue(_queue.Where(q => q != _current).ToList());
+    }
 
     // Keeps the side panel's # column in step with the queue order.
     private void RenumberQueue()
@@ -2692,6 +2701,7 @@ public sealed partial class MainPage : Page
     {
         if (startIndex < 0 || startIndex >= source.Count)
             return;
+        EndRadio();   // something else was started (radio itself sets its session after this)
 
         var entries = source.Select(s => new QueueEntry(s)).ToList();
         var start = entries[startIndex];
@@ -2803,6 +2813,7 @@ public sealed partial class MainPage : Page
         entry.IsCurrent = true;
         var song = entry.Song;
         NowPlaying.SetCurrent(song.Id);
+        MaybeTopUpRadio();
         if (song.Id != _shownSongId)
         {
             // A new song eases in (not on a refresh of the same one).
