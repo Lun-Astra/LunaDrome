@@ -753,3 +753,11 @@ Luna is hopping off for the night. Current state of the app, for picking this ba
 - **Bug fixed on the way:** `Song.PlaylistIndex` was never set since the Uno switch (WPF set it), so "Remove from playlist" silently did nothing. GetPlaylistSongsAsync sets it again.
 - **Stats (MainPage.Stats.cs, nav "Stats"):** built in code from GetAllSongsAsync: plays, listening time (plays x duration), songs played of library, artists; top artists (multi-artist songs count for each), top songs, top albums (square cards), top genres, recently played. Navidrome only has playCount + last played, so all-time numbers (noted on the page). Reloaded every time the page opens.
 - Tested in the rig against a throwaway playlist "ZZ LunaDrome test" (created + deleted via script). Rig note: the mouse wheel and keys don't scroll; drag the scrollbar, or make the window taller (xdotool windowsize).
+
+### Radio becomes a mode — 2026-10-23 (dev)
+- Luna (on v4.4.0): "the radio is quite simple. You dont get a confirmation anywhere, you click it, it adjusts the queue and thats it".
+- `_radio` session (MainPage.Radio.cs): side queue banner `SideRadioBanner` (icon, "Radio", "Songs like X · more are added as it plays", Stop), RADIO badge above the playback-bar title (`NowPlayingRadioBadge`), "RADIO · SONGS LIKE X" above the full-screen title. Toasts: "Radio started - finding songs like X…" then "Radio: N songs like X queued, and it keeps going" with a "Show queue" action (desktop).
+- Song radio plays the song at once and adds the similar songs behind it (getSimilarSongs2 takes 2-3 s per call however many songs it asks for - Last.fm). The three lookups (song, artist, genre) run in parallel: ~3 s instead of ~7 s for songs with few matches.
+- Endless: `MaybeTopUpRadio` on every song change and on queue removals: ≤5 left after the current → 20 more like the playing song (not already queued; also appended to `_unshuffledOrder`).
+- Ends on PlayQueueFrom (anything else started; radio sets its session after calling it), Clear queue, stop/logout, or Stop (queue stays). Artist Radio button shows "Starting…" while it looks.
+- Rig-verified: instant start + banner "Finding…", 49 queued + toast with Show queue, refill after removing rows ("radio: added 20 songs like …" in playback.log), Stop.
