@@ -31,6 +31,12 @@ public class Preferences
     /// <summary>Crossfade between songs in seconds (desktop); 0 = off.</summary>
     public int CrossfadeSeconds { get; set; }
 
+    /// <summary>Sound card / audio device on this computer (LibVLC device id for the platform's
+    /// output: DirectSound on Windows, PulseAudio on Linux); empty = the system default.
+    /// The name is kept to show it when the device is unplugged.</summary>
+    public string AudioDeviceId { get; set; } = "";
+    public string AudioDeviceName { get; set; } = "";
+
     /// <summary>Synced-lyrics offset per song id, in seconds (positive = lyrics later), set with
     /// the Earlier / Later buttons in the Lyrics tab.</summary>
     public Dictionary<string, double> LyricsOffsets { get; set; } = new();
