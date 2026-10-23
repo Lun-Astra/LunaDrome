@@ -1570,6 +1570,22 @@ public sealed partial class MainPage : Page
         SyncCompactPlayer();
     }
 
+    private async Task ToggleNowPlayingFavoriteAsync(Song song)
+    {
+        Motion.Pop(NowPlayingFavoriteHeart);
+        try
+        {
+            if (song.IsFavorited)
+                await _client.UnstarSongAsync(song.Id);
+            else
+                await _client.StarSongAsync(song.Id);
+            song.IsFavorited = !song.IsFavorited;
+            if (_current?.Song == song)
+                UpdateNowPlayingFavorite(song);
+        }
+        catch { /* best-effort, like the list hearts */ }
+    }
+
     private async void NowPlayingFavorite_Tapped(object sender, TappedRoutedEventArgs e)
     {
         e.Handled = true;

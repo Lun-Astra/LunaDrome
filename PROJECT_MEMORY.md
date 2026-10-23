@@ -761,3 +761,9 @@ Luna is hopping off for the night. Current state of the app, for picking this ba
 - Endless: `MaybeTopUpRadio` on every song change and on queue removals: ≤5 left after the current → 20 more like the playing song (not already queued; also appended to `_unshuffledOrder`).
 - Ends on PlayQueueFrom (anything else started; radio sets its session after calling it), Clear queue, stop/logout, or Stop (queue stays). Artist Radio button shows "Starting…" while it looks.
 - Rig-verified: instant start + banner "Finding…", 49 queued + toast with Show queue, refill after removing rows ("radio: added 20 songs like …" in playback.log), Stop.
+
+### Richer now-playing title menu — 2026-10-23 (dev)
+- Luna: the title right-click (radio / share) "looks too plain, spicy it up animations".
+- `Controls/RichMenu.cs`: reusable Flyout menu (presenter chrome stripped via a FlyoutPresenter style; 280px RaisedBrush card, 12px corners). Optional header (48px cover, title, subtitle), `RichMenuItem` rows (icon tile + label + hint, null = separator). Hover: row background eases (Motion.HoverBackground), icon tile turns white with a dark icon, icon slides 2px right; PressScale dip. Entrance: card scales 0.9→1 from its bottom-left (opens above the click) + fades, rows rise 8px 30ms apart. Hides the anchor's tooltip while open.
+- The title menu now: header (cover, title, artists), Start radio ("songs like this"), Share song… ("public link"), Go to album, Go to artist (one row per artist for multi-artist songs), Add/Remove favorites (heart pops via ToggleNowPlayingFavoriteAsync).
+- Rig-verified: entrance ripple, hover, Go to album. Other context menus are still MenuFlyout - RichMenu can replace them if Luna wants.
