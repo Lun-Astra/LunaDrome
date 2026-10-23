@@ -334,7 +334,14 @@ public class NavidromeClient
         var envelope = JsonSerializer.Deserialize<SubsonicEnvelope<PlaylistDetailResponse>>(json, JsonOptions);
         var entries = envelope?.Response?.Playlist?.Entry ?? new List<SongDto>();
 
-        return entries.Select(MapSong).ToList();
+        // PlaylistIndex = position on the server: what "remove from playlist" needs (it was lost
+        // in the switch to the Uno app, so removing silently did nothing).
+        return entries.Select((entry, index) =>
+        {
+            var song = MapSong(entry);
+            song.PlaylistIndex = index;
+            return song;
+        }).ToList();
     }
 
     // Returns the new playlist's id, or null if the server response didn't include one.
@@ -351,6 +358,43 @@ public class NavidromeClient
 
     public Task RemoveSongFromPlaylistAsync(string playlistId, int songIndex) =>
         _http.GetStringAsync(BuildUrl("updatePlaylist.view", ("playlistId", playlistId), ("songIndexToRemove", songIndex.ToString())));
+
+    public Task RenamePlaylistAsync(string playlistId, string name) =>
+        _http.GetStringAsync(BuildUrl("updatePlaylist.view", ("playlistId", playlistId), ("name", name)));
+
+    /// <summary>Replaces the playlist's songs with <paramref name="songIds"/> in that order (how a
+    /// reorder is saved - Subsonic has no "move"). createPlaylist with a playlistId overwrites
+    /// it; the ids go in a form body (OpenSubsonic formPost), since a long playlist's ids would
+    /// make the URL too long for a reverse proxy.</summary>
+    public async Task SetPlaylistSongsAsync(string playlistId, IEnumerable<string> songIds)
+    {
+        var form = new FormUrlEncodedContent(songIds.Select(id => new KeyValuePair<string, string>("songId", id)));
+        using var response = await _http.PostAsync(BuildUrl("createPlaylist.view", ("playlistId", playlistId)), form);
+        response.EnsureSuccessStatusCode();
+        var envelope = JsonSerializer.Deserialize<SubsonicEnvelope<CreatePlaylistResponse>>(
+            await response.Content.ReadAsStringAsync(), JsonOptions);
+        if (envelope?.Response?.Status != "ok")
+            throw new InvalidOperationException(envelope?.Response?.Error?.Message ?? "The server didn't save the new order.");
+    }
+
+    /// <summary>Songs like this song or artist (Navidrome asks Last.fm and keeps the ones in the
+    /// library). Can be empty or short for less known music.</summary>
+    public async Task<List<Song>> GetSimilarSongsAsync(string songOrArtistId, int count = 50)
+    {
+        var json = await _http.GetStringAsync(BuildUrl("getSimilarSongs2.view", ("id", songOrArtistId), ("count", count.ToString())));
+        var songs = JsonSerializer.Deserialize<SubsonicEnvelope<SimilarSongs2Response>>(json, JsonOptions)?.Response?.SimilarSongs2?.Song;
+        return (songs ?? new List<SongDto>()).Select(MapSong).ToList();
+    }
+
+    public async Task<List<Song>> GetRandomSongsAsync(string? genre, int count = 50)
+    {
+        var args = new List<(string, string)> { ("size", count.ToString()) };
+        if (!string.IsNullOrEmpty(genre))
+            args.Add(("genre", genre));
+        var json = await _http.GetStringAsync(BuildUrl("getRandomSongs.view", args.ToArray()));
+        var songs = JsonSerializer.Deserialize<SubsonicEnvelope<RandomSongsResponse>>(json, JsonOptions)?.Response?.RandomSongs?.Song;
+        return (songs ?? new List<SongDto>()).Select(MapSong).ToList();
+    }
 
     // Tries the OpenSubsonic per-song lookup first (supports synced/timed lyrics), then falls
     // back to the legacy artist+title endpoint (plain lyrics only) if that finds nothing -

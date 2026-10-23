@@ -256,3 +256,19 @@ internal class LegacyLyricsPayload
 {
     public string? Value { get; set; }
 }
+
+// getSimilarSongs2 / getRandomSongs: a plain list of songs under different names.
+internal class SongListPayload
+{
+    public List<SongDto> Song { get; set; } = new();
+}
+
+internal class SimilarSongs2Response : SubsonicResponseBase
+{
+    public SongListPayload? SimilarSongs2 { get; set; }
+}
+
+internal class RandomSongsResponse : SubsonicResponseBase
+{
+    public SongListPayload? RandomSongs { get; set; }
+}

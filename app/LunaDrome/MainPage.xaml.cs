@@ -765,6 +765,7 @@ public sealed partial class MainPage : Page
         SongsPage.Visibility = Visibility.Collapsed;
         GenreAlbumsPage.Visibility = Visibility.Collapsed;
         GenresPage.Visibility = Visibility.Collapsed;
+        StatsPage.Visibility = Visibility.Collapsed;
         PlaylistsPage.Visibility = Visibility.Collapsed;
         SettingsPage.Visibility = Visibility.Collapsed;
         SearchPage.Visibility = Visibility.Collapsed;
@@ -792,6 +793,7 @@ public sealed partial class MainPage : Page
         NavAlbums.IsChecked = false;
         NavSongs.IsChecked = false;
         NavGenres.IsChecked = false;
+        NavStats.IsChecked = false;
         NavJam.IsChecked = false;
         if (!keepPlaylist)
             PlaylistsList.SelectedItem = null;
@@ -846,6 +848,10 @@ public sealed partial class MainPage : Page
                     _genresPageLoaded = true;
                     _ = LoadAllGenresAsync();
                 }
+                break;
+            case "Stats":
+                ShowPage(StatsPage, () => Reselect(NavStats));
+                _ = LoadStatsAsync();   // fresh every time: play counts change while listening
                 break;
             case "Jam":
                 ShowJamPage();
@@ -1653,6 +1659,8 @@ public sealed partial class MainPage : Page
         var view = _trackViews[key];
         var filtered = FilterSongs(view.Raw, view.Search.Text?.Trim() ?? "");
         view.List.ItemsSource = SortSongs(filtered, view.SortKey, view.Ascending);
+        if (key == "PlaylistTracks")
+            UpdatePlaylistReorder();
     }
 
     private static IEnumerable<Song> FilterSongs(IEnumerable<Song> source, string search)
@@ -1753,6 +1761,27 @@ public sealed partial class MainPage : Page
         PlayQueueFrom(shuffle ? songs.OrderBy(_ => _random.Next()).ToList() : songs, 0);
     }
 
+    // The play button a row shows on hover: plays the list it's in (as shown) from that song.
+    private void RowPlay_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        e.Handled = true;
+        if (InSelectionMode || sender is not FrameworkElement { Tag: Song song } button)
+            return;
+
+        DependencyObject? node = button;
+        while (node != null && node is not ListView && node != AlbumSongsList)
+            node = VisualTreeHelper.GetParent(node);
+        var source = node switch
+        {
+            ListView { ItemsSource: List<Song> list } => list,
+            _ when node == AlbumSongsList => AlbumSongsList.ItemsSource as List<Song>,
+            _ => null
+        };
+        var index = source?.IndexOf(song) ?? -1;
+        if (index >= 0)
+            PlayQueueFrom(source!, index);
+    }
+
     // Double-click a row to play: queues the whole list as shown (search + sort), from that track.
     private void TrackList_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
     {
@@ -1785,6 +1814,7 @@ public sealed partial class MainPage : Page
         if (key == "PlaylistTracks")
         {
             flyout.Items.Add(new MenuFlyoutSeparator());
+            AddPlaylistMoveItems(flyout, song);
             AddMenuItem(flyout, "Remove from playlist", async () => await RemoveFromPlaylistAsync(song));
         }
 
@@ -1804,6 +1834,7 @@ public sealed partial class MainPage : Page
         AddMenuItem(flyout, "Play next", () => QueueSongsNext(new() { song }));
         AddMenuItem(flyout, "Add to queue", () => AddToQueue(new() { song }));
         AddMenuItem(flyout, "Play last", () => QueueSongsLast(new() { song }));
+        AddMenuItem(flyout, "Start radio", () => _ = StartSongRadioAsync(song));
         flyout.Items.Add(new MenuFlyoutSeparator());
         flyout.Items.Add(BuildAddToPlaylistSubmenu(new List<Song> { song }));
         AddJamMenuItem(flyout, () => Task.FromResult(new List<Song> { song }));
@@ -1940,6 +1971,7 @@ public sealed partial class MainPage : Page
 
         var flyout = PlaylistQueueMenu(playlist);
         flyout.Items.Add(new MenuFlyoutSeparator());
+        AddMenuItem(flyout, "Rename playlist…", async () => await RenamePlaylistAsync(playlist));
         AddMenuItem(flyout, "Delete playlist", async () => await DeletePlaylistAsync(playlist));
         flyout.ShowAt(PlaylistsList, e.GetPosition(PlaylistsList));
         e.Handled = true;
@@ -2002,14 +2034,15 @@ public sealed partial class MainPage : Page
         await LoadPlaylistsAsync();
     }
 
-    private async Task<string?> PromptForPlaylistNameAsync()
+    private async Task<string?> PromptForPlaylistNameAsync(string title = "New playlist", string button = "Create", string name = "")
     {
-        var nameBox = new TextBox { PlaceholderText = "Playlist name" };
+        var nameBox = new TextBox { PlaceholderText = "Playlist name", Text = name };
+        nameBox.SelectAll();
         var dialog = new ContentDialog
         {
-            Title = "New playlist",
+            Title = title,
             Content = nameBox,
-            PrimaryButtonText = "Create",
+            PrimaryButtonText = button,
             CloseButtonText = "Cancel",
             XamlRoot = this.XamlRoot
         };
@@ -2750,6 +2783,7 @@ public sealed partial class MainPage : Page
 
         if (entry == null)
         {
+            NowPlaying.SetCurrent(null);
             NowPlayingText.Text = "Nothing playing";
             NowPlayingSubText.Text = "";
             NowPlayingFavorite.Visibility = Visibility.Collapsed;
@@ -2768,6 +2802,7 @@ public sealed partial class MainPage : Page
 
         entry.IsCurrent = true;
         var song = entry.Song;
+        NowPlaying.SetCurrent(song.Id);
         if (song.Id != _shownSongId)
         {
             // A new song eases in (not on a refresh of the same one).
@@ -2804,6 +2839,7 @@ public sealed partial class MainPage : Page
         if (playing != _isPlaying && VisualTreeHelper.GetParent(PlayIcon) is UIElement icon)
             Motion.PopIn(icon);
         _isPlaying = playing;
+        NowPlaying.SetPlaying(playing);
         PlayIcon.Visibility = playing ? Visibility.Collapsed : Visibility.Visible;
         PauseIcon.Visibility = playing ? Visibility.Visible : Visibility.Collapsed;
         _mediaControls?.SetPlaybackState(_current == null && !JamOwnsPlayback ? null : playing);

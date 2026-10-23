@@ -297,6 +297,113 @@ public static class Motion
         }
     }
 
+    // --- RowHover: hovering a row fades its HoverRole="Show" parts in (the play button) and its
+    // HoverRole="Hide" parts out (the track number). Show parts are Collapsed at rest - an
+    // Opacity-0 element still costs compositing on Skia, and lists have many rows. ---
+
+    public static readonly DependencyProperty RowHoverProperty =
+        DependencyProperty.RegisterAttached("RowHover", typeof(bool), typeof(Motion),
+            new PropertyMetadata(false, OnRowHoverChanged));
+
+    public static bool GetRowHover(DependencyObject d) => (bool)d.GetValue(RowHoverProperty);
+    public static void SetRowHover(DependencyObject d, bool value) => d.SetValue(RowHoverProperty, value);
+
+    public static readonly DependencyProperty HoverRoleProperty =
+        DependencyProperty.RegisterAttached("HoverRole", typeof(string), typeof(Motion),
+            new PropertyMetadata(null, (d, e) =>
+            {
+                if (d is UIElement element && e.NewValue as string == "Show")
+                {
+                    element.Opacity = 0;
+                    element.Visibility = Visibility.Collapsed;
+                }
+            }));
+
+    public static string? GetHoverRole(DependencyObject d) => (string?)d.GetValue(HoverRoleProperty);
+    public static void SetHoverRole(DependencyObject d, string? value) => d.SetValue(HoverRoleProperty, value);
+
+    private static readonly PointerEventHandler RowEntered = (s, _) => SetRowHovered((DependencyObject)s, true);
+    private static readonly PointerEventHandler RowExited = (s, _) => SetRowHovered((DependencyObject)s, false);
+
+    private static void OnRowHoverChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is not UIElement element)
+            return;
+        element.RemoveHandler(UIElement.PointerEnteredEvent, RowEntered);
+        element.RemoveHandler(UIElement.PointerExitedEvent, RowExited);
+        if ((bool)e.NewValue)
+        {
+            element.AddHandler(UIElement.PointerEnteredEvent, RowEntered, true);
+            element.AddHandler(UIElement.PointerExitedEvent, RowExited, true);
+        }
+    }
+
+    private static void SetRowHovered(DependencyObject row, bool hovered)
+    {
+        foreach (var part in HoverParts(row))
+        {
+            if (GetHoverRole(part) == "Show")
+                FadeOverlay(part, show: hovered);
+            else
+                AnimateOpacity(part, hovered ? 0 : 1);
+        }
+    }
+
+    private static IEnumerable<UIElement> HoverParts(DependencyObject parent)
+    {
+        var count = VisualTreeHelper.GetChildrenCount(parent);
+        for (var i = 0; i < count; i++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, i);
+            if (child is UIElement element && GetHoverRole(element) != null)
+                yield return element;
+            else
+                foreach (var part in HoverParts(child))
+                    yield return part;
+        }
+    }
+
+    // --- ThumbGrow (Slider style): the handle grows while the pointer is over the slider ---
+
+    public static readonly DependencyProperty ThumbGrowProperty =
+        DependencyProperty.RegisterAttached("ThumbGrow", typeof(bool), typeof(Motion),
+            new PropertyMetadata(false, OnThumbGrowChanged));
+
+    public static bool GetThumbGrow(DependencyObject d) => (bool)d.GetValue(ThumbGrowProperty);
+    public static void SetThumbGrow(DependencyObject d, bool value) => d.SetValue(ThumbGrowProperty, value);
+
+    private static readonly PointerEventHandler ThumbEntered = (s, _) => GrowThumb((DependencyObject)s, 1.4);
+    private static readonly PointerEventHandler ThumbExited = (s, _) => GrowThumb((DependencyObject)s, 1);
+
+    private static void OnThumbGrowChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is not UIElement element || !(bool)e.NewValue)
+            return;
+        element.AddHandler(UIElement.PointerEnteredEvent, ThumbEntered, true);
+        element.AddHandler(UIElement.PointerExitedEvent, ThumbExited, true);
+        element.AddHandler(UIElement.PointerCaptureLostEvent, ThumbExited, true);
+    }
+
+    private static void GrowThumb(DependencyObject slider, double scale)
+    {
+        if (FindNamed(slider, "HorizontalThumb") is UIElement thumb)
+            AnimateScale(thumb, scale, Hover);
+    }
+
+    private static DependencyObject? FindNamed(DependencyObject parent, string name)
+    {
+        var count = VisualTreeHelper.GetChildrenCount(parent);
+        for (var i = 0; i < count; i++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, i);
+            if (child is FrameworkElement { Name: var n } && n == name)
+                return child;
+            if (FindNamed(child, name) is { } found)
+                return found;
+        }
+        return null;
+    }
+
     // --- EnterStagger: an ItemsRepeater's items fade + rise in one after another when its
     // ItemsSource is (re)set - album grids opening, a new sort. Items prepared later (scrolling)
     // just appear, and only the first 24 animate so a big grid isn't held back. ---
