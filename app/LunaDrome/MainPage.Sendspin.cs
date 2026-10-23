@@ -38,6 +38,7 @@ public sealed partial class MainPage
         {
             _ = ScanSendspinAsync();   // so the list is ready when the picker opens
             _ = ScanDlnaAsync();
+            _ = ScanAudioDevicesAsync();
         }
     }
 
@@ -135,11 +136,12 @@ public sealed partial class MainPage
         var flyout = new MenuFlyout();
         FillOutputFlyout(flyout);
         flyout.ShowAt(anchor);
+        var devices = ScanAudioDevicesAsync();   // headphones plugged in since last time
         if (DateTime.UtcNow - _sendspinLastScan > SendspinRescanAfter || _sendspinScan is { IsCompleted: false })
-        {
-            await Task.WhenAll(ScanSendspinAsync(), ScanDlnaAsync());
-            FillOutputFlyout(flyout);   // the open menu picks up what the scan found
-        }
+            await Task.WhenAll(ScanSendspinAsync(), ScanDlnaAsync(), devices);
+        else
+            await devices;
+        FillOutputFlyout(flyout);   // the open menu picks up what the scans found
     }
 
     private void FillOutputFlyout(MenuFlyout flyout)
@@ -147,13 +149,7 @@ public sealed partial class MainPage
         flyout.Items.Clear();
         flyout.Items.Add(new MenuFlyoutItem { Text = "Play on", IsEnabled = false });
 
-        var local = new ToggleMenuFlyoutItem { Text = ThisDeviceName, IsChecked = !_sendspinActive && !DlnaActive };
-        local.Click += (_, _) =>
-        {
-            PlayOnThisDeviceFromDlna();
-            _ = PlayOnThisComputerAsync();
-        };
-        flyout.Items.Add(local);
+        AddLocalOutputItems(flyout);   // this computer: default device + each sound card (MainPage.AudioDevice.cs)
 
         var connected = _sendspin?.Speakers ?? [];
         var entries = _sendspinFound.Concat(ManualSendspinSpeakers().Where(m => _sendspinFound.All(f => f.Key != m.Key)))
@@ -211,6 +207,7 @@ public sealed partial class MainPage
             OutputIcon.Stroke = stroke;
         ToolTipService.SetToolTip(OutputButton, _dlna != null ? $"Play on: {_dlna.Renderer.Name}" : count switch
         {
+            0 when _prefs.AudioDeviceName != "" => $"Play on: {_prefs.AudioDeviceName}",
             0 => $"Play on: {ThisDeviceName.ToLowerInvariant()}",
             1 => $"Play on: {_sendspin!.Speakers[0].Name}",
             _ => $"Play on: {count} speakers",
@@ -562,6 +559,8 @@ public sealed partial class MainPage
             SendspinTap.Detach(player);
             if (!followed && !LocalAudioModules.Any(module => VlcAudioOutput.TrySet(player, module)))
                 Log("sendspin: couldn't switch the player back to the sound card");
+            else
+                ApplyAudioDevice(player);
         }
     }
 

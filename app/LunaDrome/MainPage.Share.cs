@@ -1,4 +1,5 @@
 using LunaDrome.Core.Models;
+using LunaDrome.Controls;
 using Microsoft.UI.Xaml.Input;
 
 namespace LunaDrome;
@@ -12,11 +13,37 @@ public sealed partial class MainPage
     {
         if (_current?.Song is not { } song)
             return;
-        var flyout = new MenuFlyout();
-        AddMenuItem(flyout, "Start radio", () => _ = StartSongRadioAsync(song));
-        AddMenuItem(flyout, "Share song…", () => ShowShareDialog(song));
-        flyout.ShowAt(NowPlayingTitleLink, e.GetPosition(NowPlayingTitleLink));
         e.Handled = true;
+
+        const string RadioIcon = "M8,5 A1.5,1.5 0 1,1 7.99,5 M4.5,2.5 A5,5 0 0,0 4.5,10.5 M11.5,2.5 A5,5 0 0,1 11.5,10.5 M2,0.5 A8,8 0 0,0 2,12.5 M14,0.5 A8,8 0 0,1 14,12.5";
+        const string ShareIcon = "M8,10 L8,1 M4.5,4.5 L8,1 L11.5,4.5 M2,8 L2,14 L14,14 L14,8";
+        const string AlbumIcon = "M8,1 A7,7 0 1,1 7.99,1 Z M8,6 A2,2 0 1,1 7.99,6 Z";
+        const string ArtistIcon = "M8,1.5 A3.5,3.5 0 1,1 7.99,1.5 Z M1.5,15 C1.5,9.5 14.5,9.5 14.5,15";
+        const string HeartIcon = "M8,14.5 C8,14.5 1,10 1,5.5 C1,3 3,1.3 5.2,1.3 C6.7,1.3 7.6,2.1 8,2.7 C8.4,2.1 9.3,1.3 10.8,1.3 C13,1.3 15,3 15,5.5 C15,10 8,14.5 8,14.5 Z";
+
+        var items = new List<RichMenuItem?>
+        {
+            new("Start radio", RadioIcon, () => _ = StartSongRadioAsync(song), "songs like this"),
+            new("Share song…", ShareIcon, () => ShowShareDialog(song), "public link"),
+            null,
+            new("Go to album", AlbumIcon, () => _ = OpenAlbumAsync(new Album
+            {
+                Id = song.AlbumId, Name = song.AlbumName, ArtistId = song.ArtistId, ArtistName = song.AlbumArtistName,
+                CoverArtUrl = song.CoverArtUrl
+            })),
+        };
+        // One row per artist when the song has several (they're separate links elsewhere too).
+        if (song.Artists.Count > 1)
+            items.AddRange(song.Artists.Select(a => (RichMenuItem?)new RichMenuItem($"Go to {a.Name}", ArtistIcon,
+                () => _ = NavigateToArtistAsync(a.Id, a.Name))));
+        else
+            items.Add(new RichMenuItem("Go to artist", ArtistIcon, () => _ = NavigateToArtistAsync(song.ArtistId, song.ArtistName)));
+        items.Add(new RichMenuItem(song.IsFavorited ? "Remove from favorites" : "Add to favorites", HeartIcon,
+            () => _ = ToggleNowPlayingFavoriteAsync(song), Filled: song.IsFavorited));
+
+        RichMenu.Show(NowPlayingTitleLink, e.GetPosition(NowPlayingTitleLink),
+            song.CoverArtUrl, song.Title, string.Join(", ", song.Artists.Count > 1 ? song.Artists.Select(a => a.Name) : new[] { song.ArtistName }),
+            items);
     }
 
     private async void ShowShareDialog(Song song)

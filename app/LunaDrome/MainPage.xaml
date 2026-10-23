@@ -2104,7 +2104,7 @@
                       Padding="5,1,6,1" CornerRadius="3" Background="{StaticResource AccentBrush}">
                 <TextBlock Text="RADIO" FontSize="9" FontWeight="Bold" Foreground="{StaticResource OnAccentBrush}" CharacterSpacing="60"/>
               </Border>
-              <Border x:Name="NowPlayingTitleLink" Background="Transparent" HorizontalAlignment="Left" controls:Motion.ClickableText="True" Tapped="NowPlayingText_Tapped" RightTapped="NowPlayingText_RightTapped" ToolTipService.ToolTip="Show/hide Queue, Lyrics, Visualizer (right-click to share)">
+              <Border x:Name="NowPlayingTitleLink" Background="Transparent" HorizontalAlignment="Left" controls:Motion.ClickableText="True" Tapped="NowPlayingText_Tapped" RightTapped="NowPlayingText_RightTapped" ToolTipService.ToolTip="Show/hide Queue, Lyrics, Visualizer (right-click for radio, share and more)">
                 <TextBlock x:Name="NowPlayingText" FontWeight="SemiBold" Text="Nothing playing" FontSize="12" TextTrimming="CharacterEllipsis"/>
               </Border>
               <Border x:Name="NowPlayingArtistLink" Background="Transparent" Margin="0,2,0,0" HorizontalAlignment="Left" controls:Motion.ClickableText="True" Tapped="NowPlayingArtist_Tapped" ToolTipService.ToolTip="Go to artist">

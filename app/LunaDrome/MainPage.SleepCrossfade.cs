@@ -278,7 +278,11 @@ public sealed partial class MainPage
             });
         };
         player.PlaybackSession.PlaybackStateChanged += (s, _) =>
+        {
             Log($"playback state: {s.PlaybackState}{(ReferenceEquals(s, _player.PlaybackSession) ? "" : " (other player)")}");
+            if (s.PlaybackState == Windows.Media.Playback.MediaPlaybackState.Playing)
+                DispatcherQueue.TryEnqueue(() => ApplyAudioDevice(player));   // the chosen sound card (MainPage.AudioDevice.cs)
+        };
     }
 
     /// <summary>Every progress tick: start crossfading into the next song when the current one

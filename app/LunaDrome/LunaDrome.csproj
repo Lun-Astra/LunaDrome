@@ -23,7 +23,7 @@
     <UnoIconBackgroundColor>#141517</UnoIconBackgroundColor>
     <UnoSplashScreenColor>#141517</UnoSplashScreenColor>
     <!-- Versions -->
-    <ApplicationDisplayVersion>4.4.1</ApplicationDisplayVersion>
+    <ApplicationDisplayVersion>4.5.0</ApplicationDisplayVersion>
     <ApplicationVersion>2</ApplicationVersion>
     <!-- Package Publisher -->
     <ApplicationPublisher>LunaDrome</ApplicationPublisher>
@@ -66,10 +66,13 @@
     <Compile Remove="Services\LoopbackCapture.Phone.cs" />
     <!-- Sendspin output taps LibVLC's decoded audio (desktop players are LibVLC). -->
     <Compile Remove="Services\SendspinTap.Phone.cs" />
+    <!-- Picking the sound card goes through LibVLC too. -->
+    <Compile Remove="Services\AudioDevices.Phone.cs" />
   </ItemGroup>
   <ItemGroup Condition="!$(TargetFramework.Contains('desktop'))">
     <Compile Remove="Services\LoopbackCapture.cs" />
     <Compile Remove="Services\SendspinTap.cs" />
+    <Compile Remove="Services\AudioDevices.cs" />
     <!-- Linux media keys over D-Bus (Tmds.DBus comes with Uno's desktop runtime only). -->
     <Compile Remove="Services\MprisMediaControls.cs" />
   </ItemGroup>
