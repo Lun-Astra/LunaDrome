@@ -1,3 +1,4 @@
+using LunaDrome.Controls;
 using LunaDrome.Core.Services;
 using LunaDrome.Services;
 
@@ -90,7 +91,8 @@ public sealed partial class MainPage
             Text = _audioDevices.Count > 0 ? $"{ThisDeviceName} (default device)" : ThisDeviceName,
             IsChecked = local && chosen == "",
         };
-        thisComputer.Click += (_, _) => SelectAudioDevice(null);
+        RichMenu.OnClick(thisComputer, () => SelectAudioDevice(null));
+        RichMenu.SetIcon(thisComputer, OperatingSystem.IsAndroid() || OperatingSystem.IsIOS() ? MenuIcons.Phone : MenuIcons.Computer);
         flyout.Items.Add(thisComputer);
 
         foreach (var device in _audioDevices)
@@ -102,7 +104,8 @@ public sealed partial class MainPage
                 Padding = new Thickness(28, 6, 12, 6),   // under This computer
             };
             ToolTipService.SetToolTip(item, $"Audio device on {ThisDeviceName.ToLowerInvariant()}");
-            item.Click += (_, _) => SelectAudioDevice(device);
+            RichMenu.OnClick(item, () => SelectAudioDevice(device));
+            RichMenu.SetIcon(item, MenuIcons.Output);
             flyout.Items.Add(item);
         }
 

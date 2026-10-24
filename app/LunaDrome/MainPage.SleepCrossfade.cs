@@ -1,3 +1,4 @@
+using LunaDrome.Controls;
 using LunaDrome.Core.Services;
 using LunaDrome.Services;
 using Microsoft.UI.Xaml.Automation;
@@ -68,6 +69,7 @@ public sealed partial class MainPage
     private void SleepTimerButton_Click(object sender, RoutedEventArgs e)
     {
         var flyout = new MenuFlyout();
+        flyout.Items.Add(new MenuFlyoutItem { Text = "Sleep timer", IsEnabled = false });
         if (SleepTimerActive)
         {
             flyout.Items.Add(new MenuFlyoutItem { Text = SleepTimerStatus(), IsEnabled = false });
@@ -81,7 +83,7 @@ public sealed partial class MainPage
         foreach (var minutes in SleepTimerMinutes)
             AddMenuItem(flyout, $"{minutes} minutes", () => StartSleepTimer(minutes));
         AddMenuItem(flyout, "End of this song", StartSleepAtSongEnd);
-        flyout.ShowAt((FrameworkElement)sender);
+        RichMenu.ShowAt(flyout, (FrameworkElement)sender);
     }
 
     private void StartSleepTimer(int minutes)

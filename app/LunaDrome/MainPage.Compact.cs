@@ -288,22 +288,37 @@ public sealed partial class MainPage
         NowPlayingInfoPanel.ManipulationMode = (android ? ManipulationModes.TranslateX | ManipulationModes.TranslateRailsX : 0)
             | ManipulationModes.TranslateY | ManipulationModes.TranslateRailsY;
         NowPlayingInfoPanel.RenderTransform = new TranslateTransform();
+        var ticked = false;
+        NowPlayingInfoPanel.ManipulationStarted += (_, _) => ticked = false;
         NowPlayingInfoPanel.ManipulationDelta += (_, e) =>
         {
             if (!IsCompact)
                 return;
             var t = (TranslateTransform)NowPlayingInfoPanel.RenderTransform;
             var (dx, dy) = (e.Cumulative.Translation.X, e.Cumulative.Translation.Y);
+            bool armed;
             if (android && Math.Abs(dx) >= Math.Abs(dy))
+            {
                 t.X = Math.Clamp(dx, -120, 120);
+                armed = Math.Abs(dx) >= SwipeDistance;
+            }
             else
-                t.Y = Math.Clamp(dy, 0, 24);   // a little give, downward only
+            {
+                // Downward only, with growing resistance; the info fades a little as the
+                // "Play on" menu gets close, and the phone ticks once it will open.
+                t.Y = Math.Max(0, dy) is var down && down > 30 ? 30 + (down - 30) * 0.35 : Math.Max(0, dy);
+                NowPlayingInfoPanel.Opacity = 1 - Math.Clamp(dy / (SwipeDistance * 0.6), 0, 1) * 0.35;
+                armed = dy >= SwipeDistance * 0.6;
+            }
+            if (armed && !ticked)
+                Services.Haptics.Tick();
+            ticked = armed;
         };
         NowPlayingInfoPanel.ManipulationCompleted += (_, e) =>
         {
             var t = (TranslateTransform)NowPlayingInfoPanel.RenderTransform;
-            t.X = 0;
-            t.Y = 0;
+            SpringBack(t);
+            NowPlayingInfoPanel.Opacity = 1;
             if (!IsCompact)
                 return;
             var (dx, dy) = (e.Cumulative.Translation.X, e.Cumulative.Translation.Y);
@@ -322,6 +337,32 @@ public sealed partial class MainPage
     }
 
     private const double SwipeDistance = 70;
+
+    // The playback bar's info swings back after a swipe instead of jumping.
+    private static void SpringBack(TranslateTransform transform)
+    {
+        var storyboard = new Microsoft.UI.Xaml.Media.Animation.Storyboard();
+        foreach (var property in new[] { nameof(TranslateTransform.X), nameof(TranslateTransform.Y) })
+        {
+            var back = new Microsoft.UI.Xaml.Media.Animation.DoubleAnimation
+            {
+                To = 0, Duration = TimeSpan.FromMilliseconds(320),
+                EasingFunction = new Microsoft.UI.Xaml.Media.Animation.BackEase
+                {
+                    EasingMode = Microsoft.UI.Xaml.Media.Animation.EasingMode.EaseOut, Amplitude = 0.35
+                },
+            };
+            Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTarget(back, transform);
+            Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTargetProperty(back, property);
+            storyboard.Children.Add(back);
+        }
+        storyboard.Completed += (_, _) =>
+        {
+            transform.X = transform.Y = 0;
+            storyboard.Stop();
+        };
+        storyboard.Begin();
+    }
 
     private void UpdateCompactPlayerMode()
     {
