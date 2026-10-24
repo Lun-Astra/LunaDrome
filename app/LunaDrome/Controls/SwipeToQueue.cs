@@ -77,6 +77,7 @@ public static class SwipeToQueue
         private bool _ticked;
         private readonly DispatcherTimer _hold = new() { Interval = TimeSpan.FromMilliseconds(HoldMs) };
         private Windows.Foundation.Point _start;
+        private Windows.Foundation.Point _rowStart;   // where the row was on screen at the press
         private uint _pointerId;
         private bool _tracking;
         private bool _swiping;
@@ -94,6 +95,15 @@ public static class SwipeToQueue
                 _hold.Stop();
                 if (!_tracking || _swiping)
                     return;
+                // Scrolling the list moves the row while Android stops sending the finger's
+                // moves to it - that's not a hold (scrolling an album used to start selecting).
+                var now = RowPosition();
+                if (Math.Abs(now.X - _rowStart.X) > StartSlop / 2 || Math.Abs(now.Y - _rowStart.Y) > StartSlop / 2)
+                {
+                    Trace("HOLD ignored: the row moved (scrolling)");
+                    Reset();
+                    return;
+                }
                 Trace("HELD");
                 Reset();   // a hold isn't a swipe
                 Held?.Invoke(_row);
@@ -114,6 +124,7 @@ public static class SwipeToQueue
             if (e.Pointer.PointerDeviceType != PointerDeviceType.Touch)
                 return;
             _start = e.GetCurrentPoint(null).Position;
+            _rowStart = RowPosition();
             _pointerId = e.Pointer.PointerId;
             _tracking = true;
             _hold.Start();
@@ -170,6 +181,12 @@ public static class SwipeToQueue
                 && (e.GetCurrentPoint(null).Position.X - _start.X) * _direction >= SwipeDistance)
                 Act();
             Reset();
+        }
+
+        private Windows.Foundation.Point RowPosition()
+        {
+            try { return _row.TransformToVisual(null).TransformPoint(new Windows.Foundation.Point(0, 0)); }
+            catch { return default; }
         }
 
         private void Act()
