@@ -515,6 +515,40 @@ public static class Motion
         }
     }
 
+    /// <summary>Fades in while sliding from (dx, dy) into place - the phone player coming up,
+    /// the More menu, the Home header moving to the next album.</summary>
+    public static void SlideIn(UIElement element, double dx, double dy, int ms = 280)
+    {
+        var transform = EnsureTransform(element);
+        transform.TranslateX = dx;
+        transform.TranslateY = dy;
+        element.Opacity = 0;
+        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+        Run(Animate(element, nameof(UIElement.Opacity), 1, TimeSpan.FromMilliseconds(ms * 2 / 3), ease),
+            Animate(transform, nameof(CompositeTransform.TranslateX), 0, TimeSpan.FromMilliseconds(ms), ease),
+            Animate(transform, nameof(CompositeTransform.TranslateY), 0, TimeSpan.FromMilliseconds(ms), ease));
+    }
+
+    /// <summary>Slides to (dx, dy) while fading out, then <paramref name="done"/> (which hides it)
+    /// and puts the element back in place for next time.</summary>
+    public static void SlideOut(UIElement element, double dx, double dy, Action done, int ms = 220)
+    {
+        var transform = EnsureTransform(element);
+        var ease = new CubicEase { EasingMode = EasingMode.EaseIn };
+        var storyboard = new Storyboard();
+        storyboard.Children.Add(Animate(element, nameof(UIElement.Opacity), 0, TimeSpan.FromMilliseconds(ms), ease));
+        storyboard.Children.Add(Animate(transform, nameof(CompositeTransform.TranslateX), dx, TimeSpan.FromMilliseconds(ms), ease));
+        storyboard.Children.Add(Animate(transform, nameof(CompositeTransform.TranslateY), dy, TimeSpan.FromMilliseconds(ms), ease));
+        storyboard.Completed += (_, _) =>
+        {
+            done();
+            storyboard.Stop();
+            element.Opacity = 1;
+            transform.TranslateX = transform.TranslateY = 0;
+        };
+        storyboard.Begin();
+    }
+
     /// <summary>A quick bump: grows to 1.3 and settles back (favorite heart toggled).</summary>
     public static void Pop(UIElement element)
     {
