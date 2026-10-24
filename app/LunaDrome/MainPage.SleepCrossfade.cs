@@ -21,7 +21,16 @@ public sealed partial class MainPage
     {
         // During a crossfade the fade timer sets both players' volumes itself.
         if (_fadingOut == null)
-            _player.Volume = PlaybackVolume;
+            SetPlayerVolume(_player, PlaybackVolume);
+    }
+
+    /// <summary>Sets a player's volume, and the level of its audio on Sendspin speakers or a DLNA renderer.</summary>
+    private static void SetPlayerVolume(Windows.Media.Playback.MediaPlayer player, double volume)
+    {
+        // Followed by Sendspin (phones) or DLNA: the player plays muted, the speakers get the volume.
+        player.Volume = SendspinTap.MutesPlayer(player) || DlnaFollower.IsAttached(player) ? 0 : volume;
+        SendspinTap.SetGain(player, volume);
+        DlnaFollower.SetVolume(player, volume);
     }
 
     /// <summary>Every progress tick (and when media opens): puts the volume back if VLC changed it.</summary>
@@ -33,11 +42,15 @@ public sealed partial class MainPage
     {
         if (_fadingOut != null)
             return;   // the fade timer sets both volumes
+        // On Sendspin VLC reports 0 (its audio goes to a callback, which gets the real volume);
+        // on DLNA the player is muted on purpose.
+        if (SendspinTap.IsAttached(_player) || DlnaFollower.IsAttached(_player))
+            return;
         var wanted = PlaybackVolume;
         if (Math.Abs(_player.Volume - wanted) > 0.005)
         {
             Log($"volume was {_player.Volume:0.00} instead of {wanted:0.00} - setting it again");
-            _player.Volume = wanted;
+            SetPlayerVolume(_player, wanted);
         }
     }
 
@@ -194,36 +207,39 @@ public sealed partial class MainPage
 
     // ================= Crossfade =================
 
-    private MediaPlayer? _fadingOut;
+    private Windows.Media.Playback.MediaPlayer? _fadingOut;
     // The other player of the pair, idle between crossfades. Players are reused, never disposed:
     // disposing one (while Uno's 16 ms timer and queued callbacks still read its VLC player)
     // crashed the app at the end of a crossfade.
-    private MediaPlayer? _sparePlayer;
+    private Windows.Media.Playback.MediaPlayer? _sparePlayer;
     private DateTime _fadeStart;
     private double _fadeSeconds;
     private readonly DispatcherTimer _fadeTimer = new() { Interval = TimeSpan.FromMilliseconds(50) };
 
     // Windows: players whose VLC output is DirectSound (see VlcAudioOutput). Two players on VLC's
     // default output share one volume, so a crossfade only runs once both are switched.
-    private readonly HashSet<MediaPlayer> _ownVolumePlayers = new();
+    private readonly HashSet<Windows.Media.Playback.MediaPlayer> _ownVolumePlayers = new();
 
     /// <summary>Before a player first plays: on Windows give it a volume of its own.</summary>
-    private void PrepareAudioOutput(MediaPlayer player)
+    private void PrepareAudioOutput(Windows.Media.Playback.MediaPlayer player)
     {
-        if (!OperatingSystem.IsWindows() || _ownVolumePlayers.Contains(player))
-            return;
-        if (VlcAudioOutput.TrySet(player, "directsound"))
-            _ownVolumePlayers.Add(player);
-        else
-            Log("couldn't switch the player to DirectSound - crossfade stays off");
+        if (OperatingSystem.IsWindows() && !_ownVolumePlayers.Contains(player))
+        {
+            if (VlcAudioOutput.TrySet(player, "directsound"))
+                _ownVolumePlayers.Add(player);
+            else
+                Log("couldn't switch the player to DirectSound - crossfade stays off");
+        }
+        // Playing on Sendspin speakers: a new (crossfade) player sends its audio there too.
+        ApplySendspinRoute(player);
     }
 
-    private bool PlayersHaveOwnVolume(MediaPlayer a, MediaPlayer b) =>
+    private bool PlayersHaveOwnVolume(Windows.Media.Playback.MediaPlayer a, Windows.Media.Playback.MediaPlayer b) =>
         !OperatingSystem.IsWindows() || (_ownVolumePlayers.Contains(a) && _ownVolumePlayers.Contains(b));
 
     /// <summary>Hooks the events of a player; they're ignored once it's no longer the current one
     /// (the outgoing player of a crossfade keeps reporting until it is stopped).</summary>
-    private void HookPlayer(MediaPlayer player)
+    private void HookPlayer(Windows.Media.Playback.MediaPlayer player)
     {
         player.MediaEnded += (s, _) => DispatcherQueue.TryEnqueue(() =>
         {
@@ -262,7 +278,11 @@ public sealed partial class MainPage
             });
         };
         player.PlaybackSession.PlaybackStateChanged += (s, _) =>
+        {
             Log($"playback state: {s.PlaybackState}{(ReferenceEquals(s, _player.PlaybackSession) ? "" : " (other player)")}");
+            if (s.PlaybackState == Windows.Media.Playback.MediaPlaybackState.Playing)
+                DispatcherQueue.TryEnqueue(() => ApplyAudioDevice(player));   // the chosen sound card (MainPage.AudioDevice.cs)
+        };
     }
 
     /// <summary>Every progress tick: start crossfading into the next song when the current one
@@ -271,7 +291,8 @@ public sealed partial class MainPage
     {
         var seconds = _prefs.CrossfadeSeconds;
         // Desktop only: on Android a second player can take the audio focus from the first.
-        if (seconds <= 0 || OperatingSystem.IsAndroid() || _fadingOut != null || JamOwnsPlayback || !_isPlaying)
+        // Not on DLNA either: the renderer plays one song at a time.
+        if (seconds <= 0 || OperatingSystem.IsAndroid() || _fadingOut != null || JamOwnsPlayback || !_isPlaying || DlnaActive)
             return;
         if (_sleepAtSongEnd || _repeatMode == RepeatMode.One)
             return;
@@ -287,7 +308,7 @@ public sealed partial class MainPage
 
         if (_sparePlayer == null)
         {
-            _sparePlayer = new MediaPlayer { Volume = 0 };
+            _sparePlayer = new Windows.Media.Playback.MediaPlayer { Volume = 0 };
             HookPlayer(_sparePlayer);
             PrepareAudioOutput(_sparePlayer);
         }
@@ -301,7 +322,7 @@ public sealed partial class MainPage
         _fadingOut = _player;
         _player = _sparePlayer;
         _sparePlayer = null;
-        _player.Volume = 0;
+        SetPlayerVolume(_player, 0);
         _fadeStart = DateTime.UtcNow;
         _fadeSeconds = seconds;
         PlayEntry(next, crossfading: true);
@@ -320,8 +341,8 @@ public sealed partial class MainPage
         // Equal-power curves: the sum sounds equally loud all the way through.
         var t = Math.Clamp((DateTime.UtcNow - _fadeStart).TotalSeconds / _fadeSeconds, 0, 1);
         var volume = PlaybackVolume;
-        _player.Volume = volume * Math.Sin(t * Math.PI / 2);
-        _fadingOut.Volume = volume * Math.Cos(t * Math.PI / 2);
+        SetPlayerVolume(_player, volume * Math.Sin(t * Math.PI / 2));
+        SetPlayerVolume(_fadingOut, volume * Math.Cos(t * Math.PI / 2));
         if (t >= 1)
             FinishCrossfade();
     }

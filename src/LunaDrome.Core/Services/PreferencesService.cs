@@ -17,6 +17,8 @@ public class Preferences
     public bool CheckForUpdates { get; set; } = true;
     /// <summary>Show the playing song on the user's Discord profile (desktop). Off by default.</summary>
     public bool DiscordPresence { get; set; }
+    /// <summary>With it: the album cover (a public link to it on the user's server) instead of the logo.</summary>
+    public bool DiscordAlbumArt { get; set; } = true;
 
     public double Volume { get; set; } = 0.8;
 
@@ -28,6 +30,12 @@ public class Preferences
 
     /// <summary>Crossfade between songs in seconds (desktop); 0 = off.</summary>
     public int CrossfadeSeconds { get; set; }
+
+    /// <summary>Sound card / audio device on this computer (LibVLC device id for the platform's
+    /// output: DirectSound on Windows, PulseAudio on Linux); empty = the system default.
+    /// The name is kept to show it when the device is unplugged.</summary>
+    public string AudioDeviceId { get; set; } = "";
+    public string AudioDeviceName { get; set; } = "";
 
     /// <summary>Synced-lyrics offset per song id, in seconds (positive = lyrics later), set with
     /// the Earlier / Later buttons in the Lyrics tab.</summary>
@@ -45,6 +53,17 @@ public class Preferences
     public string JamiDromeApiKey { get; set; } = "";
     /// <summary>This install's id as a jam speaker, so the server can tell devices apart.</summary>
     public string JamDeviceId { get; set; } = "";
+
+    /// <summary>This install's Sendspin server id: speakers remember the server they last played
+    /// from by it, so it stays the same across restarts.</summary>
+    public string SendspinServerId { get; set; } = "";
+    /// <summary>This install's Sendspin identity for the encrypted protocol: its Curve25519
+    /// private key (encrypted with CredentialProtector); the public key is its server_id.</summary>
+    public string SendspinServerKey { get; set; } = "";
+    /// <summary>Pairings with Sendspin speakers: client_id → long-term PSK (encrypted).</summary>
+    public Dictionary<string, string> SendspinPairings { get; set; } = new();
+    /// <summary>Sendspin speakers added by address (ws:// URLs), for networks without mDNS.</summary>
+    public List<string> SendspinManualSpeakers { get; set; } = new();
 }
 
 /// <summary>Reads/writes preferences.json in the LunaDrome-Uno settings folder.</summary>

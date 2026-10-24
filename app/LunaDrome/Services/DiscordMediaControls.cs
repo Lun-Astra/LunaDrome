@@ -11,12 +11,24 @@ namespace LunaDrome.Services;
 public sealed class DiscordMediaControls : IMediaControls
 {
     private readonly DiscordPresence _presence = new();
+    private readonly Func<Song, Task<PublicCover>>? _findCover;
+    private readonly Action<string>? _log;
     private Song? _song;
+    private string? _coverUrl;    // the current song's public cover, once found
     private bool? _playing;
     private TimeSpan _position;
     private TimeSpan _duration;
 
-    public DiscordMediaControls(Action<string>? log) => _presence.Log = log;
+    /// <param name="findCover">Finds a song's public album cover (null: the logo).</param>
+    public DiscordMediaControls(Action<string>? log, Func<Song, Task<PublicCover>>? findCover = null)
+    {
+        _presence.Log = log;
+        _log = log;
+        _findCover = findCover;
+    }
+
+    /// <summary>Album covers instead of the LunaDrome logo (when the server has public links).</summary>
+    public bool ShowAlbumArt { get; set; } = true;
 
     public bool Enabled
     {
@@ -29,12 +41,50 @@ public sealed class DiscordMediaControls : IMediaControls
     public void SetTrack(Song? song, string? artUrl = null)
     {
         // artUrl is ignored on purpose: Navidrome's cover URL contains the login token.
-        if (song?.Id != _song?.Id)
+        var changed = song?.Id != _song?.Id;
+        if (changed)
         {
             _position = TimeSpan.Zero;
             _duration = song == null ? TimeSpan.Zero : TimeSpan.FromSeconds(song.DurationSeconds);
+            _coverUrl = null;
         }
         _song = song;
+        Update();
+        if (changed && song != null)
+            _ = FindCoverAsync(song);
+    }
+
+    // The status goes out right away with the logo; the cover follows when it's found.
+    private async Task FindCoverAsync(Song song)
+    {
+        if (_findCover == null || !Enabled || !ShowAlbumArt)
+            return;
+        PublicCover cover;
+        try { cover = await _findCover(song); }
+        catch (Exception ex)
+        {
+            _log?.Invoke($"discord: no cover for '{song.AlbumName}': {ex.Message}");
+            return;
+        }
+        if (cover.Url == null)
+        {
+            _log?.Invoke($"discord: no cover for '{song.AlbumName}' - {cover.WhyNot}; showing the logo");
+            return;
+        }
+        if (song.Id != _song?.Id)
+            return;
+        _log?.Invoke($"discord: cover for '{song.AlbumName}' from {new Uri(cover.Url).Host}");
+        _coverUrl = cover.Url;
+        Update();
+    }
+
+    /// <summary>The album-art setting changed: show or drop the cover now.</summary>
+    public void Refresh()
+    {
+        if (!ShowAlbumArt)
+            _coverUrl = null;
+        else if (_song != null && _coverUrl == null)
+            _ = FindCoverAsync(_song);
         Update();
     }
 
@@ -61,7 +111,7 @@ public sealed class DiscordMediaControls : IMediaControls
             _presence.Clear();
             return;
         }
-        _presence.SetPlaying(_song.Title, _song.ArtistName, _song.AlbumName, _position, _duration);
+        _presence.SetPlaying(_song.Title, _song.ArtistName, _song.AlbumName, _position, _duration, ShowAlbumArt ? _coverUrl : null);
     }
 
     public void Dispose() => _presence.Dispose();

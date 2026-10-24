@@ -18,12 +18,11 @@ internal static class VlcAudioOutput
 
     /// <summary>Takes effect when the player next starts audio, so call it before the first song.
     /// False when the VLC player can't be reached (Android, or a changed Uno).</summary>
-    public static bool TrySet(MediaPlayer player, string module)
+    public static bool TrySet(Windows.Media.Playback.MediaPlayer player, string module)
     {
         try
         {
-            var extension = FindExtension(player);
-            var vlcPlayer = extension?.GetType().GetProperty("VlcPlayer", AnyMember | BindingFlags.Instance)?.GetValue(extension);
+            var vlcPlayer = GetVlcPlayer(player);
             var setAudioOutput = vlcPlayer?.GetType().GetMethod("SetAudioOutput", new[] { typeof(string) });
             return setAudioOutput?.Invoke(vlcPlayer, new object[] { module }) is true;
         }
@@ -33,7 +32,21 @@ internal static class VlcAudioOutput
         }
     }
 
-    private static object? FindExtension(MediaPlayer player)
+    /// <summary>The LibVLCSharp.Shared.MediaPlayer behind a desktop player (null on phones).</summary>
+    public static object? GetVlcPlayer(Windows.Media.Playback.MediaPlayer player)
+    {
+        try
+        {
+            var extension = FindExtension(player);
+            return extension?.GetType().GetProperty("VlcPlayer", AnyMember | BindingFlags.Instance)?.GetValue(extension);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static object? FindExtension(Windows.Media.Playback.MediaPlayer player)
     {
         foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
         {

@@ -5,7 +5,7 @@ it via the Subsonic API. Inspired by Feishin / Finamp / Ensemble, built to grow 
 self-hosted music downloader and SendSpin Bluetooth speaker support.
 
 Built with [Uno Platform](https://platform.uno/) (C# / WinUI XAML, Skia renderer), so one codebase
-runs on Windows and Linux today, with macOS / iOS / Android as later targets. (The original WPF
+runs on Windows, Linux, Android and iOS (macOS may follow). (The original WPF
 Windows-only app was retired in favor of this one; it's still in git history.)
 
 ## Features
@@ -61,8 +61,36 @@ Grab the latest build from the [Releases](https://github.com/Lun-Astra/LunaDrome
   optional desktop shortcut, uninstall from Apps & features.
 - **Debian / Ubuntu:** `sudo apt install ./lunadrome_<version>_amd64.deb` (pulls in VLC libraries).
 - **Android:** `LunaDrome-<version>-android.apk` - open it on the phone and allow installing apps from your browser/file manager when asked. Phones get a compact layout (☰ menu); no visualizer on Android yet.
+- **iPhone / iPad:** `LunaDrome-<version>-ios.ipa` - unsigned, so install it with [AltStore](https://altstore.io) or [SideStore](https://sidestore.io) and your own (free) Apple ID; they re-sign it every 7 days. Same compact layout as Android, with lock-screen / Control Center controls and background playback; no visualizer and no CarPlay (that needs an Apple entitlement).
 - **Other Linux (x64):** extract `LunaDrome-<version>-linux-x64.tar.gz`, run `./install.sh`
   (or `sudo ./install.sh --system`); needs libvlc, and `parec` for the visualizer.
+
+### Connecting to your server
+
+Sign in with your server's **https** address (`https://music.example.com`) whenever the server
+has one, not `http://` or a local IP. Over plain http your password and music travel
+unencrypted, and some features only work over https - for example the album covers on Discord
+(Discord only loads https images, so with an http address it shows the LunaDrome logo instead).
+
+### Navidrome server settings
+
+A few LunaDrome features need a setting on the Navidrome server (in `navidrome.toml`, or the
+matching `ND_...` environment variable for Docker; restart Navidrome afterwards):
+
+| Setting | Needed for |
+|---|---|
+| `EnableSharing = true` (`ND_ENABLESHARING=true`) | **Share song** - without it Navidrome refuses to make share links. |
+| `Subsonic.ArtistParticipations = true` (`ND_SUBSONIC_ARTISTPARTICIPATIONS=true`) | Optional: other Subsonic apps then also list the albums an artist only appears on. LunaDrome finds those itself, so it doesn't need this. |
+
+Songs by several artists also need each artist tagged separately (a multi-valued `ARTISTS`
+tag); a single "Artist A, Artist B" text becomes one combined artist, because Navidrome doesn't
+split on commas. SpotiDrome writes these tags itself, and Settings > Library Maintenance >
+Split Combined Artists adds them to songs it downloaded earlier.
+
+**Discord album covers** use Navidrome's public cover links, so they only show when the server
+can be reached from the internet over https (and you signed in with that https address, see
+above); otherwise Discord shows the LunaDrome logo. Vesktop / Vencord (arRPC) may not show the
+covers at all - Discord's own app does.
 
 Releases are built by GitHub Actions (`.github/workflows/release.yml`) when a version tag is
 pushed: `git tag v3.4.0 && git push origin v3.4.0`. Installer sources are in `installer/`.

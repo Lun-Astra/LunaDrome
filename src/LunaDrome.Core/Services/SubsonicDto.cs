@@ -27,6 +27,18 @@ internal class PingResponse : SubsonicResponseBase
 {
 }
 
+internal class AlbumInfoResponse : SubsonicResponseBase
+{
+    public AlbumInfoDto? AlbumInfo { get; set; }
+}
+
+internal class AlbumInfoDto
+{
+    public string? SmallImageUrl { get; set; }
+    public string? MediumImageUrl { get; set; }
+    public string? LargeImageUrl { get; set; }
+}
+
 internal class ArtistsResponse : SubsonicResponseBase
 {
     public ArtistsPayload? Artists { get; set; }
@@ -112,6 +124,12 @@ internal class AlbumDetailDto
     public List<SongDto> Song { get; set; } = new();
 }
 
+internal class ArtistRefDto
+{
+    public string Id { get; set; } = "";
+    public string Name { get; set; } = "";
+}
+
 internal class SongDto
 {
     public string Id { get; set; } = "";
@@ -120,7 +138,10 @@ internal class SongDto
     public string Album { get; set; } = "";
     public string ArtistId { get; set; } = "";
     public string Artist { get; set; } = "";
+    /// <summary>OpenSubsonic: each artist separately (Navidrome 0.55+).</summary>
+    public List<ArtistRefDto>? Artists { get; set; }
     public string? AlbumArtist { get; set; }
+    public List<ArtistRefDto>? AlbumArtists { get; set; }
     public string Genre { get; set; } = "";
     public int Track { get; set; }
     public int Duration { get; set; }
@@ -234,4 +255,20 @@ internal class LegacyLyricsResponse : SubsonicResponseBase
 internal class LegacyLyricsPayload
 {
     public string? Value { get; set; }
+}
+
+// getSimilarSongs2 / getRandomSongs: a plain list of songs under different names.
+internal class SongListPayload
+{
+    public List<SongDto> Song { get; set; } = new();
+}
+
+internal class SimilarSongs2Response : SubsonicResponseBase
+{
+    public SongListPayload? SimilarSongs2 { get; set; }
+}
+
+internal class RandomSongsResponse : SubsonicResponseBase
+{
+    public SongListPayload? RandomSongs { get; set; }
 }

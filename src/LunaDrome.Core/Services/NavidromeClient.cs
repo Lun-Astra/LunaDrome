@@ -216,6 +216,45 @@ public class NavidromeClient
         return (artists, MapAlbums(result.Album), result.Song.Select(MapSong).ToList());
     }
 
+    /// <summary>
+    /// Albums an artist appears on without being their album artist (a featured singer on
+    /// someone else's album). Navidrome's getArtist lists those only with
+    /// Subsonic.ArtistParticipations on, so they're found from the artist's songs instead: a
+    /// search for the name, keeping songs that list this artist (by id, so a namesake doesn't
+    /// count), grouped by album. SongCount is how many of the album's songs they're on.
+    /// </summary>
+    public async Task<List<Album>> GetAppearsOnAlbumsAsync(string artistId, string artistName, ISet<string> knownAlbumIds,
+        int pageSize = 500, int max = 3000)
+    {
+        var songs = new List<SongDto>();
+        while (songs.Count < max && !string.IsNullOrWhiteSpace(artistName))
+        {
+            var url = BuildUrl("search3.view", ("query", artistName), ("songCount", pageSize.ToString()),
+                ("songOffset", songs.Count.ToString()), ("albumCount", "0"), ("artistCount", "0"));
+            var json = await _http.GetStringAsync(url);
+            var page = JsonSerializer.Deserialize<SubsonicEnvelope<Search3Response>>(json, JsonOptions)?.Response?.SearchResult3?.Song;
+            if (page == null || page.Count == 0)
+                break;
+            songs.AddRange(page);
+            if (page.Count < pageSize)
+                break;
+        }
+        return songs
+            .Where(s => !knownAlbumIds.Contains(s.AlbumId) && !string.IsNullOrEmpty(s.AlbumId)
+                        && (s.ArtistId == artistId || s.Artists?.Any(a => a.Id == artistId) == true))
+            .GroupBy(s => s.AlbumId)
+            .Select(g => new Album
+            {
+                Id = g.Key,
+                Name = g.First().Album,
+                ArtistId = g.First().AlbumArtists?.FirstOrDefault()?.Id ?? "",
+                ArtistName = g.First().AlbumArtist ?? g.First().Artist,
+                Year = g.First().Year,
+                SongCount = g.Count(),
+            })
+            .ToList();
+    }
+
     // Library-wide song search. An empty query matches everything on Navidrome; if a
     // different Subsonic-compatible server requires a non-empty pattern, this will need
     // to fall back to iterating albums instead.
@@ -252,6 +291,9 @@ public class NavidromeClient
         AlbumName = s.Album,
         ArtistId = s.ArtistId,
         ArtistName = s.Artist,
+        Artists = s.Artists is { Count: > 1 } list
+            ? list.Where(a => !string.IsNullOrEmpty(a.Id)).Select(a => new ArtistRef(a.Id, a.Name)).ToList()
+            : [],
         AlbumArtistName = string.IsNullOrEmpty(s.AlbumArtist) ? s.Artist : s.AlbumArtist,
         Genre = s.Genre,
         Track = s.Track,
@@ -292,7 +334,14 @@ public class NavidromeClient
         var envelope = JsonSerializer.Deserialize<SubsonicEnvelope<PlaylistDetailResponse>>(json, JsonOptions);
         var entries = envelope?.Response?.Playlist?.Entry ?? new List<SongDto>();
 
-        return entries.Select(MapSong).ToList();
+        // PlaylistIndex = position on the server: what "remove from playlist" needs (it was lost
+        // in the switch to the Uno app, so removing silently did nothing).
+        return entries.Select((entry, index) =>
+        {
+            var song = MapSong(entry);
+            song.PlaylistIndex = index;
+            return song;
+        }).ToList();
     }
 
     // Returns the new playlist's id, or null if the server response didn't include one.
@@ -310,6 +359,43 @@ public class NavidromeClient
     public Task RemoveSongFromPlaylistAsync(string playlistId, int songIndex) =>
         _http.GetStringAsync(BuildUrl("updatePlaylist.view", ("playlistId", playlistId), ("songIndexToRemove", songIndex.ToString())));
 
+    public Task RenamePlaylistAsync(string playlistId, string name) =>
+        _http.GetStringAsync(BuildUrl("updatePlaylist.view", ("playlistId", playlistId), ("name", name)));
+
+    /// <summary>Replaces the playlist's songs with <paramref name="songIds"/> in that order (how a
+    /// reorder is saved - Subsonic has no "move"). createPlaylist with a playlistId overwrites
+    /// it; the ids go in a form body (OpenSubsonic formPost), since a long playlist's ids would
+    /// make the URL too long for a reverse proxy.</summary>
+    public async Task SetPlaylistSongsAsync(string playlistId, IEnumerable<string> songIds)
+    {
+        var form = new FormUrlEncodedContent(songIds.Select(id => new KeyValuePair<string, string>("songId", id)));
+        using var response = await _http.PostAsync(BuildUrl("createPlaylist.view", ("playlistId", playlistId)), form);
+        response.EnsureSuccessStatusCode();
+        var envelope = JsonSerializer.Deserialize<SubsonicEnvelope<CreatePlaylistResponse>>(
+            await response.Content.ReadAsStringAsync(), JsonOptions);
+        if (envelope?.Response?.Status != "ok")
+            throw new InvalidOperationException(envelope?.Response?.Error?.Message ?? "The server didn't save the new order.");
+    }
+
+    /// <summary>Songs like this song or artist (Navidrome asks Last.fm and keeps the ones in the
+    /// library). Can be empty or short for less known music.</summary>
+    public async Task<List<Song>> GetSimilarSongsAsync(string songOrArtistId, int count = 50)
+    {
+        var json = await _http.GetStringAsync(BuildUrl("getSimilarSongs2.view", ("id", songOrArtistId), ("count", count.ToString())));
+        var songs = JsonSerializer.Deserialize<SubsonicEnvelope<SimilarSongs2Response>>(json, JsonOptions)?.Response?.SimilarSongs2?.Song;
+        return (songs ?? new List<SongDto>()).Select(MapSong).ToList();
+    }
+
+    public async Task<List<Song>> GetRandomSongsAsync(string? genre, int count = 50)
+    {
+        var args = new List<(string, string)> { ("size", count.ToString()) };
+        if (!string.IsNullOrEmpty(genre))
+            args.Add(("genre", genre));
+        var json = await _http.GetStringAsync(BuildUrl("getRandomSongs.view", args.ToArray()));
+        var songs = JsonSerializer.Deserialize<SubsonicEnvelope<RandomSongsResponse>>(json, JsonOptions)?.Response?.RandomSongs?.Song;
+        return (songs ?? new List<SongDto>()).Select(MapSong).ToList();
+    }
+
     // Tries the OpenSubsonic per-song lookup first (supports synced/timed lyrics), then falls
     // back to the legacy artist+title endpoint (plain lyrics only) if that finds nothing -
     // covers both older servers and songs that only have plain lyrics on file. Best-effort:
@@ -325,6 +411,94 @@ public class NavidromeClient
         if (online.Synced || server.Lines.Count == 0)
             return online;
         return server;
+    }
+
+    private readonly Dictionary<string, PublicCover> _publicCovers = new();
+    private readonly Dictionary<string, bool> _httpsHosts = new();
+
+    /// <summary>
+    /// An album cover anyone can load without logging in, for places outside LunaDrome (Discord's
+    /// servers fetch the image themselves): Navidrome's /share/img link from getAlbumInfo2, whose
+    /// token only unlocks that one image. Null when there is none, or when the server is only on
+    /// this network (nobody outside could load it anyway); <see cref="PublicCover.WhyNot"/> then
+    /// says why. Looked up once per album.
+    /// </summary>
+    public async Task<PublicCover> GetPublicCoverAsync(string albumId)
+    {
+        if (string.IsNullOrEmpty(albumId))
+            return new(null, "the song has no album");
+        if (!Uri.TryCreate(ServerUrl, UriKind.Absolute, out var server) || IsLocalOnly(server))
+            return new(null, $"the server address ({server?.Host ?? ServerUrl}) is only reachable on this network");
+        lock (_publicCovers)
+            if (_publicCovers.TryGetValue(albumId, out var known))
+                return known;
+
+        PublicCover cover;
+        try
+        {
+            var json = await _http.GetStringAsync(BuildUrl("getAlbumInfo2.view", ("id", albumId)));
+            var info = JsonSerializer.Deserialize<SubsonicEnvelope<AlbumInfoResponse>>(json, JsonOptions)?.Response?.AlbumInfo;
+            var link = info?.MediumImageUrl ?? info?.LargeImageUrl ?? info?.SmallImageUrl;
+            if (!Uri.TryCreate(link, UriKind.Absolute, out var url) || !url.AbsolutePath.Contains("/share/img/", StringComparison.Ordinal))
+                cover = new(null, "the server gives no public cover link (Navidrome 0.53+ needed)");
+            else if (await ToHttpsAsync(url, server) is { } https)
+                cover = new(https.AbsoluteUri, null);
+            else
+                cover = new(null, $"the server doesn't answer on https at {url.Host} (Discord only loads https images)");
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
+        {
+            return new(null, $"looking it up failed: {ex.Message}");   // not remembered: may work next time
+        }
+        lock (_publicCovers)
+            _publicCovers[albumId] = cover;
+        return cover;
+    }
+
+    // Behind a reverse proxy Navidrome writes http:// links. When the user signed in over https the
+    // host answers on https; when they signed in over http it may still (a proxy with a
+    // certificate) - asked once per host.
+    private async Task<Uri?> ToHttpsAsync(Uri url, Uri server)
+    {
+        if (url.Scheme == Uri.UriSchemeHttps)
+            return url;
+        var sameHost = string.Equals(url.Host, server.Host, StringComparison.OrdinalIgnoreCase);
+        if (sameHost && server.Scheme == Uri.UriSchemeHttps)
+            return new UriBuilder(url) { Scheme = Uri.UriSchemeHttps, Port = server.Port }.Uri;
+        var https = new UriBuilder(url) { Scheme = Uri.UriSchemeHttps, Port = -1 }.Uri;
+        bool? known;
+        lock (_httpsHosts)
+            known = _httpsHosts.TryGetValue(url.Host, out var k) ? k : null;
+        var works = known ?? false;
+        if (known == null)
+        {
+            try
+            {
+                using var probe = new HttpRequestMessage(HttpMethod.Get, https);
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(6));
+                using var response = await _http.SendAsync(probe, HttpCompletionOption.ResponseHeadersRead, cts.Token);
+                works = response.IsSuccessStatusCode && response.Content.Headers.ContentType?.MediaType?.StartsWith("image/") == true;
+            }
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+            {
+                works = false;
+            }
+            lock (_httpsHosts)
+                _httpsHosts[url.Host] = works;
+        }
+        return works ? https : null;
+    }
+
+    private static bool IsLocalOnly(Uri server)
+    {
+        if (server.IsLoopback || server.Host.EndsWith(".local", StringComparison.OrdinalIgnoreCase) || !server.Host.Contains('.'))
+            return true;
+        if (!System.Net.IPAddress.TryParse(server.Host, out var ip))
+            return false;
+        var b = ip.GetAddressBytes();
+        return ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork
+            ? b[0] == 10 || (b[0] == 172 && b[1] >= 16 && b[1] < 32) || (b[0] == 192 && b[1] == 168) || (b[0] == 169 && b[1] == 254) || (b[0] == 100 && b[1] >= 64 && b[1] < 128)
+            : ip.IsIPv6LinkLocal || ip.IsIPv6SiteLocal || ip.IsIPv6UniqueLocal;
     }
 
     private async Task<(List<LyricLine> Lines, bool Synced)> GetServerLyricsAsync(string songId, string artist, string title)
@@ -425,6 +599,30 @@ public class NavidromeClient
         StreamQuality.Low => Converted(songId, "opus", 24, forPlayback),
         _ => BuildUrl("stream.view", ("id", songId)),
     };
+
+    /// <summary>A stream for another device to fetch (a DLNA renderer): the same quality, but MP3
+    /// instead of Opus, which few TVs and receivers play. Original stays the original file.
+    /// Renderers can't seek in a converted stream, so it starts at <paramref name="from"/>
+    /// instead (Subsonic's timeOffset) and Converted says a seek means fetching it again.</summary>
+    public (string Url, string MimeType, bool Converted) GetDeviceStreamUrl(string songId, TimeSpan from = default)
+    {
+        var kbps = StreamQuality switch
+        {
+            StreamQuality.VeryHigh or StreamQuality.High => 320,
+            StreamQuality.Normal => 192,
+            StreamQuality.Low => 128,
+            _ => 0,
+        };
+        if (kbps == 0)
+            return (BuildUrl("stream.view", ("id", songId)), "*", false);
+        // No estimateContentLength: from an offset the estimate (for the whole song) would be
+        // too long, and the renderer would wait at the end for bytes that never come.
+        var offset = (int)from.TotalSeconds;
+        var url = offset > 0
+            ? BuildUrl("stream.view", ("id", songId), ("format", "mp3"), ("maxBitRate", kbps.ToString()), ("timeOffset", offset.ToString()))
+            : BuildUrl("stream.view", ("id", songId), ("format", "mp3"), ("maxBitRate", kbps.ToString()));
+        return (url, "audio/mpeg", true);
+    }
 
     private string Converted(string songId, string format, int kbps, bool estimateLength) => estimateLength
         ? BuildUrl("stream.view", ("id", songId), ("format", format), ("maxBitRate", kbps.ToString()),

@@ -43,7 +43,7 @@ public sealed partial class MainPage : Page
 
     private readonly NavidromeClient _client = new();
     // Not readonly: a crossfade swaps in the second player for the next song (MainPage.SleepCrossfade.cs).
-    private MediaPlayer _player = new();
+    private Windows.Media.Playback.MediaPlayer _player = new();
     private readonly DispatcherTimer _progressTimer;
 
     private readonly ObservableCollection<QueueEntry> _queue = new();
@@ -83,6 +83,8 @@ public sealed partial class MainPage : Page
     private List<Playlist> _playlists = new();
     private Playlist? _currentPlaylist;
     private Artist? _currentArtist;
+    // Albums on the artist page they're only a guest on: playing them plays just their songs.
+    private HashSet<string> _artistGuestAlbums = new();
     private Album? _currentAlbum;
     private List<Album> _heroAlbums = new();
     private int _heroIndex;
@@ -94,6 +96,7 @@ public sealed partial class MainPage : Page
     // the latest bands once per display frame (see OnVisualizerRenderFrame).
     private readonly SpectrumAnalyzer _spectrum = new();
     private readonly LoopbackCapture _loopback;
+    private LunaDrome.Core.Sendspin.SendspinSpectrumFeed? _sendspinSpectrum;
     private readonly float[] _visualizerLatestBands = new float[SpectrumAnalyzer.BandCount];
     private readonly float[] _visualizerSmoothed = new float[SpectrumAnalyzer.BandCount];
     private bool _visualizerRenderHooked;
@@ -112,8 +115,16 @@ public sealed partial class MainPage : Page
         this.InitializeComponent();
 #if ANDROID
         ShareLogButton.Visibility = Visibility.Visible;
+        UpdateInstallReceiver.Failed += reason => DispatcherQueue.TryEnqueue(() =>
+        {
+            _updateInProgress = false;
+            if (_update != null)
+                UpdateButton.Content = $"Update to v{_update.Version}";
+            ShowToast($"Update not installed: {reason}");
+        });
 #endif
         InitCompactLayout();
+        InitSendspin();
         Loaded += (_, _) => EnsureMediaControls();
         Unloaded += (_, _) =>
         {
@@ -122,8 +133,11 @@ public sealed partial class MainPage : Page
             _loopback.Dispose();
             _prefetcher.Dispose();
             _mediaControls?.Dispose();
+            StopDlna();
+            DisposeSendspin();
         };
         _visualizerTimer.Tick += OnVisualizerRenderFrame;
+        ArtistLinks.Clicked += artist => _ = NavigateToArtistAsync(artist.Id, artist.Name);
 
         _trackViews = new()
         {
@@ -163,7 +177,7 @@ public sealed partial class MainPage : Page
         InitJam();
         _client.StreamQuality = _prefs.StreamQuality;
         VolumeSlider.Value = Math.Clamp(_prefs.Volume, 0, 1);
-        _player.Volume = VolumeSlider.Value;
+        SetPlayerVolume(_player, VolumeSlider.Value);
         // handledEventsToo: the Slider may handle the wheel itself without moving.
         VolumeSlider.AddHandler(PointerWheelChangedEvent, new PointerEventHandler(VolumeSlider_PointerWheelChanged), true);
         // Player events (MediaEnded, failures, seek-on-open) live in HookPlayer: a crossfade
@@ -180,7 +194,12 @@ public sealed partial class MainPage : Page
 
         QueueList.ItemsSource = _queue;
         SideQueueList.ItemsSource = _queue;
-        _queue.CollectionChanged += (_, _) => RenumberQueue();
+        _queue.CollectionChanged += (_, e) =>
+        {
+            RenumberQueue();
+            if (e.Action == System.Collections.Specialized.NotifyCollectionChangedAction.Remove)
+                MaybeTopUpRadio();   // removing songs from a radio's queue refills it
+        };
 
         // Home cards resize so a whole number of them fills the row width exactly (HomeLayout).
         var homeLayout = (HomeLayout)Resources["HomeLayout"];
@@ -297,6 +316,8 @@ public sealed partial class MainPage : Page
         OnlineLyricsCheck.IsChecked = _prefs.OnlineLyrics;
         AutoUpdateCheck.IsChecked = _prefs.CheckForUpdates;
         DiscordPresenceCheck.IsChecked = _prefs.DiscordPresence;
+        DiscordAlbumArtCheck.IsChecked = _prefs.DiscordAlbumArt;
+        DiscordAlbumArtCheck.IsEnabled = _prefs.DiscordPresence;
         DiscordPresenceSetting.Visibility = OperatingSystem.IsAndroid() ? Visibility.Collapsed : Visibility.Visible;
         RefreshSpotiDromeSettings();
         RefreshJamiDromeSettings();
@@ -518,9 +539,15 @@ public sealed partial class MainPage : Page
         _prefs.OnlineLyrics = OnlineLyricsCheck.IsChecked == true;
         _prefs.CheckForUpdates = AutoUpdateCheck.IsChecked == true;
         _prefs.DiscordPresence = DiscordPresenceCheck.IsChecked == true;
+        _prefs.DiscordAlbumArt = DiscordAlbumArtCheck.IsChecked == true;
         PreferencesService.Save(_prefs);
+        DiscordAlbumArtCheck.IsEnabled = _prefs.DiscordPresence;
         if (_discord != null)
+        {
             _discord.Enabled = _prefs.DiscordPresence;
+            _discord.ShowAlbumArt = _prefs.DiscordAlbumArt;
+            _discord.Refresh();
+        }
 
         if (!_prefs.PrefetchNextTrack)
         {
@@ -610,6 +637,7 @@ public sealed partial class MainPage : Page
         _pendingSeek = TimeSpan.Zero;
         _unshuffledOrder = null;
         _queue.Clear();
+        EndRadio();
         SetCurrent(null);
         QueueSidePanel.Visibility = Visibility.Collapsed;
         FullScreenPlayerOverlay.Visibility = Visibility.Collapsed;
@@ -648,6 +676,9 @@ public sealed partial class MainPage : Page
             ? $"Download and install LunaDrome v{update.Version} (you're on v{UpdateChecker.CurrentVersion})"
             : $"Open the LunaDrome v{update.Version} download page (you're on v{UpdateChecker.CurrentVersion})");
         UpdateButton.Visibility = Visibility.Visible;
+        // Phones: the button sits in the "More" menu, so say it where it's seen.
+        if (IsCompact && UpdateChecker.CanInstallInPlace)
+            ShowToast($"LunaDrome v{update.Version} is available", "Update", () => UpdateButton_Click(UpdateButton, new RoutedEventArgs()));
     }
 
     private async void UpdateButton_Click(object sender, RoutedEventArgs e)
@@ -661,10 +692,28 @@ public sealed partial class MainPage : Page
             return;
         }
 
+#if ANDROID
+        if (!AndroidUpdateInstaller.MayInstall)
+        {
+            var allow = new ContentDialog
+            {
+                Title = "Allow LunaDrome to install updates",
+                Content = "Android asks once: turn on \"Allow from this source\" for LunaDrome on the next screen, then come back and tap Update again.",
+                PrimaryButtonText = "Open settings",
+                CloseButtonText = "Not now",
+                XamlRoot = this.XamlRoot
+            };
+            if (await allow.ShowAsync() == ContentDialogResult.Primary)
+                AndroidUpdateInstaller.OpenInstallPermissionSettings();
+            return;
+        }
+#endif
         var confirm = new ContentDialog
         {
             Title = $"Update to LunaDrome v{update.Version}",
-            Content = "LunaDrome will download the update, close, install it and start again. Your queue is kept.",
+            Content = OperatingSystem.IsAndroid()
+                ? "LunaDrome will download the update and Android will ask to install it. Your login, queue and settings are kept."
+                : "LunaDrome will download the update, close, install it and start again. Your queue is kept.",
             PrimaryButtonText = "Update",
             CloseButtonText = "Not now",
             XamlRoot = this.XamlRoot
@@ -679,8 +728,13 @@ public sealed partial class MainPage : Page
             var installer = await UpdateChecker.DownloadInstallerAsync(update, progress);
             UpdateButton.Content = "Installing...";
             SaveQueueState();
+#if ANDROID
+            // Android shows its own prompt and closes the app itself when it installs.
+            await AndroidUpdateInstaller.InstallAsync(installer);
+#else
             UpdateChecker.RunInstaller(installer);
             Application.Current.Exit();
+#endif
         }
         catch (Exception ex)
         {
@@ -717,6 +771,7 @@ public sealed partial class MainPage : Page
         SongsPage.Visibility = Visibility.Collapsed;
         GenreAlbumsPage.Visibility = Visibility.Collapsed;
         GenresPage.Visibility = Visibility.Collapsed;
+        StatsPage.Visibility = Visibility.Collapsed;
         PlaylistsPage.Visibility = Visibility.Collapsed;
         SettingsPage.Visibility = Visibility.Collapsed;
         SearchPage.Visibility = Visibility.Collapsed;
@@ -731,7 +786,7 @@ public sealed partial class MainPage : Page
         ExitSelection();         // a selection belongs to the page it was made on
         CloseCompactSidebar();   // any page opened from the phone menu closes it
         page.Visibility = Visibility.Visible;
-        Motion.FadeIn(page);
+        Motion.FadeIn(page, rise: 12);
     }
 
     // Opening an artist/genre/playlist acts like its own page: exactly one thing in the sidebar
@@ -744,6 +799,7 @@ public sealed partial class MainPage : Page
         NavAlbums.IsChecked = false;
         NavSongs.IsChecked = false;
         NavGenres.IsChecked = false;
+        NavStats.IsChecked = false;
         NavJam.IsChecked = false;
         if (!keepPlaylist)
             PlaylistsList.SelectedItem = null;
@@ -798,6 +854,10 @@ public sealed partial class MainPage : Page
                     _genresPageLoaded = true;
                     _ = LoadAllGenresAsync();
                 }
+                break;
+            case "Stats":
+                ShowPage(StatsPage, () => Reselect(NavStats));
+                _ = LoadStatsAsync();   // fresh every time: play counts change while listening
                 break;
             case "Jam":
                 ShowJamPage();
@@ -872,9 +932,15 @@ public sealed partial class MainPage : Page
         section.Visibility = albums.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    private async void ShowHeroAlbum(int index)
+    private async void ShowHeroAlbum(int index, int direction = 0)
     {
         var album = _heroAlbums[index];
+        if (direction != 0)
+        {
+            // The new album comes in from the side it was browsed towards.
+            Motion.SlideIn(HeroArtBox, direction * 40, 0);
+            Motion.SlideIn(HeroTextPanel, direction * 60, 0, 340);
+        }
         SetImage(HeroArt, album.CoverArtUrl);
         HeroTitleText.Text = album.Name;
         HeroArtistText.Text = album.ArtistName;
@@ -898,7 +964,7 @@ public sealed partial class MainPage : Page
         if (_heroAlbums.Count == 0)
             return;
         _heroIndex = (_heroIndex - 1 + _heroAlbums.Count) % _heroAlbums.Count;
-        ShowHeroAlbum(_heroIndex);
+        ShowHeroAlbum(_heroIndex, -1);
     }
 
     private void HeroNextButton_Click(object sender, RoutedEventArgs e)
@@ -906,7 +972,7 @@ public sealed partial class MainPage : Page
         if (_heroAlbums.Count == 0)
             return;
         _heroIndex = (_heroIndex + 1) % _heroAlbums.Count;
-        ShowHeroAlbum(_heroIndex);
+        ShowHeroAlbum(_heroIndex, 1);
     }
 
     private async void HeroTitleText_Tapped(object sender, TappedRoutedEventArgs e)
@@ -1168,6 +1234,7 @@ public sealed partial class MainPage : Page
         ArtistDetailPage.ChangeView(null, 0, null, true);
 
         var token = ++_artistLoadToken;
+        _artistGuestAlbums = new();
         ArtistAlbumsList.ItemsSource = null;
         ArtistHeaderNameText.Text = fallbackName;
         ArtistHeaderStatsText.Text = "";
@@ -1183,6 +1250,20 @@ public sealed partial class MainPage : Page
                 return;
 
             _currentArtist = artist;
+            // Also the albums they're only on as a guest (Casey Lee Williams on Jeff Williams' RWBY
+            // albums); a server with Subsonic.ArtistParticipations on already listed them above.
+            try
+            {
+                var appearsOn = await _client.GetAppearsOnAlbumsAsync(artistId, artist.Name, albums.Select(a => a.Id).ToHashSet());
+                if (token != _artistLoadToken)
+                    return;
+                _artistGuestAlbums = appearsOn.Select(a => a.Id).ToHashSet();
+                albums = albums.Concat(appearsOn).ToList();
+            }
+            catch (Exception ex)
+            {
+                Log($"artist: finding the albums {artist.Name} appears on failed: {ex.Message}");
+            }
             foreach (var album in albums)
                 album.CoverArtUrl = _client.GetCoverArtUrl(album.Id, 300);
 
@@ -1240,7 +1321,12 @@ public sealed partial class MainPage : Page
         {
             // Oldest album first so "Play" runs through the discography in release order.
             foreach (var album in albums.OrderBy(a => a.Year ?? 0))
-                songs.AddRange(await _client.GetSongsForAlbumAsync(album.Id));
+            {
+                var tracks = await _client.GetSongsForAlbumAsync(album.Id);
+                if (_artistGuestAlbums.Contains(album.Id) && _currentArtist is { } artist)
+                    tracks = tracks.Where(s => s.ArtistId == artist.Id || s.Artists.Any(a => a.Id == artist.Id)).ToList();
+                songs.AddRange(tracks);
+            }
             PopulateSongArt(songs);
         }
         catch (Exception ex)
@@ -1490,11 +1576,29 @@ public sealed partial class MainPage : Page
         SyncCompactPlayer();
     }
 
+    private async Task ToggleNowPlayingFavoriteAsync(Song song)
+    {
+        Motion.Pop(NowPlayingFavoriteHeart);
+        try
+        {
+            if (song.IsFavorited)
+                await _client.UnstarSongAsync(song.Id);
+            else
+                await _client.StarSongAsync(song.Id);
+            song.IsFavorited = !song.IsFavorited;
+            if (_current?.Song == song)
+                UpdateNowPlayingFavorite(song);
+        }
+        catch { /* best-effort, like the list hearts */ }
+    }
+
     private async void NowPlayingFavorite_Tapped(object sender, TappedRoutedEventArgs e)
     {
         e.Handled = true;
         if (_current?.Song is not { } song)
             return;
+        if (sender is Panel { Children: [UIElement heart, ..] })
+            Motion.Pop(heart);
         try
         {
             if (song.IsFavorited)
@@ -1513,6 +1617,8 @@ public sealed partial class MainPage : Page
         e.Handled = true;
         if (sender is not FrameworkElement { Tag: Song song })
             return;
+        if (sender is Panel { Children: [UIElement heart, ..] })
+            Motion.Pop(heart);
 
         try
         {
@@ -1532,7 +1638,15 @@ public sealed partial class MainPage : Page
     private async void SongArtistText_Tapped(object sender, TappedRoutedEventArgs e)
     {
         e.Handled = true;
-        if (sender is FrameworkElement { Tag: Song song })
+        if (sender is FrameworkElement { Tag: Song song } anchor)
+            await GoToSongArtistAsync(song, anchor);
+    }
+
+    /// <summary>The song's artist page. With several artists each name is its own link
+    /// (ArtistLinks), so a tap elsewhere on the line does nothing.</summary>
+    private async Task GoToSongArtistAsync(Song song, FrameworkElement anchor)
+    {
+        if (!ArtistLinks.HasLinks(song))
             await NavigateToArtistAsync(song.ArtistId, song.ArtistName);
     }
 
@@ -1573,6 +1687,8 @@ public sealed partial class MainPage : Page
         var view = _trackViews[key];
         var filtered = FilterSongs(view.Raw, view.Search.Text?.Trim() ?? "");
         view.List.ItemsSource = SortSongs(filtered, view.SortKey, view.Ascending);
+        if (key == "PlaylistTracks")
+            UpdatePlaylistReorder();
     }
 
     private static IEnumerable<Song> FilterSongs(IEnumerable<Song> source, string search)
@@ -1673,6 +1789,27 @@ public sealed partial class MainPage : Page
         PlayQueueFrom(shuffle ? songs.OrderBy(_ => _random.Next()).ToList() : songs, 0);
     }
 
+    // The play button a row shows on hover: plays the list it's in (as shown) from that song.
+    private void RowPlay_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        e.Handled = true;
+        if (InSelectionMode || sender is not FrameworkElement { Tag: Song song } button)
+            return;
+
+        DependencyObject? node = button;
+        while (node != null && node is not ListView && node != AlbumSongsList)
+            node = VisualTreeHelper.GetParent(node);
+        var source = node switch
+        {
+            ListView { ItemsSource: List<Song> list } => list,
+            _ when node == AlbumSongsList => AlbumSongsList.ItemsSource as List<Song>,
+            _ => null
+        };
+        var index = source?.IndexOf(song) ?? -1;
+        if (index >= 0)
+            PlayQueueFrom(source!, index);
+    }
+
     // Double-click a row to play: queues the whole list as shown (search + sort), from that track.
     private void TrackList_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
     {
@@ -1705,6 +1842,7 @@ public sealed partial class MainPage : Page
         if (key == "PlaylistTracks")
         {
             flyout.Items.Add(new MenuFlyoutSeparator());
+            AddPlaylistMoveItems(flyout, song);
             AddMenuItem(flyout, "Remove from playlist", async () => await RemoveFromPlaylistAsync(song));
         }
 
@@ -1724,6 +1862,7 @@ public sealed partial class MainPage : Page
         AddMenuItem(flyout, "Play next", () => QueueSongsNext(new() { song }));
         AddMenuItem(flyout, "Add to queue", () => AddToQueue(new() { song }));
         AddMenuItem(flyout, "Play last", () => QueueSongsLast(new() { song }));
+        AddMenuItem(flyout, "Start radio", () => _ = StartSongRadioAsync(song));
         flyout.Items.Add(new MenuFlyoutSeparator());
         flyout.Items.Add(BuildAddToPlaylistSubmenu(new List<Song> { song }));
         AddJamMenuItem(flyout, () => Task.FromResult(new List<Song> { song }));
@@ -1860,6 +1999,7 @@ public sealed partial class MainPage : Page
 
         var flyout = PlaylistQueueMenu(playlist);
         flyout.Items.Add(new MenuFlyoutSeparator());
+        AddMenuItem(flyout, "Rename playlist…", async () => await RenamePlaylistAsync(playlist));
         AddMenuItem(flyout, "Delete playlist", async () => await DeletePlaylistAsync(playlist));
         flyout.ShowAt(PlaylistsList, e.GetPosition(PlaylistsList));
         e.Handled = true;
@@ -1922,14 +2062,15 @@ public sealed partial class MainPage : Page
         await LoadPlaylistsAsync();
     }
 
-    private async Task<string?> PromptForPlaylistNameAsync()
+    private async Task<string?> PromptForPlaylistNameAsync(string title = "New playlist", string button = "Create", string name = "")
     {
-        var nameBox = new TextBox { PlaceholderText = "Playlist name" };
+        var nameBox = new TextBox { PlaceholderText = "Playlist name", Text = name };
+        nameBox.SelectAll();
         var dialog = new ContentDialog
         {
-            Title = "New playlist",
+            Title = title,
             Content = nameBox,
-            PrimaryButtonText = "Create",
+            PrimaryButtonText = button,
             CloseButtonText = "Cancel",
             XamlRoot = this.XamlRoot
         };
@@ -2047,8 +2188,11 @@ public sealed partial class MainPage : Page
             RemoveFromQueue(selected);
     }
 
-    private void SideQueueClear_Click(object sender, RoutedEventArgs e) =>
+    private void SideQueueClear_Click(object sender, RoutedEventArgs e)
+    {
+        EndRadio();
         RemoveFromQueue(_queue.Where(q => q != _current).ToList());
+    }
 
     // Keeps the side panel's # column in step with the queue order.
     private void RenumberQueue()
@@ -2073,6 +2217,16 @@ public sealed partial class MainPage : Page
             UpdateCompactPlayerMode();
             return;
         }
+        if (IsCompact)
+        {
+            // Phone: the player slides back down into the bar.
+            Motion.SlideOut(FullScreenPlayerOverlay, 0, Math.Max(120, ActualHeight / 3), () =>
+            {
+                FullScreenPlayerOverlay.Visibility = Visibility.Collapsed;
+                UpdateVisualizerCaptureState();
+            });
+            return;
+        }
         FullScreenPlayerOverlay.Visibility = Visibility.Collapsed;
         UpdateVisualizerCaptureState();
     }
@@ -2083,7 +2237,7 @@ public sealed partial class MainPage : Page
             return;   // phone: tapping the bar opens the player instead (PlaybackBar_Tapped)
         e.Handled = true;
         if (_current?.Song is { } song)
-            await NavigateToArtistAsync(song.ArtistId, song.ArtistName);
+            await GoToSongArtistAsync(song, (FrameworkElement)sender);
     }
 
     private async void SidePanelTabButton_Checked(object sender, RoutedEventArgs e)
@@ -2482,7 +2636,11 @@ public sealed partial class MainPage : Page
         _visualizerLastTicks = 0;
         _visualizerForceDraw = true;
         Array.Clear(_visualizerSmoothed);
-        _loopback.Start();
+        // On Sendspin speakers this device is silent: follow the mix they play instead.
+        if (_sendspinActive && _sendspin != null)
+            _sendspinSpectrum = new LunaDrome.Core.Sendspin.SendspinSpectrumFeed(_sendspin, _spectrum);
+        else
+            _loopback.Start();
         _visualizerTimer.Start();
     }
 
@@ -2494,6 +2652,17 @@ public sealed partial class MainPage : Page
         _visualizerRenderHooked = false;
         _visualizerTimer.Stop();
         _loopback.Stop();
+        _sendspinSpectrum?.Dispose();
+        _sendspinSpectrum = null;
+    }
+
+    /// <summary>The output changed: the visualizer switches to listening to the new one.</summary>
+    private void RestartVisualizer()
+    {
+        if (!_visualizerRenderHooked)
+            return;
+        StopVisualizer();
+        StartVisualizer();
     }
 
     // Every ~16ms: pull the latest bands, shape them, smooth them over time, hand them to the
@@ -2520,6 +2689,7 @@ public sealed partial class MainPage : Page
         var riseKeep = (float)Math.Pow(VisualizerRiseKeep, frames);
         var fallKeep = (float)Math.Pow(VisualizerFallKeep, frames);
 
+        _sendspinSpectrum?.Pump();
         _spectrum.CopyLatestBandsTo(_visualizerLatestBands);
         float maxChange = 0;
         for (var i = 0; i < _visualizerSmoothed.Length; i++)
@@ -2563,6 +2733,7 @@ public sealed partial class MainPage : Page
     {
         if (startIndex < 0 || startIndex >= source.Count)
             return;
+        EndRadio();   // something else was started (radio itself sets its session after this)
 
         var entries = source.Select(s => new QueueEntry(s)).ToList();
         var start = entries[startIndex];
@@ -2635,6 +2806,8 @@ public sealed partial class MainPage : Page
         _pendingSeek = TimeSpan.Zero;
     }
 
+    private string? _shownSongId;
+
     // Marks the playing row and fills the now-playing bar / full-screen player (null = clear).
     private async void SetCurrent(QueueEntry? entry)
     {
@@ -2652,6 +2825,7 @@ public sealed partial class MainPage : Page
 
         if (entry == null)
         {
+            NowPlaying.SetCurrent(null);
             NowPlayingText.Text = "Nothing playing";
             NowPlayingSubText.Text = "";
             NowPlayingFavorite.Visibility = Visibility.Collapsed;
@@ -2670,14 +2844,25 @@ public sealed partial class MainPage : Page
 
         entry.IsCurrent = true;
         var song = entry.Song;
+        NowPlaying.SetCurrent(song.Id);
+        MaybeTopUpRadio();
+        if (song.Id != _shownSongId)
+        {
+            // A new song eases in (not on a refresh of the same one).
+            _shownSongId = song.Id;
+            Motion.SwapIn(NowPlayingArtBox);
+            Motion.FadeIn(NowPlayingTextPanel, rise: 6);
+            Motion.SwapIn(FullScreenArtBox);
+            Motion.SwapIn(CompactArtBox);
+        }
         NowPlayingText.Text = song.Title;
-        NowPlayingSubText.Text = song.ArtistName;
+        ArtistLinks.Fill(NowPlayingSubText, song);
         _showingPlaybackError = false;
         NowPlayingFavorite.Visibility = Visibility.Visible;
         UpdateNowPlayingFavorite(song);
         SetImage(NowPlayingArt, song.CoverArtUrl ?? _client.GetCoverArtUrl(song.AlbumId, 240));
         FullScreenTitleText.Text = song.Title;
-        FullScreenArtistText.Text = song.ArtistName;
+        ArtistLinks.Fill(FullScreenArtistText, song);
         // The full-screen art is 360x360 - fetch a bigger rendition than the 240px list thumbnails.
         SetImage(FullScreenArt, _client.GetCoverArtUrl(song.AlbumId, 720));
         ScrollQueuesTo(entry);
@@ -2694,7 +2879,10 @@ public sealed partial class MainPage : Page
 
     private void SetPlaying(bool playing)
     {
+        if (playing != _isPlaying && VisualTreeHelper.GetParent(PlayIcon) is UIElement icon)
+            Motion.PopIn(icon);
         _isPlaying = playing;
+        NowPlaying.SetPlaying(playing);
         PlayIcon.Visibility = playing ? Visibility.Collapsed : Visibility.Visible;
         PauseIcon.Visibility = playing ? Visibility.Visible : Visibility.Collapsed;
         _mediaControls?.SetPlaybackState(_current == null && !JamOwnsPlayback ? null : playing);
@@ -2850,13 +3038,19 @@ public sealed partial class MainPage : Page
         if (_osMediaControls != null)
             return;
 
-#if !ANDROID
+#if !ANDROID && !__IOS__
         // Discord status (desktop), fed by the same updates; on/off from Settings.
-        _discord ??= new DiscordMediaControls(Log) { Enabled = _prefs.DiscordPresence };
+        _discord ??= new DiscordMediaControls(Log, song => _client.GetPublicCoverAsync(song.AlbumId))
+        {
+            Enabled = _prefs.DiscordPresence,
+            ShowAlbumArt = _prefs.DiscordAlbumArt,
+        };
 #endif
         _osMediaControls = MediaControls.Create();
         Log($"media controls: {_osMediaControls?.GetType().Name ?? "not available yet"}");
-        _mediaControls = new MediaControlsGroup(_osMediaControls, _discord);
+        // Sendspin speakers get the same now-playing updates (and send their buttons) while
+        // LunaDrome streams to them; MainPage.Sendspin.cs hooks up their commands.
+        _mediaControls = new MediaControlsGroup(_osMediaControls, _discord, _sendspinControls);
         if (_osMediaControls != null)
         {
             _osMediaControls.CommandReceived += command => DispatcherQueue.TryEnqueue(() => HandleMediaCommand(command));
@@ -3151,7 +3345,7 @@ public sealed partial class MainPage : Page
             {
                 Log("player recovered after a reported failure - clearing the error");
                 _showingPlaybackError = false;
-                NowPlayingSubText.Text = _current.Song.ArtistName;
+                ArtistLinks.Fill(NowPlayingSubText, _current.Song);
             }
             if (!_isPlaying)
             {

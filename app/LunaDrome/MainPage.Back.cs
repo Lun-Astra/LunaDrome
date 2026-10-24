@@ -1,3 +1,4 @@
+using LunaDrome.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 
@@ -109,6 +110,7 @@ public sealed partial class MainPage
                 return;
         }
         FullScreenPlayerOverlay.Visibility = Visibility.Visible;
+        Motion.SlideIn(FullScreenPlayerOverlay, 0, Math.Max(120, ActualHeight / 3), 320);   // comes up from the bar
         UpdateVisualizerCaptureState();
         e.Handled = true;
     }

@@ -1,3 +1,4 @@
+using LunaDrome.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
@@ -24,13 +25,15 @@ public sealed partial class MainPage
             if (IsCompact)
                 UpdateCompactWidths(e.NewSize.Width);
         };
-#if ANDROID
-        // Android draws the app edge-to-edge, under the status bar and the navigation bar;
-        // keep the whole page inside the visible area instead.
+#if ANDROID || __IOS__
+        // Phones draw the app edge-to-edge, under the status bar / notch and the navigation bar
+        // or home indicator; keep the whole page inside the visible area instead.
         Uno.UI.Toolkit.VisibleBoundsPadding.SetPaddingMask(PageRoot, Uno.UI.Toolkit.VisibleBoundsPadding.PaddingMask.All);
-        ConnectBackButton();
         VisualizerUnavailableText.Visibility = Visibility.Visible;
         VisualizerCanvas.Visibility = Visibility.Collapsed;
+#endif
+#if ANDROID
+        ConnectBackButton();
 #endif
     }
 
@@ -76,13 +79,38 @@ public sealed partial class MainPage
         QueueSidePanel.Margin = compact ? new Thickness(0) : new Thickness(16, 0, 0, 0);
         Canvas.SetZIndex(QueueSidePanel, compact ? 9 : 0);
 
-        // Home hero card and album header: smaller cover and title so the text isn't cut off.
-        HomeHeroCard.Height = compact ? 150 : 232;
-        HeroInnerGrid.Margin = compact ? new Thickness(44, 12, 44, 12) : new Thickness(58, 28, 58, 28);
-        HeroArtBox.Width = HeroArtBox.Height = compact ? 104 : 176;
-        HeroTextPanel.Margin = compact ? new Thickness(12, 0, 0, 0) : new Thickness(28, 0, 0, 0);
+        // Home hero card: on a phone the cover sits centered above a centered title / artist
+        // (side by side the text got squeezed next to the cover); desktop keeps the row.
+        HomeHeroCard.Height = compact ? 272 : 232;
+        HeroInnerGrid.Margin = compact ? new Thickness(46, 18, 46, 14) : new Thickness(58, 28, 58, 28);
+        HeroArtBox.Width = HeroArtBox.Height = compact ? 132 : 176;
+        HeroArtBox.HorizontalAlignment = compact ? HorizontalAlignment.Center : HorizontalAlignment.Left;
+        Grid.SetColumnSpan(HeroArtBox, compact ? 2 : 1);
+        Grid.SetRow(HeroTextPanel, compact ? 1 : 0);
+        Grid.SetColumn(HeroTextPanel, compact ? 0 : 1);
+        Grid.SetColumnSpan(HeroTextPanel, compact ? 2 : 1);
+        HeroTextPanel.Margin = compact ? new Thickness(0, 14, 0, 0) : new Thickness(28, 0, 0, 0);
+        HeroTextPanel.HorizontalAlignment = compact ? HorizontalAlignment.Center : HorizontalAlignment.Stretch;
+        HeroTitleLink.HorizontalAlignment = HeroArtistLink.HorizontalAlignment =
+            compact ? HorizontalAlignment.Center : HorizontalAlignment.Left;
+        HeroTitleText.TextAlignment = HeroArtistText.TextAlignment = HeroMetaText.TextAlignment =
+            compact ? TextAlignment.Center : TextAlignment.Left;
+        HeroMetaText.Margin = compact ? new Thickness(0, 6, 0, 0) : new Thickness(0, 10, 0, 0);
         HeroTitleText.FontSize = compact ? 20 : 30;
         HeroArtistText.FontSize = compact ? 14 : 16;
+
+        // Centered on a phone: the pages' right gutter is for the desktop scrollbar (phones
+        // overlay theirs), and album grids center their rows instead of leaving the spare
+        // width on the right.
+        HomeContent.Margin = compact ? new Thickness(0, 0, 0, 8) : new Thickness(0, 0, 16, 8);
+        HomeHeroCard.Margin = compact ? new Thickness(0, 0, 0, 24) : new Thickness(0, 0, 16, 28);
+        JamPageContent.Margin = SettingsPageContent.Margin = compact ? new Thickness(0, 0, 0, 24) : new Thickness(0, 0, 16, 24);
+        JamPageContent.HorizontalAlignment = SettingsPageContent.HorizontalAlignment =
+            compact ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
+        StatsPageContent.Margin = DownloadsList.Margin = AllGenresList.Margin =
+            compact ? new Thickness(0, 0, 0, 16) : new Thickness(0, 0, 16, 16);
+        foreach (var layout in new[] { SearchArtistsLayout, SearchAlbumsLayout, YtAlbumsLayout, ArtistAlbumsLayout, AllAlbumsLayout, GenreAlbumsLayout })
+            layout.ItemsJustification = compact ? UniformGridLayoutItemsJustification.Center : UniformGridLayoutItemsJustification.Start;
         AlbumHeaderGrid.Height = compact ? 190 : 290;
         AlbumHeaderInner.Margin = compact ? new Thickness(14, 0, 14, 14) : new Thickness(32, 0, 28, 32);
         AlbumHeaderArtBox.Width = AlbumHeaderArtBox.Height = compact ? 120 : 200;
@@ -146,7 +174,7 @@ public sealed partial class MainPage
         // On a phone the info takes what the controls leave (see NowPlayingInfoHost_SizeChanged).
         PlayInfoColumn.Width = compact ? new GridLength(1, GridUnitType.Star) : new GridLength(300);
         PlayControlsColumn.Width = compact ? GridLength.Auto : new GridLength(1, GridUnitType.Star);
-        PlayExtraColumn.Width = new GridLength(compact ? 0 : 200);
+        PlayExtraColumn.Width = new GridLength(compact ? 0 : 240);
         PlayExtraPanel.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
         NowPlayingArtBox.Width = NowPlayingArtBox.Height = compact ? 44 : 56;
         NowPlayingTextPanel.Margin = compact ? new Thickness(10, 0, 0, 0) : new Thickness(12, 0, 0, 0);
@@ -251,23 +279,41 @@ public sealed partial class MainPage
         CompactPlayerView.SizeChanged += (_, _) => SizeCompactArt();
         CompactLyricsCard.RegisterPropertyChangedCallback(VisibilityProperty, (_, _) => SizeCompactArt());
 
-        // Swipe the playback bar's now-playing info: left = next song, right = previous. Android
-        // only (like swiping a song row to queue it): on desktop a mouse drag there did it too.
-        if (!OperatingSystem.IsAndroid())
+        // Swipe the playback bar's now-playing info: left = next song, right = previous (Android,
+        // like swiping a song row to queue it; on desktop a mouse drag there did it too), and down
+        // = the "Play on" menu, this phone or Sendspin speakers (Android and iPhone).
+        var android = OperatingSystem.IsAndroid();
+        if (!android && !OperatingSystem.IsIOS())
             return;
-        NowPlayingInfoPanel.ManipulationMode = ManipulationModes.TranslateX;
+        NowPlayingInfoPanel.ManipulationMode = (android ? ManipulationModes.TranslateX | ManipulationModes.TranslateRailsX : 0)
+            | ManipulationModes.TranslateY | ManipulationModes.TranslateRailsY;
         NowPlayingInfoPanel.RenderTransform = new TranslateTransform();
         NowPlayingInfoPanel.ManipulationDelta += (_, e) =>
         {
-            if (IsCompact)
-                ((TranslateTransform)NowPlayingInfoPanel.RenderTransform).X = Math.Clamp(e.Cumulative.Translation.X, -120, 120);
+            if (!IsCompact)
+                return;
+            var t = (TranslateTransform)NowPlayingInfoPanel.RenderTransform;
+            var (dx, dy) = (e.Cumulative.Translation.X, e.Cumulative.Translation.Y);
+            if (android && Math.Abs(dx) >= Math.Abs(dy))
+                t.X = Math.Clamp(dx, -120, 120);
+            else
+                t.Y = Math.Clamp(dy, 0, 24);   // a little give, downward only
         };
         NowPlayingInfoPanel.ManipulationCompleted += (_, e) =>
         {
-            ((TranslateTransform)NowPlayingInfoPanel.RenderTransform).X = 0;
-            if (!IsCompact || _current == null || JamOwnsPlayback)
+            var t = (TranslateTransform)NowPlayingInfoPanel.RenderTransform;
+            t.X = 0;
+            t.Y = 0;
+            if (!IsCompact)
                 return;
-            var dx = e.Cumulative.Translation.X;
+            var (dx, dy) = (e.Cumulative.Translation.X, e.Cumulative.Translation.Y);
+            if (dy >= SwipeDistance * 0.6 && dy > Math.Abs(dx))
+            {
+                ShowOutputPicker(PlaybackBarBorder);
+                return;
+            }
+            if (!android || _current == null || JamOwnsPlayback)
+                return;
             if (dx <= -SwipeDistance)
                 PlayNext();
             else if (dx >= SwipeDistance)
@@ -315,7 +361,11 @@ public sealed partial class MainPage
             return;
 
         CompactTitleText.Text = _current != null || JamOwnsPlayback ? NowPlayingText.Text : "Nothing playing";
-        CompactArtistText.Text = NowPlayingSubText.Text;
+        // The bar's artist line as links (a song by several artists) or as the text it shows.
+        if (NowPlayingSubText.Inlines.OfType<Microsoft.UI.Xaml.Documents.Hyperlink>().Any() && _current?.Song is { } linked)
+            Controls.ArtistLinks.Fill(CompactArtistText, linked);
+        else
+            CompactArtistText.Text = NowPlayingSubText.Text;
         CompactArt.Background = FullScreenArt.Background ?? NowPlayingArt.Background;
         CompactPlayIcon.Visibility = PlayIcon.Visibility;
         CompactPauseIcon.Visibility = PauseIcon.Visibility;
@@ -371,13 +421,17 @@ public sealed partial class MainPage
 
     private void CompactNav_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is not Button { Tag: string tag })
+        if (sender is not Button { Tag: string tag } button)
             return;
+        if (button.Content is StackPanel { Children: [UIElement icon, ..] })
+            Motion.Pop(icon);
         switch (tag)
         {
             case "More":
                 _compactSidebarOpen = !_compactSidebarOpen;
                 UpdateCompactSidebar();
+                if (_compactSidebarOpen)
+                    Motion.SlideIn(SidebarPane, 0, 40);
                 break;
             case "Search":
                 // Its own page (it used to open the More menu, i.e. the same page as More).

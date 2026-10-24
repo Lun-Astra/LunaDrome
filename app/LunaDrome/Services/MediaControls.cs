@@ -33,6 +33,9 @@ public static class MediaControls
 #if ANDROID
             // Notification / lock screen / Android Auto; MPRIS (D-Bus) isn't compiled in there.
             return AndroidMediaControls.Create();
+#elif __IOS__
+            // Lock screen / Control Center / headphone buttons.
+            return IosMediaControls.Create();
 #else
             if (OperatingSystem.IsWindows())
                 return SmtcMediaControls.TryCreate();

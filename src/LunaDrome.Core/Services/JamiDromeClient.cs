@@ -52,6 +52,19 @@ public class JamSpeaker
 }
 
 /// <summary>GET /queue: the whole jam as the server sees it.</summary>
+/// <summary>/reactions/poll: the guests' emoji reactions after a cursor (#34).</summary>
+public class JamReactions
+{
+    public List<JamReaction> Reactions { get; set; } = new();
+    public long Latest { get; set; }
+}
+
+public class JamReaction
+{
+    public long Seq { get; set; }
+    public string Emoji { get; set; } = "";
+}
+
 public class JamState
 {
     [JsonPropertyName("server_time")] public double ServerTime { get; set; }
@@ -209,6 +222,10 @@ public class JamiDromeClient
                 item.ArtUrl = ResolveUrl(item.Thumbnail);
         return state;
     }
+
+    /// <summary>Reactions newer than <paramref name="after"/> (the last <c>Latest</c> seen).</summary>
+    public Task<JamReactions> GetReactionsAsync(long after, CancellationToken cancellationToken = default) =>
+        GetAsync<JamReactions>($"/reactions/poll?after={after}", cancellationToken);
 
     // ----- Speaker -----
 

@@ -2,10 +2,12 @@ using LunaDrome.Controls;
 using LunaDrome.Core.Models;
 using LunaDrome.Core.Services;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Media.Core;
 using Windows.Media.Playback;
+using Point = Windows.Foundation.Point;
 
 namespace LunaDrome;
 
@@ -52,6 +54,7 @@ public sealed partial class MainPage
         _jam.StateChanged += () => DispatcherQueue.TryEnqueue(OnJamStateChanged);
         _jam.SpeakerLost += speaker => DispatcherQueue.TryEnqueue(() => OnJamSpeakerLost(speaker));
         _jam.AuthLost += () => DispatcherQueue.TryEnqueue(OnJamAuthLost);
+        _jam.ReactionsReceived += emojis => DispatcherQueue.TryEnqueue(() => ShowJamReactions(emojis));
         _jam.Client.Configure(_prefs.JamiDromeUrl, CredentialProtector.Unprotect(_prefs.JamiDromeApiKey));
         UpdateJamNav();
     }
@@ -122,6 +125,67 @@ public sealed partial class MainPage
         ShowToast("JamiDrome rejected the API key. Set a new one in Settings.");
     }
 
+    // ================= Reactions (#34) =================
+
+    // The guests' emoji reactions float up like on the JamiDrome player page: over the jam's cover
+    // on the Jam page, otherwise over the now-playing cover while this device plays the jam.
+    private void ShowJamReactions(IReadOnlyList<string> emojis)
+    {
+        FrameworkElement? anchor = JamPage.Visibility == Visibility.Visible ? JamArt
+            : JamOwnsPlayback ? NowPlayingArtBox : null;
+        if (anchor == null || anchor.ActualWidth <= 0)
+            return;
+        Point origin;
+        try { origin = anchor.TransformToVisual(ReactionLayer).TransformPoint(new Point(0, 0)); }
+        catch { return; }
+        for (var i = 0; i < Math.Min(emojis.Count, 8); i++)
+            SpawnReaction(emojis[i], origin, anchor, delay: TimeSpan.FromMilliseconds(i * 180));
+    }
+
+    // JamiDrome's reactions are drawn from Assets/Reactions (colour on every platform); anything
+    // else falls back to text.
+    private static readonly HashSet<string> ReactionImages = new() { "1f525", "2764", "1f602", "1f44f", "1f389", "1f483" };
+
+    private static FrameworkElement ReactionVisual(string emoji, double size)
+    {
+        var code = string.Join("_", emoji.EnumerateRunes().Where(r => r.Value != 0xFE0F).Select(r => r.Value.ToString("x")));
+        if (ReactionImages.Contains(code))
+            return new Image { Width = size, Height = size,
+                Source = new BitmapImage(new Uri($"ms-appx:///Assets/Reactions/emoji_u{code}.png")) };
+        return new TextBlock { Text = emoji, FontSize = size };
+    }
+
+    private void SpawnReaction(string emoji, Point origin, FrameworkElement anchor, TimeSpan delay)
+    {
+        var size = anchor.ActualWidth < 100 ? 22.0 : 34.0;
+        var transform = new TranslateTransform();
+        var text = ReactionVisual(emoji, size);
+        text.Opacity = 0;
+        text.RenderTransform = transform;
+        Canvas.SetLeft(text, origin.X + Random.Shared.NextDouble() * Math.Max(0, anchor.ActualWidth - size));
+        Canvas.SetTop(text, origin.Y + anchor.ActualHeight - size);
+        ReactionLayer.Children.Add(text);
+
+        var duration = TimeSpan.FromSeconds(2.6);
+        var rise = Math.Max(120, anchor.ActualHeight * 1.2);
+        var storyboard = new Storyboard { BeginTime = delay };
+        var move = new DoubleAnimation { From = 0, To = -rise, Duration = duration,
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } };
+        Storyboard.SetTarget(move, transform);
+        Storyboard.SetTargetProperty(move, "Y");
+        var fade = new DoubleAnimationUsingKeyFrames { Duration = duration };
+        fade.KeyFrames.Add(new LinearDoubleKeyFrame { KeyTime = KeyTime.FromTimeSpan(TimeSpan.Zero), Value = 0 });
+        fade.KeyFrames.Add(new LinearDoubleKeyFrame { KeyTime = KeyTime.FromTimeSpan(TimeSpan.FromSeconds(0.25)), Value = 1 });
+        fade.KeyFrames.Add(new LinearDoubleKeyFrame { KeyTime = KeyTime.FromTimeSpan(TimeSpan.FromSeconds(1.6)), Value = 1 });
+        fade.KeyFrames.Add(new LinearDoubleKeyFrame { KeyTime = KeyTime.FromTimeSpan(duration), Value = 0 });
+        Storyboard.SetTarget(fade, text);
+        Storyboard.SetTargetProperty(fade, "Opacity");
+        storyboard.Children.Add(move);
+        storyboard.Children.Add(fade);
+        storyboard.Completed += (_, _) => ReactionLayer.Children.Remove(text);
+        storyboard.Begin();
+    }
+
     // ================= Being the speaker =================
 
     private async Task JamPlayHereAsync()
@@ -151,8 +215,10 @@ public sealed partial class MainPage
         OnJamStateChanged();
     }
 
-    /// <summary>An empty jam gets the local queue: the playing song (at its position) and what's
-    /// next, up to <see cref="MaxJamTakeover"/> songs. Requests then play before them.</summary>
+    /// <summary>The local queue goes into the jam, up to <see cref="MaxJamTakeover"/> songs, so
+    /// guests see it (#33). An empty jam starts with the song that's playing here (at its
+    /// position); a jam with songs of its own keeps them and gets what's next here after them.
+    /// Requests then play before these.</summary>
     private async Task TakeQueueIntoJamAsync()
     {
         _jamTakenOver.Clear();
@@ -162,11 +228,12 @@ public sealed partial class MainPage
         try
         {
             var state = await _jam.Client.GetStateAsync();
-            if (state.NowPlaying != null || state.Queue.Count > 0)
-                return; // the jam has its own songs already
-            var entries = _queue.Skip(QueueIndex).Take(MaxJamTakeover).ToList();
+            var jamHasSongs = state.NowPlaying != null || state.Queue.Count > 0;
+            var entries = _queue.Skip(jamHasSongs ? QueueIndex + 1 : QueueIndex).Take(MaxJamTakeover).ToList();
+            if (entries.Count == 0)
+                return;
             var added = await _jam.Client.AddLibraryBatchAsync(entries.Select(q => q.Song.Id).ToList(),
-                JamRequesterName, _pendingSeek.TotalSeconds);
+                JamRequesterName, jamHasSongs ? 0 : _pendingSeek.TotalSeconds);
             // Link each jam item to its entry (a song can be in the queue twice; the jam adds it once).
             var unlinked = entries.ToList();
             foreach (var (itemId, songId) in added)
@@ -177,9 +244,10 @@ public sealed partial class MainPage
                 unlinked.Remove(entry);
                 _jamTakenOver[itemId] = entry;
             }
-            Log($"jam: took over {added.Count} of {entries.Count} queued songs");
+            Log($"jam: took over {added.Count} of {entries.Count} queued songs (jam had songs: {jamHasSongs})");
+            var songs = $"{added.Count} song{(added.Count == 1 ? "" : "s")}";
             if (added.Count > 0)
-                ShowToast($"Your queue is now the jam's queue ({added.Count} song{(added.Count == 1 ? "" : "s")}).");
+                ShowToast(jamHasSongs ? $"Your next {songs} were added to the jam, after its own." : $"Your queue is now the jam's queue ({songs}).");
             _jam.PollSoon();
         }
         catch (Exception ex)
@@ -672,6 +740,16 @@ public sealed partial class MainPage
         var invitesHeader = new TextBlock { Text = "Active links", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(0, 8, 0, 0) };
         var invitesList = new StackPanel { Spacing = 6 };
 
+        void ShowLink(string link)
+        {
+            linkBox.Text = link;
+            linkBox.Visibility = Visibility.Visible;
+            copyButton.Visibility = Visibility.Visible;
+            qr.Source = new BitmapImage(new Uri(_jam.Client.InviteQrUrl(link)));
+            qr.Visibility = Visibility.Visible;
+            CopyToClipboard(link);
+        }
+
         async Task RefreshInvitesAsync()
         {
             invitesList.Children.Clear();
@@ -693,11 +771,22 @@ public sealed partial class MainPage
                 var row = new Grid { ColumnSpacing = 8 };
                 row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
                 row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
                 row.Children.Add(new TextBlock
                 {
                     VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis,
                     Text = $"…{invite.Token[Math.Max(0, invite.Token.Length - 6)..]}  ·  expires {expires:ddd HH:mm}",
                 });
+                // #36: an existing link's address + QR code again (e.g. for someone who arrives later).
+                var show = new Button { Content = "Show", Style = (Style)Application.Current.Resources["TextButtonStyle"] };
+                show.Click += (_, _) =>
+                {
+                    var link = _jam.Client.InviteLink(invite.Token);
+                    ShowLink(link);
+                    status.Text = $"Link copied (expires {expires:ddd HH:mm}). Send it, or let them scan the code.";
+                };
+                Grid.SetColumn(show, 1);
+                row.Children.Add(show);
                 var delete = new Button { Content = "Delete", Style = (Style)Application.Current.Resources["TextButtonStyle"] };
                 var armed = false;
                 delete.Click += async (_, _) =>
@@ -721,7 +810,7 @@ public sealed partial class MainPage
                     }
                     await RefreshInvitesAsync();
                 };
-                Grid.SetColumn(delete, 1);
+                Grid.SetColumn(delete, 2);
                 row.Children.Add(delete);
                 invitesList.Children.Add(row);
             }
@@ -742,12 +831,7 @@ public sealed partial class MainPage
             try
             {
                 var link = await _jam.Client.CreateInviteAsync(durations[Math.Max(0, ttlBox.SelectedIndex)].Ttl);
-                linkBox.Text = link;
-                linkBox.Visibility = Visibility.Visible;
-                copyButton.Visibility = Visibility.Visible;
-                qr.Source = new BitmapImage(new Uri(_jam.Client.InviteQrUrl(link)));
-                qr.Visibility = Visibility.Visible;
-                CopyToClipboard(link);
+                ShowLink(link);
                 status.Text = "Link copied. Send it to your friends, or let them scan the code.";
                 await RefreshInvitesAsync();
             }
@@ -766,7 +850,8 @@ public sealed partial class MainPage
         var dialog = new ContentDialog
         {
             Title = "Share the jam",
-            Content = content,
+            // Scrolls: with a QR code shown, the list of links no longer fit (#36).
+            Content = new ScrollViewer { Content = content, VerticalScrollBarVisibility = ScrollBarVisibility.Auto },
             CloseButtonText = "Done",
             XamlRoot = this.XamlRoot
         };

@@ -10,8 +10,9 @@ public sealed record UpdateInfo(Version Version, string PageUrl, string? Install
 /// <summary>
 /// Built-in updates (#5): compares this build's version with the latest GitHub release. On a
 /// Windows install made by the setup program, the new setup is downloaded and run silently
-/// (it closes LunaDrome, upgrades in place and starts it again); anywhere else (Linux packages,
-/// a copied folder) the release page is opened instead.
+/// (it closes LunaDrome, upgrades in place and starts it again); on Android the new APK is
+/// downloaded and handed to the system installer (AndroidUpdateInstaller); anywhere else (Linux
+/// packages, a copied folder, iPhone) the release page is opened instead.
 /// </summary>
 public static class UpdateChecker
 {
@@ -27,9 +28,11 @@ public static class UpdateChecker
         return Version.TryParse(text, out var v) ? new Version(v.Major, v.Minor, Math.Max(v.Build, 0)) : new Version(0, 0, 0);
     }
 
-    /// <summary>Installed by LunaDrome-Setup (Inno Setup leaves its uninstaller next to the exe).</summary>
+    /// <summary>Installed by LunaDrome-Setup (Inno Setup leaves its uninstaller next to the exe),
+    /// or Android (the APK is installed over this one).</summary>
     public static bool CanInstallInPlace =>
-        OperatingSystem.IsWindows() && File.Exists(Path.Combine(AppContext.BaseDirectory, "unins000.exe"));
+        OperatingSystem.IsAndroid()
+        || OperatingSystem.IsWindows() && File.Exists(Path.Combine(AppContext.BaseDirectory, "unins000.exe"));
 
     private static HttpClient CreateClient(TimeSpan timeout)
     {
@@ -71,7 +74,7 @@ public static class UpdateChecker
             foreach (var asset in root.GetProperty("assets").EnumerateArray())
             {
                 var name = asset.GetProperty("name").GetString() ?? "";
-                if (name.StartsWith("LunaDrome-Setup-", StringComparison.OrdinalIgnoreCase) && name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+                if (IsInstallerForThisPlatform(name))
                     installerUrl = asset.GetProperty("browser_download_url").GetString();
             }
 
@@ -86,13 +89,25 @@ public static class UpdateChecker
         }
     }
 
-    public static void OpenUrl(string url) =>
-        Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+    // LunaDrome-Setup-<version>.exe on Windows, LunaDrome-<version>-android.apk on Android.
+    private static bool IsInstallerForThisPlatform(string name) =>
+        OperatingSystem.IsAndroid()
+            ? name.EndsWith("-android.apk", StringComparison.OrdinalIgnoreCase)
+            : name.StartsWith("LunaDrome-Setup-", StringComparison.OrdinalIgnoreCase) && name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase);
+
+    public static void OpenUrl(string url)
+    {
+        // Phones have no shell to hand a URL to; the system opens it in the browser.
+        if (OperatingSystem.IsAndroid() || OperatingSystem.IsIOS())
+            _ = Windows.System.Launcher.LaunchUriAsync(new Uri(url));
+        else
+            Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+    }
 
     /// <summary>Downloads the setup program to temp; progress is 0..1.</summary>
     public static async Task<string> DownloadInstallerAsync(UpdateInfo update, IProgress<double> progress)
     {
-        var url = update.InstallerUrl ?? throw new InvalidOperationException("This release has no Windows installer.");
+        var url = update.InstallerUrl ?? throw new InvalidOperationException("This release has no installer for this device.");
         var dir = Path.Combine(Path.GetTempPath(), "LunaDrome", "update");
         Directory.CreateDirectory(dir);
         var path = Path.Combine(dir, Path.GetFileName(new Uri(url).LocalPath));
