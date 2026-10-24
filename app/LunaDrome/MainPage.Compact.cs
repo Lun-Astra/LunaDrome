@@ -1,3 +1,4 @@
+using LunaDrome.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
@@ -78,13 +79,38 @@ public sealed partial class MainPage
         QueueSidePanel.Margin = compact ? new Thickness(0) : new Thickness(16, 0, 0, 0);
         Canvas.SetZIndex(QueueSidePanel, compact ? 9 : 0);
 
-        // Home hero card and album header: smaller cover and title so the text isn't cut off.
-        HomeHeroCard.Height = compact ? 150 : 232;
-        HeroInnerGrid.Margin = compact ? new Thickness(44, 12, 44, 12) : new Thickness(58, 28, 58, 28);
-        HeroArtBox.Width = HeroArtBox.Height = compact ? 104 : 176;
-        HeroTextPanel.Margin = compact ? new Thickness(12, 0, 0, 0) : new Thickness(28, 0, 0, 0);
+        // Home hero card: on a phone the cover sits centered above a centered title / artist
+        // (side by side the text got squeezed next to the cover); desktop keeps the row.
+        HomeHeroCard.Height = compact ? 272 : 232;
+        HeroInnerGrid.Margin = compact ? new Thickness(46, 18, 46, 14) : new Thickness(58, 28, 58, 28);
+        HeroArtBox.Width = HeroArtBox.Height = compact ? 132 : 176;
+        HeroArtBox.HorizontalAlignment = compact ? HorizontalAlignment.Center : HorizontalAlignment.Left;
+        Grid.SetColumnSpan(HeroArtBox, compact ? 2 : 1);
+        Grid.SetRow(HeroTextPanel, compact ? 1 : 0);
+        Grid.SetColumn(HeroTextPanel, compact ? 0 : 1);
+        Grid.SetColumnSpan(HeroTextPanel, compact ? 2 : 1);
+        HeroTextPanel.Margin = compact ? new Thickness(0, 14, 0, 0) : new Thickness(28, 0, 0, 0);
+        HeroTextPanel.HorizontalAlignment = compact ? HorizontalAlignment.Center : HorizontalAlignment.Stretch;
+        HeroTitleLink.HorizontalAlignment = HeroArtistLink.HorizontalAlignment =
+            compact ? HorizontalAlignment.Center : HorizontalAlignment.Left;
+        HeroTitleText.TextAlignment = HeroArtistText.TextAlignment = HeroMetaText.TextAlignment =
+            compact ? TextAlignment.Center : TextAlignment.Left;
+        HeroMetaText.Margin = compact ? new Thickness(0, 6, 0, 0) : new Thickness(0, 10, 0, 0);
         HeroTitleText.FontSize = compact ? 20 : 30;
         HeroArtistText.FontSize = compact ? 14 : 16;
+
+        // Centered on a phone: the pages' right gutter is for the desktop scrollbar (phones
+        // overlay theirs), and album grids center their rows instead of leaving the spare
+        // width on the right.
+        HomeContent.Margin = compact ? new Thickness(0, 0, 0, 8) : new Thickness(0, 0, 16, 8);
+        HomeHeroCard.Margin = compact ? new Thickness(0, 0, 0, 24) : new Thickness(0, 0, 16, 28);
+        JamPageContent.Margin = SettingsPageContent.Margin = compact ? new Thickness(0, 0, 0, 24) : new Thickness(0, 0, 16, 24);
+        JamPageContent.HorizontalAlignment = SettingsPageContent.HorizontalAlignment =
+            compact ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
+        StatsPageContent.Margin = DownloadsList.Margin = AllGenresList.Margin =
+            compact ? new Thickness(0, 0, 0, 16) : new Thickness(0, 0, 16, 16);
+        foreach (var layout in new[] { SearchArtistsLayout, SearchAlbumsLayout, YtAlbumsLayout, ArtistAlbumsLayout, AllAlbumsLayout, GenreAlbumsLayout })
+            layout.ItemsJustification = compact ? UniformGridLayoutItemsJustification.Center : UniformGridLayoutItemsJustification.Start;
         AlbumHeaderGrid.Height = compact ? 190 : 290;
         AlbumHeaderInner.Margin = compact ? new Thickness(14, 0, 14, 14) : new Thickness(32, 0, 28, 32);
         AlbumHeaderArtBox.Width = AlbumHeaderArtBox.Height = compact ? 120 : 200;
@@ -395,13 +421,17 @@ public sealed partial class MainPage
 
     private void CompactNav_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is not Button { Tag: string tag })
+        if (sender is not Button { Tag: string tag } button)
             return;
+        if (button.Content is StackPanel { Children: [UIElement icon, ..] })
+            Motion.Pop(icon);
         switch (tag)
         {
             case "More":
                 _compactSidebarOpen = !_compactSidebarOpen;
                 UpdateCompactSidebar();
+                if (_compactSidebarOpen)
+                    Motion.SlideIn(SidebarPane, 0, 40);
                 break;
             case "Search":
                 // Its own page (it used to open the More menu, i.e. the same page as More).

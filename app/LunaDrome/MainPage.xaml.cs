@@ -932,9 +932,15 @@ public sealed partial class MainPage : Page
         section.Visibility = albums.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    private async void ShowHeroAlbum(int index)
+    private async void ShowHeroAlbum(int index, int direction = 0)
     {
         var album = _heroAlbums[index];
+        if (direction != 0)
+        {
+            // The new album comes in from the side it was browsed towards.
+            Motion.SlideIn(HeroArtBox, direction * 40, 0);
+            Motion.SlideIn(HeroTextPanel, direction * 60, 0, 340);
+        }
         SetImage(HeroArt, album.CoverArtUrl);
         HeroTitleText.Text = album.Name;
         HeroArtistText.Text = album.ArtistName;
@@ -958,7 +964,7 @@ public sealed partial class MainPage : Page
         if (_heroAlbums.Count == 0)
             return;
         _heroIndex = (_heroIndex - 1 + _heroAlbums.Count) % _heroAlbums.Count;
-        ShowHeroAlbum(_heroIndex);
+        ShowHeroAlbum(_heroIndex, -1);
     }
 
     private void HeroNextButton_Click(object sender, RoutedEventArgs e)
@@ -966,7 +972,7 @@ public sealed partial class MainPage : Page
         if (_heroAlbums.Count == 0)
             return;
         _heroIndex = (_heroIndex + 1) % _heroAlbums.Count;
-        ShowHeroAlbum(_heroIndex);
+        ShowHeroAlbum(_heroIndex, 1);
     }
 
     private async void HeroTitleText_Tapped(object sender, TappedRoutedEventArgs e)
@@ -2209,6 +2215,16 @@ public sealed partial class MainPage : Page
         {
             _compactPlayerTabs = false;
             UpdateCompactPlayerMode();
+            return;
+        }
+        if (IsCompact)
+        {
+            // Phone: the player slides back down into the bar.
+            Motion.SlideOut(FullScreenPlayerOverlay, 0, Math.Max(120, ActualHeight / 3), () =>
+            {
+                FullScreenPlayerOverlay.Visibility = Visibility.Collapsed;
+                UpdateVisualizerCaptureState();
+            });
             return;
         }
         FullScreenPlayerOverlay.Visibility = Visibility.Collapsed;
