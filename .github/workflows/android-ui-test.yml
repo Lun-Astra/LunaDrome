@@ -55,7 +55,7 @@ jobs:
           ram-size: 4096M
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: bash ci/phone_layout_shots.sh
+          script: bash ci/menu_swipe_shots.sh
       - name: Keep the mock log
         if: always()
         run: mkdir -p ui-test-out && cp mock.log ui-test-out/ || true
