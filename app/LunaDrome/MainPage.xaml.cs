@@ -1185,7 +1185,8 @@ public sealed partial class MainPage : Page
         flyout.Items.Add(new MenuFlyoutSeparator());
         AddMenuItem(flyout, "Go to album", async () => await OpenAlbumAsync(album));
         AddMenuItem(flyout, "Go to artist", async () => await NavigateToArtistAsync(album.ArtistId, album.ArtistName));
-        flyout.ShowAt(card, e.GetPosition(card));
+        RichMenu.SetHeader(flyout, album.CoverArtUrl, album.Name, album.ArtistName);
+        RichMenu.ShowAt(flyout, card, e.GetPosition(card));
         e.Handled = true;
     }
 
@@ -1565,7 +1566,7 @@ public sealed partial class MainPage : Page
         AddMenuItem(flyout, "Play album next", () => QueueSongsNext(_albumSongsRaw));
         AddMenuItem(flyout, "Add album to queue", () => AddToQueue(_albumSongsRaw));
         AddMenuItem(flyout, "Play album last", () => QueueSongsLast(_albumSongsRaw));
-        flyout.ShowAt(row, e.GetPosition(row));
+        RichMenu.ShowAt(flyout, row, e.GetPosition(row));
         e.Handled = true;
     }
 
@@ -1734,17 +1735,18 @@ public sealed partial class MainPage : Page
 
         var view = _trackViews[key];
         var flyout = new MenuFlyout { Placement = FlyoutPlacementMode.BottomEdgeAlignedLeft };
+        flyout.Items.Add(new MenuFlyoutItem { Text = "Sort by", IsEnabled = false });
         foreach (var (tag, label) in SortOptions)
         {
             var item = new ToggleMenuFlyoutItem { Text = label, IsChecked = view.SortKey == tag };
-            item.Click += (_, _) =>
+            RichMenu.OnClick(item, () =>
             {
                 view.SortKey = view.SortKey == tag ? null : tag; // clicking the active sort clears it
                 RefreshTrackView(key);
-            };
+            });
             flyout.Items.Add(item);
         }
-        flyout.ShowAt(button);
+        RichMenu.ShowAt(flyout, button);
     }
 
     private void SortDirectionButton_Click(object sender, RoutedEventArgs e)
@@ -1766,15 +1768,15 @@ public sealed partial class MainPage : Page
 
         var flyout = new MenuFlyout { Placement = FlyoutPlacementMode.BottomEdgeAlignedLeft };
         var play = new MenuFlyoutItem { Text = "Play" };
-        play.Click += (_, _) => PlayTrackView(key, shuffle: false);
+        RichMenu.OnClick(play, () => PlayTrackView(key, shuffle: false));
         var shuffle = new MenuFlyoutItem { Text = "Shuffle" };
-        shuffle.Click += (_, _) => PlayTrackView(key, shuffle: true);
+        RichMenu.OnClick(shuffle, () => PlayTrackView(key, shuffle: true));
         flyout.Items.Add(play);
         flyout.Items.Add(shuffle);
         flyout.Items.Add(new MenuFlyoutSeparator());
         AddMenuItem(flyout, "Play next", () => { if (TrackViewSongs(key) is { } songs) QueueSongsNext(songs); });
         AddMenuItem(flyout, "Add to queue", () => { if (TrackViewSongs(key) is { } songs) AddToQueue(songs); });
-        flyout.ShowAt(button);
+        RichMenu.ShowAt(flyout, button);
     }
 
     // The list as shown (search + sort applied).
@@ -1846,7 +1848,7 @@ public sealed partial class MainPage : Page
             AddMenuItem(flyout, "Remove from playlist", async () => await RemoveFromPlaylistAsync(song));
         }
 
-        flyout.ShowAt(list, e.GetPosition(list));
+        RichMenu.ShowAt(flyout, list, e.GetPosition(list));
         e.Handled = true;
     }
 
@@ -1867,14 +1869,14 @@ public sealed partial class MainPage : Page
         flyout.Items.Add(BuildAddToPlaylistSubmenu(new List<Song> { song }));
         AddJamMenuItem(flyout, () => Task.FromResult(new List<Song> { song }));
         AddFavoriteToggle(flyout, song);
+        RichMenu.SetHeader(flyout, song.CoverArtUrl, song.Title,
+            song.Artists.Count > 1 ? string.Join(", ", song.Artists.Select(a => a.Name)) : song.ArtistName);
         return flyout;
     }
 
     private static void AddMenuItem(MenuFlyout flyout, string text, Action onClick)
     {
-        var item = new MenuFlyoutItem { Text = text };
-        item.Click += (_, _) => onClick();
-        flyout.Items.Add(item);
+        flyout.Items.Add(RichMenu.OnClick(new MenuFlyoutItem { Text = text }, onClick));
     }
 
     private void AddFavoriteToggle(MenuFlyout flyout, Song song) =>
@@ -1901,7 +1903,7 @@ public sealed partial class MainPage : Page
         foreach (var playlist in _playlists)
         {
             var item = new MenuFlyoutItem { Text = playlist.Name };
-            item.Click += async (_, _) =>
+            RichMenu.OnClick(item, async () =>
             {
                 try
                 {
@@ -1910,7 +1912,7 @@ public sealed partial class MainPage : Page
                     await LoadPlaylistsAsync();
                 }
                 catch (Exception ex) { await ShowErrorAsync($"Failed to add to playlist: {ex.Message}"); }
-            };
+            });
             sub.Items.Add(item);
         }
 
@@ -1918,7 +1920,7 @@ public sealed partial class MainPage : Page
             sub.Items.Add(new MenuFlyoutSeparator());
 
         var create = new MenuFlyoutItem { Text = "New playlist..." };
-        create.Click += async (_, _) =>
+        RichMenu.OnClick(create, async () =>
         {
             var name = await PromptForPlaylistNameAsync();
             if (string.IsNullOrWhiteSpace(name))
@@ -1930,7 +1932,7 @@ public sealed partial class MainPage : Page
                     await _client.AddSongToPlaylistAsync(id, song.Id);
             }
             await LoadPlaylistsAsync();
-        };
+        });
         sub.Items.Add(create);
         return sub;
     }
@@ -2001,7 +2003,7 @@ public sealed partial class MainPage : Page
         flyout.Items.Add(new MenuFlyoutSeparator());
         AddMenuItem(flyout, "Rename playlist…", async () => await RenamePlaylistAsync(playlist));
         AddMenuItem(flyout, "Delete playlist", async () => await DeletePlaylistAsync(playlist));
-        flyout.ShowAt(PlaylistsList, e.GetPosition(PlaylistsList));
+        RichMenu.ShowAt(flyout, PlaylistsList, e.GetPosition(PlaylistsList));
         e.Handled = true;
     }
 
@@ -2011,7 +2013,7 @@ public sealed partial class MainPage : Page
         if (sender is not FrameworkElement { Tag: Playlist playlist } card)
             return;
 
-        PlaylistQueueMenu(playlist).ShowAt(card, e.GetPosition(card));
+        RichMenu.ShowAt(PlaylistQueueMenu(playlist), card, e.GetPosition(card));
         e.Handled = true;
     }
 
@@ -2019,6 +2021,7 @@ public sealed partial class MainPage : Page
     private MenuFlyout PlaylistQueueMenu(Playlist playlist)
     {
         var flyout = new MenuFlyout();
+        RichMenu.SetHeader(flyout, playlist.CoverArtUrl, playlist.Name, playlist.SongCount == 1 ? "1 song" : $"{playlist.SongCount} songs");
         AddMenuItem(flyout, "Play", async () => { if (await LoadPlaylistSongsAsync(playlist) is { } songs) PlayQueueFrom(songs, 0); });
         AddMenuItem(flyout, "Shuffle", async () =>
         {
@@ -2289,13 +2292,17 @@ public sealed partial class MainPage : Page
             list.SelectedItems.Add(clicked);
         }
 
-        BuildQueueMenu(list, SelectedQueueEntries(list), clicked).ShowAt(list, e.GetPosition(list));
+        RichMenu.ShowAt(BuildQueueMenu(list, SelectedQueueEntries(list), clicked), list, e.GetPosition(list));
         e.Handled = true;
     }
 
     private MenuFlyout BuildQueueMenu(ListView list, List<QueueEntry> selected, QueueEntry? clicked)
     {
         var flyout = new MenuFlyout();
+        if (selected.Count == 1)
+            RichMenu.SetHeader(flyout, selected[0].Song.CoverArtUrl, selected[0].Song.Title, selected[0].Song.ArtistName);
+        else
+            RichMenu.SetHeader(flyout, null, $"{selected.Count} songs in the queue");
         if (selected.Count == 1 && clicked != null)
             AddMenuItem(flyout, "Play", () => PlayEntry(clicked));
         AddMenuItem(flyout, "Play next", () => MoveToPlayNext(list, selected));

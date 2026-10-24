@@ -229,7 +229,8 @@ public sealed partial class MainPage
         });
         // Any action ends selecting ("Select all" keeps it going).
         foreach (var item in flyout.Items.OfType<MenuFlyoutItem>().Where(i => i.Text != "Select all"))
-            item.Click += (_, _) => ExitSelection();
-        flyout.ShowAt(anchor);
+            RichMenu.OnClick(item, ExitSelection);
+        RichMenu.SetHeader(flyout, null, SelectionCount == 1 ? "1 song selected" : $"{SelectionCount} songs selected");
+        RichMenu.ShowAt(flyout, anchor);
     }
 }

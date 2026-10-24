@@ -65,8 +65,11 @@ public static class Motion
     public static double GetHoverScale(DependencyObject d) => (double)d.GetValue(HoverScaleProperty);
     public static void SetHoverScale(DependencyObject d, double value) => d.SetValue(HoverScaleProperty, value);
 
-    private static readonly PointerEventHandler HoverScaleEntered = (s, _) =>
-        AnimateScale((UIElement)s, GetHoverScale((DependencyObject)s), Hover);
+    private static readonly PointerEventHandler HoverScaleEntered = (s, e) =>
+    {
+        if (IsMouse(e))
+            AnimateScale((UIElement)s, GetHoverScale((DependencyObject)s), Hover);
+    };
     private static readonly PointerEventHandler HoverScaleExited = (s, _) => AnimateScale((UIElement)s, 1, Hover);
 
     private static void OnHoverScaleChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
@@ -102,8 +105,10 @@ public static class Motion
     private static readonly DependencyProperty FadeTargetProperty =
         DependencyProperty.RegisterAttached("FadeTarget", typeof(UIElement), typeof(Motion), new PropertyMetadata(null));
 
-    private static readonly PointerEventHandler HoverFadeEntered = (s, _) =>
+    private static readonly PointerEventHandler HoverFadeEntered = (s, e) =>
     {
+        if (!IsMouse(e))
+            return;
         if (((DependencyObject)s).GetValue(FadeTargetProperty) is UIElement overlay)
             FadeOverlay(overlay, show: true);
     };
@@ -185,8 +190,10 @@ public static class Motion
         _ => null
     };
 
-    private static readonly PointerEventHandler ClickableEntered = (s, _) =>
+    private static readonly PointerEventHandler ClickableEntered = (s, e) =>
     {
+        if (!IsMouse(e))
+            return;
         if (ClickableTarget(s) is not { } text)
             return;
         text.SetValue(RestForegroundProperty, text.Foreground);
@@ -249,8 +256,10 @@ public static class Motion
 
     // The colour eases between the two: the Border gets its own brush on first hover (the rest
     // brush is a shared resource - animating that would recolour every tile at once).
-    private static readonly PointerEventHandler HoverBackgroundEntered = (s, _) =>
+    private static readonly PointerEventHandler HoverBackgroundEntered = (s, e) =>
     {
+        if (!IsMouse(e))
+            return;
         var border = (Border)s;
         if (border.GetValue(RestBackgroundProperty) == null)
             border.SetValue(RestBackgroundProperty, border.Background);
@@ -322,7 +331,11 @@ public static class Motion
     public static string? GetHoverRole(DependencyObject d) => (string?)d.GetValue(HoverRoleProperty);
     public static void SetHoverRole(DependencyObject d, string? value) => d.SetValue(HoverRoleProperty, value);
 
-    private static readonly PointerEventHandler RowEntered = (s, _) => SetRowHovered((DependencyObject)s, true);
+    private static readonly PointerEventHandler RowEntered = (s, e) =>
+    {
+        if (IsMouse(e))
+            SetRowHovered((DependencyObject)s, true);
+    };
     private static readonly PointerEventHandler RowExited = (s, _) => SetRowHovered((DependencyObject)s, false);
 
     private static void OnRowHoverChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
@@ -372,7 +385,11 @@ public static class Motion
     public static bool GetThumbGrow(DependencyObject d) => (bool)d.GetValue(ThumbGrowProperty);
     public static void SetThumbGrow(DependencyObject d, bool value) => d.SetValue(ThumbGrowProperty, value);
 
-    private static readonly PointerEventHandler ThumbEntered = (s, _) => GrowThumb((DependencyObject)s, 1.4);
+    private static readonly PointerEventHandler ThumbEntered = (s, e) =>
+    {
+        if (IsMouse(e))
+            GrowThumb((DependencyObject)s, 1.4);
+    };
     private static readonly PointerEventHandler ThumbExited = (s, _) => GrowThumb((DependencyObject)s, 1);
 
     private static void OnThumbGrowChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
@@ -468,9 +485,16 @@ public static class Motion
         storyboard.Begin();
     }
 
+    /// <summary>Hover effects are for a mouse (or pen). A finger "enters" every row it scrolls
+    /// past, and Android doesn't always send the matching exit - rows stayed lit with their play
+    /// button showing after scrolling an album.</summary>
+    private static bool IsMouse(PointerRoutedEventArgs e) =>
+        e.Pointer.PointerDeviceType != Microsoft.UI.Input.PointerDeviceType.Touch;
+
     // --- Animation plumbing ---
 
-    private static CompositeTransform EnsureTransform(UIElement element)
+    /// <summary>The element's CompositeTransform, made if needed (shared by every animation here and the swipes).</summary>
+    internal static CompositeTransform EnsureTransform(UIElement element)
     {
         if (element.RenderTransform is CompositeTransform existing)
             return existing;

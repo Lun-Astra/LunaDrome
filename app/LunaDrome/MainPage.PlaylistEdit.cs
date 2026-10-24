@@ -1,3 +1,4 @@
+using LunaDrome.Controls;
 using LunaDrome.Core.Models;
 using Windows.ApplicationModel.DataTransfer;
 
@@ -89,7 +90,7 @@ public sealed partial class MainPage
         void Add(string text, int to)
         {
             var item = new MenuFlyoutItem { Text = text };
-            item.Click += async (_, _) => await MovePlaylistSongAsync(index, to);
+            RichMenu.OnClick(item, async () => await MovePlaylistSongAsync(index, to));
             move.Items.Add(item);
         }
         if (index > 0)
