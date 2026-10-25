@@ -29,6 +29,8 @@ public sealed class TrackColumnLayout : INotifyPropertyChanged
     public double GenreWidth { get => _genreWidth; set => Set(ref _genreWidth, value); }
     public double FavoriteColumnWidth => FavoriteWidth;
     public double TitleWidthBesideFavorite => Math.Max(MinWidth, _titleWidth - FavoriteWidth);
+    /// <summary>Discover rows: a heart and a "Not for me" cross, both out of the title column.</summary>
+    public double TitleWidthBesideTwoButtons => Math.Max(MinWidth, _titleWidth - 2 * FavoriteWidth);
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -51,7 +53,8 @@ public sealed class TrackColumnLayout : INotifyPropertyChanged
         }
         else
             return;
-        foreach (var name in new[] { nameof(TitleWidth), nameof(TitleWidthBesideFavorite), nameof(TimeWidth), nameof(GenreWidth) })
+        foreach (var name in new[] { nameof(TitleWidth), nameof(TitleWidthBesideFavorite), nameof(TitleWidthBesideTwoButtons),
+                     nameof(TimeWidth), nameof(GenreWidth) })
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
     }
 
@@ -64,7 +67,10 @@ public sealed class TrackColumnLayout : INotifyPropertyChanged
         field = value;
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
         if (name == nameof(TitleWidth))
+        {
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(TitleWidthBesideFavorite)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(TitleWidthBesideTwoButtons)));
+        }
     }
 }
 

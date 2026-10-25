@@ -250,4 +250,58 @@ public class SpotiDromeClient
 
     public async Task CancelJobAsync(string jobId) =>
         (await _http.PostAsync($"{BaseUrl}/jobs/{Uri.EscapeDataString(jobId)}/cancel", null)).Dispose();
+
+    /// <summary>Discover Weekly / Daily Discovery: which Navidrome playlists hold this week's
+    /// picks. Null when this SpotiDrome has no Discover yet.</summary>
+    public async Task<SpotiDromeDiscover?> GetDiscoverAsync()
+    {
+        using var response = await _http.GetAsync($"{BaseUrl}/discover");
+        if (response.StatusCode == HttpStatusCode.NotFound)
+            return null;
+        if (AuthProblem(response.StatusCode) is { } problem)
+            throw new HttpRequestException(problem, null, response.StatusCode);
+        response.EnsureSuccessStatusCode();
+        return JsonSerializer.Deserialize<SpotiDromeDiscover>(await response.Content.ReadAsStringAsync(), JsonOptions);
+    }
+
+    /// <summary>Makes a mix now ("weekly" / "daily"); it shows up in the jobs like a download.</summary>
+    public Task RunDiscoverAsync(string mix) =>
+        PostCheckedAsync("discover/run", new Dictionary<string, object?> { ["mix"] = mix });
+
+    /// <summary>"keep" stars the song (it moves into the library at the next mix), "unkeep"
+    /// takes the star off, "reject" deletes it right away and it's never picked again.</summary>
+    public Task DiscoverFeedbackAsync(string songId, string action) =>
+        PostCheckedAsync("discover/feedback", new Dictionary<string, object?> { ["song_id"] = songId, ["action"] = action });
+
+    private async Task PostCheckedAsync(string path, Dictionary<string, object?> body)
+    {
+        using var response = await _http.PostAsJsonAsync($"{BaseUrl}/{path}", body);
+        if (AuthProblem(response.StatusCode) is { } problem)
+            throw new HttpRequestException(problem, null, response.StatusCode);
+        if (!response.IsSuccessStatusCode)
+        {
+            var text = await response.Content.ReadAsStringAsync();
+            string? error = null;
+            try { error = JsonDocument.Parse(text).RootElement.GetProperty("error").GetString(); } catch { }
+            throw new HttpRequestException(error ?? $"SpotiDrome answered {(int)response.StatusCode}.", null, response.StatusCode);
+        }
+    }
+}
+
+public class SpotiDromeDiscover
+{
+    public Dictionary<string, SpotiDromeDiscoverMix> Mixes { get; set; } = new();
+    [JsonPropertyName("keep_plays")] public int KeepPlays { get; set; } = 2;
+    [JsonPropertyName("kept_playlist")] public string KeptPlaylist { get; set; } = "";
+}
+
+public class SpotiDromeDiscoverMix
+{
+    public string Playlist { get; set; } = "";
+    [JsonPropertyName("playlist_id")] public string? PlaylistId { get; set; }
+    public bool Enabled { get; set; }
+    public bool Running { get; set; }
+    [JsonPropertyName("song_ids")] public List<string> SongIds { get; set; } = [];
+    [JsonPropertyName("generated_at")] public long? GeneratedAt { get; set; }
+    [JsonPropertyName("last_error")] public string? LastError { get; set; }
 }

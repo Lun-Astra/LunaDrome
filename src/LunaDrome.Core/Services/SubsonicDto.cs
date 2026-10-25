@@ -272,3 +272,19 @@ internal class RandomSongsResponse : SubsonicResponseBase
 {
     public SongListPayload? RandomSongs { get; set; }
 }
+
+internal class MusicFoldersResponse : SubsonicResponseBase
+{
+    public MusicFolderList? MusicFolders { get; set; }
+}
+
+internal class MusicFolderList
+{
+    public List<MusicFolderDto>? MusicFolder { get; set; }
+}
+
+internal class MusicFolderDto
+{
+    public int Id { get; set; }
+    public string? Name { get; set; }
+}

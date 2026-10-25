@@ -777,6 +777,7 @@ public sealed partial class MainPage : Page
         SearchPage.Visibility = Visibility.Collapsed;
         DownloadsPage.Visibility = Visibility.Collapsed;
         JamPage.Visibility = Visibility.Collapsed;
+        DiscoverPage.Visibility = Visibility.Collapsed;
         _jam?.SetWatching(false);
     }
 
@@ -801,6 +802,7 @@ public sealed partial class MainPage : Page
         NavGenres.IsChecked = false;
         NavStats.IsChecked = false;
         NavJam.IsChecked = false;
+        NavDiscover.IsChecked = false;
         if (!keepPlaylist)
             PlaylistsList.SelectedItem = null;
         _suppressNavEvents = false;
@@ -861,6 +863,10 @@ public sealed partial class MainPage : Page
                 break;
             case "Jam":
                 ShowJamPage();
+                break;
+            case "Discover":
+                ShowPage(DiscoverPage, () => Reselect(NavDiscover));
+                _ = LoadDiscoverAsync();
                 break;
         }
     }
@@ -1846,6 +1852,11 @@ public sealed partial class MainPage : Page
             flyout.Items.Add(new MenuFlyoutSeparator());
             AddPlaylistMoveItems(flyout, song);
             AddMenuItem(flyout, "Remove from playlist", async () => await RemoveFromPlaylistAsync(song));
+        }
+        else if (key == "DiscoverTracks")
+        {
+            flyout.Items.Add(new MenuFlyoutSeparator());
+            AddMenuItem(flyout, "Not for me", async () => await RejectDiscoverSongAsync(song));
         }
 
         RichMenu.ShowAt(flyout, list, e.GetPosition(list));
