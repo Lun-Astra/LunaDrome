@@ -78,6 +78,7 @@ public static class SwipeToQueue
         private readonly DispatcherTimer _hold = new() { Interval = TimeSpan.FromMilliseconds(HoldMs) };
         private Windows.Foundation.Point _start;
         private Windows.Foundation.Point _rowStart;   // where the row was on screen at the press
+        private long _lastEventTicks;                 // the press or the latest move
         private uint _pointerId;
         private bool _tracking;
         private bool _swiping;
@@ -97,6 +98,15 @@ public static class SwipeToQueue
                     return;
                 // Scrolling the list moves the row while Android stops sending the finger's
                 // moves to it - that's not a hold (scrolling an album used to start selecting).
+                // A finger that's really held keeps sending small moves (every ~20 ms in the
+                // emulator trace); when the native scroll takes the touch, nothing more comes -
+                // not even a cancel - also when the list can't scroll any further.
+                if (Environment.TickCount64 - _lastEventTicks > 300)
+                {
+                    Trace("HOLD ignored: no touch events any more (the list took the touch)");
+                    Reset();
+                    return;
+                }
                 var now = RowPosition();
                 if (Math.Abs(now.X - _rowStart.X) > StartSlop / 2 || Math.Abs(now.Y - _rowStart.Y) > StartSlop / 2)
                 {
@@ -125,6 +135,7 @@ public static class SwipeToQueue
                 return;
             _start = e.GetCurrentPoint(null).Position;
             _rowStart = RowPosition();
+            _lastEventTicks = Environment.TickCount64;
             _pointerId = e.Pointer.PointerId;
             _tracking = true;
             _hold.Start();
@@ -135,6 +146,7 @@ public static class SwipeToQueue
         {
             if (!_tracking || e.Pointer.PointerId != _pointerId)
                 return;
+            _lastEventTicks = Environment.TickCount64;
             var p = e.GetCurrentPoint(null).Position;
             var along = (p.X - _start.X) * _direction;   // distance in the swipe's own direction
             var dy = p.Y - _start.Y;
