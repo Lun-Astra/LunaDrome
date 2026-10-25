@@ -44,6 +44,9 @@ tap 450 1734; sleep 12; anr
 tap 220 420; sleep 10; anr; shot 08-album
 adb shell input swipe 540 1400 540 700 500; sleep 1; adb shell input swipe 540 700 540 1400 500; sleep 2; shot 09-album-after-scroll
 adb shell input swipe 540 1500 540 900 400; sleep 1; adb shell input swipe 540 900 540 1500 400; sleep 2; shot 10-album-after-scroll-2
+adb shell input swipe 540 900 540 1500 400; sleep 2; adb shell input swipe 540 1100 540 1600 300; sleep 2; shot 11-album-after-overscroll
+# A real hold on an album row must still start selecting
+adb shell input swipe 540 1100 540 1100 900; sleep 2; shot 12-album-hold
 adb logcat -d -v time > $OUT/logcat-all.txt
 grep -E "AndroidRuntime|FATAL|Exception" $OUT/logcat-all.txt | grep -v "RuntimeInit\|Monkey\|boot image\|lock profiling\|VM exiting" | head -50 > $OUT/logcat-errors.txt
 ls -la $OUT
