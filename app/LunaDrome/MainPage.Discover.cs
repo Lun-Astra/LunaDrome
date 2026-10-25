@@ -53,6 +53,7 @@ public sealed partial class MainPage
             try
             {
                 songs = await _client.GetPlaylistSongsAsync(playlistId);
+                PopulateSongArt(songs);
             }
             catch { /* shown as empty */ }
         }
