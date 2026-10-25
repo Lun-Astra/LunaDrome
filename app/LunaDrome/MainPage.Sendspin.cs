@@ -1,3 +1,4 @@
+using LunaDrome.Controls;
 using LunaDrome.Core.Sendspin;
 using LunaDrome.Core.Services;
 using Microsoft.UI.Xaml.Input;
@@ -135,13 +136,14 @@ public sealed partial class MainPage
     {
         var flyout = new MenuFlyout();
         FillOutputFlyout(flyout);
-        flyout.ShowAt(anchor);
+        var menu = RichMenu.ShowAt(flyout, anchor);
         var devices = ScanAudioDevicesAsync();   // headphones plugged in since last time
         if (DateTime.UtcNow - _sendspinLastScan > SendspinRescanAfter || _sendspinScan is { IsCompleted: false })
             await Task.WhenAll(ScanSendspinAsync(), ScanDlnaAsync(), devices);
         else
             await devices;
         FillOutputFlyout(flyout);   // the open menu picks up what the scans found
+        menu.Refresh();
     }
 
     private void FillOutputFlyout(MenuFlyout flyout)
@@ -171,14 +173,15 @@ public sealed partial class MainPage
                 IsChecked = speaker != null,
                 IsEnabled = !connecting,
             };
+            RichMenu.SetIcon(item, MenuIcons.Speaker);
             ToolTipService.SetToolTip(item, speaker != null
                 ? $"Sendspin speaker · {speaker.ProductName ?? speaker.Name}{(speaker.State is "" or "synchronized" ? "" : $" · {speaker.State}")}"
                 : $"Sendspin speaker at {key}");
-            item.Click += (_, _) =>
+            RichMenu.OnClick(item, () =>
             {
                 if (speaker != null) _ = RemoveSendspinSpeakerAsync(speaker);
                 else if (info != null) _ = AddSendspinSpeakerAsync(info);
-            };
+            });
             flyout.Items.Add(item);
         }
         if (_sendspinScan is { IsCompleted: false })
@@ -187,6 +190,8 @@ public sealed partial class MainPage
             flyout.Items.Add(new MenuFlyoutItem { Text = "No Sendspin speakers found", IsEnabled = false });
         // For networks where mDNS doesn't get through (VLANs, Docker): type the address.
         AddMenuItem(flyout, "Add a speaker by address…", () => _ = AddSendspinByAddressAsync());
+        if (flyout.Items[^1] is MenuFlyoutItem byAddress)
+            RichMenu.SetIcon(byAddress, MenuIcons.Plus);
         AddDlnaItems(flyout);
 
         var status = _sendspinStatus ?? (_sendspinActive && _sendspin != null

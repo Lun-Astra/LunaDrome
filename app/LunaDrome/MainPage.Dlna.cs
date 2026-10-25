@@ -1,3 +1,4 @@
+using LunaDrome.Controls;
 using LunaDrome.Core.Dlna;
 using LunaDrome.Services;
 
@@ -67,13 +68,14 @@ public sealed partial class MainPage
                 IsChecked = active,
                 IsEnabled = !connecting,
             };
+            RichMenu.SetIcon(item, MenuIcons.Tv);
             var model = string.Join(" ", new[] { info.Manufacturer, info.Model }.Where(s => !string.IsNullOrWhiteSpace(s)));
             ToolTipService.SetToolTip(item, $"DLNA renderer{(model.Length > 0 ? $" · {model}" : "")} · {info.Description.Host}");
-            item.Click += (_, _) =>
+            RichMenu.OnClick(item, () =>
             {
                 if (active) PlayOnThisDeviceFromDlna();
                 else _ = StartDlnaAsync(info);
-            };
+            });
             flyout.Items.Add(item);
         }
     }

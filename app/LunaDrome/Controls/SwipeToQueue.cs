@@ -34,7 +34,7 @@ public static class SwipeToQueue
     private const int HoldMs = 500;
 
     private const double SwipeDistance = 60;   // px sideways: the action happens right there
-    private const double StartSlop = 12;       // px before deciding sideways vs. scrolling
+    private const double StartSlop = 10;       // px before deciding sideways vs. scrolling
     private const double MaxSlide = 120;       // how far the row follows the finger
 
     public static readonly DependencyProperty EnabledProperty =
@@ -72,10 +72,13 @@ public static class SwipeToQueue
     {
         private readonly FrameworkElement _row;
         private readonly int _direction;   // +1 = swipe right (add), -1 = swipe left (remove)
-        private readonly TranslateTransform _slide = new();
-        private readonly DispatcherTimer _snapBack = new() { Interval = TimeSpan.FromMilliseconds(350) };
+        private readonly DispatcherTimer _snapBack = new() { Interval = TimeSpan.FromMilliseconds(600) };
+        private Brush? _restBackground;
+        private bool _ticked;
         private readonly DispatcherTimer _hold = new() { Interval = TimeSpan.FromMilliseconds(HoldMs) };
         private Windows.Foundation.Point _start;
+        private Windows.Foundation.Point _rowStart;   // where the row was on screen at the press
+        private long _lastEventTicks;                 // the press or the latest move
         private uint _pointerId;
         private bool _tracking;
         private bool _swiping;
@@ -85,7 +88,6 @@ public static class SwipeToQueue
         {
             _row = row;
             _direction = right ? 1 : -1;
-            row.RenderTransform = _slide;
             // The touch is often taken away without a release reaching the row (emulator test),
             // which left it slid sideways. So: no move or release for a moment = slide back.
             _snapBack.Tick += (_, _) => { _snapBack.Stop(); Reset(); };
@@ -94,6 +96,24 @@ public static class SwipeToQueue
                 _hold.Stop();
                 if (!_tracking || _swiping)
                     return;
+                // Scrolling the list moves the row while Android stops sending the finger's
+                // moves to it - that's not a hold (scrolling an album used to start selecting).
+                // A finger that's really held keeps sending small moves (every ~20 ms in the
+                // emulator trace); when the native scroll takes the touch, nothing more comes -
+                // not even a cancel - also when the list can't scroll any further.
+                if (Environment.TickCount64 - _lastEventTicks > 300)
+                {
+                    Trace("HOLD ignored: no touch events any more (the list took the touch)");
+                    Reset();
+                    return;
+                }
+                var now = RowPosition();
+                if (Math.Abs(now.X - _rowStart.X) > StartSlop / 2 || Math.Abs(now.Y - _rowStart.Y) > StartSlop / 2)
+                {
+                    Trace("HOLD ignored: the row moved (scrolling)");
+                    Reset();
+                    return;
+                }
                 Trace("HELD");
                 Reset();   // a hold isn't a swipe
                 Held?.Invoke(_row);
@@ -114,6 +134,8 @@ public static class SwipeToQueue
             if (e.Pointer.PointerDeviceType != PointerDeviceType.Touch)
                 return;
             _start = e.GetCurrentPoint(null).Position;
+            _rowStart = RowPosition();
+            _lastEventTicks = Environment.TickCount64;
             _pointerId = e.Pointer.PointerId;
             _tracking = true;
             _hold.Start();
@@ -124,6 +146,7 @@ public static class SwipeToQueue
         {
             if (!_tracking || e.Pointer.PointerId != _pointerId)
                 return;
+            _lastEventTicks = Environment.TickCount64;
             var p = e.GetCurrentPoint(null).Position;
             var along = (p.X - _start.X) * _direction;   // distance in the swipe's own direction
             var dy = p.Y - _start.Y;
@@ -132,19 +155,32 @@ public static class SwipeToQueue
                 _hold.Stop();   // moving: not a hold
             if (!_swiping)
             {
-                if (Math.Abs(dy) > StartSlop && Math.Abs(dy) >= Math.Abs(p.X - _start.X))
+                if (Math.Abs(dy) > StartSlop * 1.5 && Math.Abs(dy) > 1.2 * Math.Abs(p.X - _start.X))
                 {
                     Reset();   // vertical: that's the list scrolling
                     return;
                 }
-                if (along > StartSlop && along > 2 * Math.Abs(dy))
+                if (along > StartSlop && along > 1.2 * Math.Abs(dy))
+                {
                     _swiping = true;
+                    if (_row is Panel or Border)
+                        _restBackground = _row is Panel panel ? panel.Background : ((Border)_row).Background;
+                }
                 else
                     return;
             }
-            _slide.X = _direction * Math.Clamp(along, 0, MaxSlide);
+            // The row follows the finger (with some resistance past the threshold) and tints
+            // more the closer it gets; crossing the threshold ticks, the action bumps.
+            var slide = along <= SwipeDistance ? along : SwipeDistance + (along - SwipeDistance) * 0.4;
+            Motion.EnsureTransform(_row).TranslateX = _direction * Math.Clamp(slide, 0, MaxSlide);
+            Tint(Math.Clamp(along / SwipeDistance, 0, 1));
             _snapBack.Stop();
             _snapBack.Start();   // restarted by every move; fires once the moves stop
+            if (along >= SwipeDistance * 0.8 && !_ticked)
+            {
+                _ticked = true;
+                LunaDrome.Services.Haptics.Tick();
+            }
             if (along >= SwipeDistance)
                 Act();
         }
@@ -159,12 +195,20 @@ public static class SwipeToQueue
             Reset();
         }
 
+        private Windows.Foundation.Point RowPosition()
+        {
+            try { return _row.TransformToVisual(null).TransformPoint(new Windows.Foundation.Point(0, 0)); }
+            catch { return default; }
+        }
+
         private void Act()
         {
             if (_done)
                 return;
             _done = true;
             Trace($"ACTED dir={_direction}");
+            LunaDrome.Services.Haptics.Confirm();
+            Tint(1.6);   // a flash: done
             if (_direction > 0 && _row.DataContext is Song song)
                 Swiped?.Invoke(song);
             else if (_direction < 0 && _row.DataContext is { } entry)
@@ -175,10 +219,49 @@ public static class SwipeToQueue
         {
             _hold.Stop();
             _snapBack.Stop();
+            var wasSwiping = _swiping;
             _tracking = false;
             _swiping = false;
             _done = false;
-            _slide.X = 0;
+            _ticked = false;
+            if (!wasSwiping)
+                return;
+            SpringBack();
+            if (_row is Panel panel) panel.Background = _restBackground;
+            else if (_row is Border border) border.Background = _restBackground;
+        }
+
+        // Green-ish for "add to queue", red-ish for "remove", stronger the further the swipe.
+        private void Tint(double amount)
+        {
+            var color = _direction > 0
+                ? Windows.UI.Color.FromArgb((byte)Math.Clamp(amount * 40, 0, 90), 0x5B, 0xD6, 0x8A)
+                : Windows.UI.Color.FromArgb((byte)Math.Clamp(amount * 40, 0, 90), 0xE5, 0x5A, 0x5A);
+            if (_row is Panel panel) panel.Background = new SolidColorBrush(color);
+            else if (_row is Border border) border.Background = new SolidColorBrush(color);
+        }
+
+        private void SpringBack()
+        {
+            var transform = Motion.EnsureTransform(_row);
+            var back = new Microsoft.UI.Xaml.Media.Animation.DoubleAnimation
+            {
+                To = 0, Duration = TimeSpan.FromMilliseconds(320),
+                EasingFunction = new Microsoft.UI.Xaml.Media.Animation.BackEase
+                {
+                    EasingMode = Microsoft.UI.Xaml.Media.Animation.EasingMode.EaseOut, Amplitude = 0.35
+                },
+            };
+            Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTarget(back, transform);
+            Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTargetProperty(back, nameof(CompositeTransform.TranslateX));
+            var storyboard = new Microsoft.UI.Xaml.Media.Animation.Storyboard();
+            storyboard.Children.Add(back);
+            storyboard.Completed += (_, _) =>
+            {
+                transform.TranslateX = 0;
+                storyboard.Stop();
+            };
+            storyboard.Begin();
         }
     }
 }
