@@ -795,3 +795,5 @@ Luna is hopping off for the night. Current state of the app, for picking this ba
 - SpotiDrome (5dcc290+) makes *Discover Weekly* / *Daily Discovery* playlists from Luna's most-played songs (YT Music radio, optional ListenBrainz) and keeps the picks in a separate Navidrome library "Discover". When the next mix is made, starred / 4-5 star / 2+ full plays move into the library; the rest is deleted. API: `GET /discover`, `POST /discover/run`, `POST /discover/feedback` (all in the LunaDrome key scope).
 - `NavidromeClient.LibraryFolderId`: when a library named "Discover" exists, getArtists / getAlbumList2 / search3 / getRandomSongs get `musicFolderId` of the real library, so picks don't show up between your own albums. Playlists (getPlaylist) aren't filtered.
 - Tested on the Xvfb rig against a mock SpotiDrome (`/tmp/lunatest/mock/sd.py`, Discover endpoints) - list, keep/cross, tabs, "Make a new one" dialog.
+
+- **v4.6.1 (2026-10-25):** the Discover page shows album covers (it never called PopulateSongArt).
