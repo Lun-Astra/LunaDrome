@@ -132,6 +132,12 @@ public sealed partial class MainPage
         ArtistHeaderTextPanel.Margin = compact ? new Thickness(12, 0, 0, 0) : new Thickness(20, 0, 0, 0);
         ArtistHeaderNameText.FontSize = compact ? 24 : 44;
         CompactActionButtons(ArtistActionButtons, compact);
+
+        // Discover: shorter labels so the tabs, Play and Make fit on one line.
+        DiscoverWeeklyButton.Content = compact ? "Weekly" : "Discover Weekly";
+        DiscoverDailyButton.Content = compact ? "Daily" : "Daily Discovery";
+        DiscoverMakeButton.Content = compact ? "New mix" : "Make a new one";
+        DiscoverButtonsPanel.Spacing = compact ? 6 : 8;
         ArtistAlbumsList.ItemTemplate = (DataTemplate)Resources[compact ? "LargeAlbumCardTemplate" : "FeishinAlbumCardTemplate"];
         ArtistAlbumsLayout.MinItemWidth = compact ? 162 : 184;
         ArtistAlbumsLayout.MinItemHeight = compact ? 224 : 268;
