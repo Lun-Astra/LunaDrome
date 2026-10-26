@@ -497,10 +497,22 @@
     <!-- Discover row: TracksPageRowTemplate's heart (= keep: starred songs move into the library)
          plus a cross ("Not for me": SpotiDrome deletes it right away). -->
     <DataTemplate x:Key="DiscoverRowTemplate">
-      <StackPanel Orientation="Horizontal" Background="Transparent" controls:SwipeToQueue.Enabled="True" controls:Motion.RowHover="True">
-        <StackPanel Orientation="Horizontal" Width="{Binding TitleWidthBesideTwoButtons, Source={StaticResource TrackColumns}}"
-                    Padding="6,0,6,0">
-          <Grid Width="40" Height="40" Margin="0,0,10,0">
+      <!-- No column header on this page, so the row fills the width instead of using the
+           track columns' title width (that left a gap on the right on phones). -->
+      <Grid Background="Transparent" controls:SwipeToQueue.Enabled="True" controls:Motion.RowHover="True">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*"/>
+          <ColumnDefinition Width="Auto"/>
+          <ColumnDefinition Width="Auto"/>
+          <ColumnDefinition Width="52"/>
+          <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+        <Grid Padding="6,0,6,0">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="50"/>
+            <ColumnDefinition Width="*"/>
+          </Grid.ColumnDefinitions>
+          <Grid Width="40" Height="40" HorizontalAlignment="Left">
             <Border CornerRadius="4" Background="{StaticResource RaisedBrush}">
               <Image Source="{Binding CoverArtUrl}" Stretch="UniformToFill" HorizontalAlignment="Center" VerticalAlignment="Center"/>
             </Border>
@@ -512,31 +524,31 @@
               <Polygon Points="0,0 11,6.5 0,13" Fill="White" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="2,0,0,0"/>
             </Border>
           </Grid>
-          <StackPanel VerticalAlignment="Center">
+          <StackPanel Grid.Column="1" VerticalAlignment="Center">
             <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis"/>
             <Border Background="Transparent" Margin="0,2,0,0" HorizontalAlignment="Left" controls:Motion.ClickableText="True" Tag="{Binding}" Tapped="SongArtistText_Tapped" ToolTipService.ToolTip="Go to artist">
               <TextBlock controls:ArtistLinks.Song="{Binding}" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis"/>
             </Border>
           </StackPanel>
-        </StackPanel>
-        <Grid Background="Transparent" Tag="{Binding}" Tapped="TrackFavorite_Tapped" DoubleTapped="TrackFavorite_DoubleTapped"
+        </Grid>
+        <Grid Grid.Column="1" Background="Transparent" Tag="{Binding}" Tapped="TrackFavorite_Tapped" DoubleTapped="TrackFavorite_DoubleTapped"
               Width="{Binding FavoriteColumnWidth, Source={StaticResource TrackColumns}}" ToolTipService.ToolTip="Keep - it moves into your library">
           <Path Width="15" Height="14" Stretch="Uniform" Stroke="{StaticResource TextSecondaryBrush}" StrokeThickness="1.5"
                 Fill="{Binding IsFavorited, Converter={StaticResource FavoriteFill}}"
                 HorizontalAlignment="Center" VerticalAlignment="Center"
                 Data="M8,15 C8,15 1,10.5 1,5.8 C1,3 3,1.3 5.4,1.3 C6.9,1.3 7.7,2.1 8,2.6 C8.3,2.1 9.1,1.3 10.6,1.3 C13,1.3 15,3 15,5.8 C15,10.5 8,15 8,15 Z"/>
         </Grid>
-        <Grid Background="Transparent" Tag="{Binding}" Tapped="DiscoverReject_Tapped" DoubleTapped="TrackFavorite_DoubleTapped"
+        <Grid Grid.Column="2" Background="Transparent" Tag="{Binding}" Tapped="DiscoverReject_Tapped" DoubleTapped="TrackFavorite_DoubleTapped"
               Width="{Binding FavoriteColumnWidth, Source={StaticResource TrackColumns}}" ToolTipService.ToolTip="Not for me - remove it">
           <Path Width="11" Height="11" Stretch="Uniform" Stroke="{StaticResource TextSecondaryBrush}" StrokeThickness="1.6"
                 StrokeStartLineCap="Round" StrokeEndLineCap="Round"
                 HorizontalAlignment="Center" VerticalAlignment="Center" Data="M1,1 L11,11 M11,1 L1,11"/>
         </Grid>
-        <TextBlock Text="{Binding DurationDisplay}" VerticalAlignment="Center" Padding="6,0,6,0"
-                   Width="{Binding TimeWidth, Source={StaticResource TrackColumns}}"/>
-        <TextBlock Text="{Binding Genre}" VerticalAlignment="Center" Padding="6,0,6,0" TextTrimming="CharacterEllipsis"
+        <TextBlock Grid.Column="3" Text="{Binding DurationDisplay}" VerticalAlignment="Center" Margin="0,0,4,0"
+                   HorizontalAlignment="Right"/>
+        <TextBlock Grid.Column="4" Text="{Binding Genre}" VerticalAlignment="Center" Padding="6,0,6,0" TextTrimming="CharacterEllipsis"
                    Width="{Binding GenreWidth, Source={StaticResource TrackColumns}}"/>
-      </StackPanel>
+      </Grid>
     </DataTemplate>
 
     <!-- Side queue panel row (Feishin's right sidebar): # (or a playing marker), art, title /
@@ -1707,7 +1719,7 @@
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
               </Grid.RowDefinitions>
-              <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8" Margin="0,0,0,10">
+              <StackPanel x:Name="DiscoverButtonsPanel" Grid.Row="0" Orientation="Horizontal" Spacing="8" Margin="0,0,0,10">
                 <Button x:Name="DiscoverWeeklyButton" Content="Discover Weekly" Tag="weekly" Padding="14,6" Click="DiscoverMix_Click"/>
                 <Button x:Name="DiscoverDailyButton" Content="Daily Discovery" Tag="daily" Padding="14,6" Click="DiscoverMix_Click"/>
                 <Button x:Name="DiscoverPlayButton" Width="34" Height="34" VerticalAlignment="Center"

@@ -797,3 +797,4 @@ Luna is hopping off for the night. Current state of the app, for picking this ba
 - Tested on the Xvfb rig against a mock SpotiDrome (`/tmp/lunatest/mock/sd.py`, Discover endpoints) - list, keep/cross, tabs, "Make a new one" dialog.
 
 - **v4.6.1 (2026-10-25):** the Discover page shows album covers (it never called PopulateSongArt).
+- **v4.6.2 (2026-10-26):** Discover page fits phones: rows stretch to the full width (title `*`, fixed 52px duration column - an Auto column with right-aligned text drew ~30px off under Uno Skia), shorter tab/button labels in compact mode (Weekly / Daily / New mix).
