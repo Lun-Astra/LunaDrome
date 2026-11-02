@@ -46,17 +46,18 @@ tap 810 1734; sleep 12; anr; shot d01-tracks
 # Hold row 2 -> selecting; its ... menu -> Download for offline
 adb shell input swipe 500 $(row 2) 500 $(row 2) 900; sleep 2
 tap 990 150; sleep 2; shot d02-menu
-tapText "Download for offline" 540 1300 menu; sleep 2; shot d03-after-download
+tapText "Download for offline" 400 1232 menu; sleep 1; shot d03-after-download
 sleep 15
+tap 90 153; sleep 2   # end selecting
 # More -> Downloaded
 tap 990 1734; sleep 3; shot d04-more
-tapText "Downloaded" 200 900 more; sleep 4; shot d05-downloaded
+tapText "Downloaded" 210 1063 more; sleep 4; shot d05-downloaded
 # Offline: airplane mode, restart the app
 adb shell cmd connectivity airplane-mode enable; sleep 5
 adb shell am force-stop com.lunastra.lunadrome; sleep 2
 adb shell monkey -p com.lunastra.lunadrome -c android.intent.category.LAUNCHER 1
 sleep 45; anr; shot d06-login-offline
-tapText "Play downloaded songs" 540 1400 login; sleep 5; shot d07-offline-page
+tapText "Play downloaded songs" 540 1435 login; sleep 5; shot d07-offline-page
 # Play the first downloaded song (its row) and check the log says "downloaded"
 tap 540 760; sleep 1; tap 540 760; sleep 8; shot d08-playing
 tap 990 1734; sleep 3; shot d09-offline-more
