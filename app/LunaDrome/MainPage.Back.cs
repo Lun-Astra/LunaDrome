@@ -112,6 +112,7 @@ public sealed partial class MainPage
         FullScreenPlayerOverlay.Visibility = Visibility.Visible;
         Motion.SlideIn(FullScreenPlayerOverlay, 0, Math.Max(120, ActualHeight / 3), 320);   // comes up from the bar
         UpdateVisualizerCaptureState();
+        ScrollQueuesToCurrent();
         e.Handled = true;
     }
 

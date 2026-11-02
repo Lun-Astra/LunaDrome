@@ -494,6 +494,63 @@
       </StackPanel>
     </DataTemplate>
 
+    <!-- Discover row: TracksPageRowTemplate's heart (= keep: starred songs move into the library)
+         plus a cross ("Not for me": SpotiDrome deletes it right away). -->
+    <DataTemplate x:Key="DiscoverRowTemplate">
+      <!-- No column header on this page, so the row fills the width instead of using the
+           track columns' title width (that left a gap on the right on phones). -->
+      <Grid Background="Transparent" controls:SwipeToQueue.Enabled="True" controls:Motion.RowHover="True">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*"/>
+          <ColumnDefinition Width="Auto"/>
+          <ColumnDefinition Width="Auto"/>
+          <ColumnDefinition Width="52"/>
+          <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+        <Grid Padding="6,0,6,0">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="50"/>
+            <ColumnDefinition Width="*"/>
+          </Grid.ColumnDefinitions>
+          <Grid Width="40" Height="40" HorizontalAlignment="Left">
+            <Border CornerRadius="4" Background="{StaticResource RaisedBrush}">
+              <Image Source="{Binding CoverArtUrl}" Stretch="UniformToFill" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <Border CornerRadius="4" Background="#99000000" controls:NowPlaying.SongId="{Binding Id}" controls:Motion.HoverRole="Hide">
+              <controls:EqualizerBars/>
+            </Border>
+            <Border CornerRadius="4" Background="#99000000" Tag="{Binding}" controls:Motion.HoverRole="Show"
+                    Tapped="RowPlay_Tapped" DoubleTapped="TrackFavorite_DoubleTapped" ToolTipService.ToolTip="Play">
+              <Polygon Points="0,0 11,6.5 0,13" Fill="White" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="2,0,0,0"/>
+            </Border>
+          </Grid>
+          <StackPanel Grid.Column="1" VerticalAlignment="Center">
+            <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis"/>
+            <Border Background="Transparent" Margin="0,2,0,0" HorizontalAlignment="Left" controls:Motion.ClickableText="True" Tag="{Binding}" Tapped="SongArtistText_Tapped" ToolTipService.ToolTip="Go to artist">
+              <TextBlock controls:ArtistLinks.Song="{Binding}" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis"/>
+            </Border>
+          </StackPanel>
+        </Grid>
+        <Grid Grid.Column="1" Background="Transparent" Tag="{Binding}" Tapped="TrackFavorite_Tapped" DoubleTapped="TrackFavorite_DoubleTapped"
+              Width="{Binding FavoriteColumnWidth, Source={StaticResource TrackColumns}}" ToolTipService.ToolTip="Keep - it moves into your library">
+          <Path Width="15" Height="14" Stretch="Uniform" Stroke="{StaticResource TextSecondaryBrush}" StrokeThickness="1.5"
+                Fill="{Binding IsFavorited, Converter={StaticResource FavoriteFill}}"
+                HorizontalAlignment="Center" VerticalAlignment="Center"
+                Data="M8,15 C8,15 1,10.5 1,5.8 C1,3 3,1.3 5.4,1.3 C6.9,1.3 7.7,2.1 8,2.6 C8.3,2.1 9.1,1.3 10.6,1.3 C13,1.3 15,3 15,5.8 C15,10.5 8,15 8,15 Z"/>
+        </Grid>
+        <Grid Grid.Column="2" Background="Transparent" Tag="{Binding}" Tapped="DiscoverReject_Tapped" DoubleTapped="TrackFavorite_DoubleTapped"
+              Width="{Binding FavoriteColumnWidth, Source={StaticResource TrackColumns}}" ToolTipService.ToolTip="Not for me - remove it">
+          <Path Width="11" Height="11" Stretch="Uniform" Stroke="{StaticResource TextSecondaryBrush}" StrokeThickness="1.6"
+                StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                HorizontalAlignment="Center" VerticalAlignment="Center" Data="M1,1 L11,11 M11,1 L1,11"/>
+        </Grid>
+        <TextBlock Grid.Column="3" Text="{Binding DurationDisplay}" VerticalAlignment="Center" Margin="0,0,4,0"
+                   HorizontalAlignment="Right"/>
+        <TextBlock Grid.Column="4" Text="{Binding Genre}" VerticalAlignment="Center" Padding="6,0,6,0" TextTrimming="CharacterEllipsis"
+                   Width="{Binding GenreWidth, Source={StaticResource TrackColumns}}"/>
+      </Grid>
+    </DataTemplate>
+
     <!-- Side queue panel row (Feishin's right sidebar): # (or a playing marker), art, title /
          artist, duration. Bound to a QueueEntry. -->
     <DataTemplate x:Key="SideQueueRowTemplate">
@@ -547,6 +604,13 @@
 
 
   <Grid x:Name="PageRoot">
+    <!-- Settings > Background: behind every page (they're transparent; the page's own background
+         is the theme color under this). Opacity = the strength setting. MainPage.Backdrop.cs. -->
+    <Grid x:Name="AppBackdrop" IsHitTestVisible="False" Visibility="Collapsed">
+      <Image x:Name="AppBackdropImage" Stretch="UniformToFill" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+      <Rectangle x:Name="AppBackdropGlow"/>
+    </Grid>
+
     <!-- ================= Login ================= -->
     <Grid x:Name="LoginPanel">
       <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Width="320" Spacing="6">
@@ -625,6 +689,9 @@
                 </Button>
               </Grid>
               <RadioButton x:Name="NavHome" Content="Home" Tag="Home" GroupName="MainNav"
+                           Style="{StaticResource NavItemStyle}" Checked="Nav_Checked"/>
+              <!-- SpotiDrome's Discover Weekly / Daily Discovery (shown once SpotiDrome is connected). -->
+              <RadioButton x:Name="NavDiscover" Content="Discover" Tag="Discover" GroupName="MainNav" Visibility="Collapsed"
                            Style="{StaticResource NavItemStyle}" Checked="Nav_Checked"/>
               <RadioButton x:Name="NavArtists" Content="Artists" Tag="Artists" GroupName="MainNav"
                            Style="{StaticResource NavItemStyle}" Checked="Nav_Checked"/>
@@ -941,13 +1008,39 @@
                     <TextBlock Text="APPEARANCE" Style="{StaticResource SectionHeaderStyle}" Margin="0"/>
                     <TextBlock Text="Theme" FontWeight="SemiBold" Margin="0,4,0,0"/>
                     <StackPanel x:Name="ThemeOptions" Spacing="8"/>
+                    <!-- Custom theme: color wheel for the base (background) color, after "Custom". -->
+                    <muxc:ColorPicker x:Name="ThemeColorPicker" Visibility="Collapsed" HorizontalAlignment="Left" Margin="0,6,0,0"
+                                      ColorSpectrumShape="Ring" IsAlphaEnabled="False" IsMoreButtonVisible="False"
+                                      IsColorChannelTextInputVisible="False" IsHexInputVisible="True" IsColorPreviewVisible="True"
+                                      ColorChanged="ThemeColorPicker_ColorChanged"/>
                     <TextBlock Text="Accent color" FontWeight="SemiBold" Margin="0,8,0,0"/>
-                    <StackPanel x:Name="AccentOptions" Orientation="Horizontal" Spacing="8"/>
+                    <StackPanel x:Name="AccentOptions" Spacing="8"/>
                     <!-- Custom accent: color wheel, shown after picking the last ("Custom") swatch. -->
                     <muxc:ColorPicker x:Name="AccentColorPicker" Visibility="Collapsed" HorizontalAlignment="Left" Margin="0,6,0,0"
                                       ColorSpectrumShape="Ring" IsAlphaEnabled="False" IsMoreButtonVisible="False"
                                       IsColorChannelTextInputVisible="False" IsHexInputVisible="True" IsColorPreviewVisible="True"
                                       ColorChanged="AccentColorPicker_ColorChanged"/>
+                    <TextBlock Text="Background" FontWeight="SemiBold" Margin="0,8,0,0"/>
+                    <StackPanel x:Name="BackgroundOptions" Spacing="8"/>
+                    <StackPanel x:Name="BackgroundPicturePanel" Orientation="Horizontal" Spacing="10" Visibility="Collapsed">
+                      <Button x:Name="BackgroundPictureButton" Content="Choose picture…" Padding="14,6" Click="BackgroundPictureButton_Click"/>
+                      <CheckBox x:Name="BackgroundBlurCheck" Content="Soften" Click="BackgroundBlurCheck_Click"/>
+                    </StackPanel>
+                    <StackPanel x:Name="BackgroundStrengthPanel" Visibility="Collapsed">
+                      <TextBlock x:Name="BackgroundStrengthText" Text="Strength" FontSize="12"
+                                 Foreground="{StaticResource TextSecondaryBrush}"/>
+                      <!-- At most 360 wide but narrower on a phone, starting at the left edge. -->
+                      <Grid>
+                        <Grid.ColumnDefinitions>
+                          <ColumnDefinition Width="*" MaxWidth="360"/>
+                          <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <Slider x:Name="BackgroundStrengthSlider" Minimum="5" Maximum="60" StepFrequency="1"
+                                ValueChanged="BackgroundStrengthSlider_ValueChanged"/>
+                      </Grid>
+                    </StackPanel>
+                    <TextBlock x:Name="BackgroundHintText" FontSize="12" TextWrapping="Wrap"
+                               Foreground="{StaticResource TextSecondaryBrush}"/>
                   </StackPanel>
                 </Border>
 
@@ -1649,6 +1742,31 @@
                         DragItemsStarting="PlaylistSongsList_DragItemsStarting" DragOver="PlaylistSongsList_DragOver"
                         Drop="PlaylistSongsList_Drop" DragItemsCompleted="PlaylistSongsList_DragItemsCompleted"
                         ItemTemplate="{StaticResource TrackRowTemplate}" ItemContainerStyle="{StaticResource SongItemStyle}"
+                        DoubleTapped="TrackList_DoubleTapped" RightTapped="TrackList_RightTapped"/>
+            </Grid>
+
+            <!-- Discover: this week's / today's picks from SpotiDrome, which aren't in the library yet. -->
+            <Grid x:Name="DiscoverPage" Visibility="Collapsed">
+              <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+              </Grid.RowDefinitions>
+              <StackPanel x:Name="DiscoverButtonsPanel" Grid.Row="0" Orientation="Horizontal" Spacing="8" Margin="0,0,0,10">
+                <Button x:Name="DiscoverWeeklyButton" Content="Discover Weekly" Tag="weekly" Padding="14,6" Click="DiscoverMix_Click"/>
+                <Button x:Name="DiscoverDailyButton" Content="Daily Discovery" Tag="daily" Padding="14,6" Click="DiscoverMix_Click"/>
+                <Button x:Name="DiscoverPlayButton" Width="34" Height="34" VerticalAlignment="Center"
+                        Style="{StaticResource PrimaryButtonStyle}" Click="DiscoverPlay_Click"
+                        AutomationProperties.Name="Play" ToolTipService.ToolTip="Play">
+                  <Polygon Points="0,0 9,5.5 0,11" Fill="{StaticResource OnAccentBrush}" Margin="2,0,0,0"/>
+                </Button>
+                <Button x:Name="DiscoverMakeButton" Content="Make a new one" Padding="14,6" Click="DiscoverMake_Click"
+                        ToolTipService.ToolTip="Judge these songs now and pick new ones"/>
+              </StackPanel>
+              <TextBlock Grid.Row="1" x:Name="DiscoverStatusText" TextWrapping="Wrap" FontSize="12" Margin="2,0,0,10"
+                         Foreground="{StaticResource TextSecondaryBrush}"/>
+              <ListView Grid.Row="2" x:Name="DiscoverSongsList" Tag="DiscoverTracks" SelectionMode="Single"
+                        ItemTemplate="{StaticResource DiscoverRowTemplate}" ItemContainerStyle="{StaticResource SongItemStyle}"
                         DoubleTapped="TrackList_DoubleTapped" RightTapped="TrackList_RightTapped"/>
             </Grid>
 

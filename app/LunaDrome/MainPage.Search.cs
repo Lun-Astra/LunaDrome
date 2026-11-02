@@ -27,6 +27,7 @@ public sealed partial class MainPage
     private void InitSearch()
     {
         _spotiDrome.Configure(_prefs.SpotiDromeUrl, CredentialProtector.Unprotect(_prefs.SpotiDromeApiKey));
+        UpdateDiscoverNav();
         DownloadsList.ItemsSource = _downloads;
         _downloadPollTimer.Tick += async (_, _) => await PollDownloadsAsync();
         _toastTimer.Tick += (_, _) => HideToast();
@@ -690,6 +691,7 @@ public sealed partial class MainPage
         _prefs.SpotiDromeApiKey = apiKey.Length > 0 ? CredentialProtector.Protect(apiKey) : "";
         PreferencesService.Save(_prefs);
         _spotiDrome.Configure(_prefs.SpotiDromeUrl, apiKey);
+        UpdateDiscoverNav();
 
         if (!_spotiDrome.IsConfigured)
         {

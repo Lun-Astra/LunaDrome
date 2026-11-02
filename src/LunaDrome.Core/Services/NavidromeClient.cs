@@ -38,6 +38,16 @@ public class NavidromeClient
 
     public bool IsAuthenticated { get; private set; }
 
+    /// <summary>SpotiDrome's Discover keeps its picks in a separate Navidrome library
+    /// ("Discover"). When that exists, browsing and search stick to the real library (this id),
+    /// so songs you haven't kept yet don't show up between your own albums.</summary>
+    public string? LibraryFolderId { get; private set; }
+
+    public const string DiscoverLibraryName = "Discover";
+
+    private static readonly HashSet<string> LibraryScopedEndpoints =
+        ["getArtists.view", "getAlbumList2.view", "search3.view", "getRandomSongs.view"];
+
     public void Configure(string serverUrl, string username, string password)
     {
         ServerUrl = serverUrl.TrimEnd('/');
@@ -60,6 +70,7 @@ public class NavidromeClient
             if (resp.Status == "ok")
             {
                 IsAuthenticated = true;
+                await DetectLibraryFolderAsync();
                 return (true, null);
             }
 
@@ -72,6 +83,25 @@ public class NavidromeClient
         catch (Exception ex)
         {
             return (false, $"Unexpected error: {ex.Message}");
+        }
+    }
+
+    private async Task DetectLibraryFolderAsync()
+    {
+        LibraryFolderId = null;
+        try
+        {
+            var json = await _http.GetStringAsync(BuildUrl("getMusicFolders.view"));
+            var folders = JsonSerializer.Deserialize<SubsonicEnvelope<MusicFoldersResponse>>(json, JsonOptions)
+                ?.Response?.MusicFolders?.MusicFolder ?? [];
+            if (folders.Any(f => string.Equals(f.Name, DiscoverLibraryName, StringComparison.OrdinalIgnoreCase)))
+                LibraryFolderId = folders
+                    .FirstOrDefault(f => !string.Equals(f.Name, DiscoverLibraryName, StringComparison.OrdinalIgnoreCase))
+                    ?.Id.ToString();
+        }
+        catch
+        {
+            // An older server without libraries: everything is the library.
         }
     }
 
@@ -675,6 +705,8 @@ public class NavidromeClient
 
         foreach (var (key, value) in extraParams)
             sb.Append('&').Append(key).Append('=').Append(Uri.EscapeDataString(value));
+        if (LibraryFolderId != null && LibraryScopedEndpoints.Contains(endpoint))
+            sb.Append("&musicFolderId=").Append(LibraryFolderId);
 
         return sb.ToString();
     }
