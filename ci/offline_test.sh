@@ -59,7 +59,8 @@ adb shell monkey -p com.lunastra.lunadrome -c android.intent.category.LAUNCHER 1
 sleep 45; anr; shot d06-login-offline
 tapText "Play downloaded songs" 540 1435 login; sleep 5; shot d07-offline-page
 # Play the first downloaded song (its row) and check the log says "downloaded"
-tap 540 760; sleep 1; tap 540 760; sleep 8; shot d08-playing
+tap 118 364; sleep 8; shot d08-playing   # the row's cover = its play button
+sleep 10; shot d08b-still-playing
 tap 990 1734; sleep 3; shot d09-offline-more
 adb shell cmd connectivity airplane-mode disable
 adb logcat -d -v time > $OUT/logcat-all.txt
