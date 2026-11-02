@@ -36,6 +36,9 @@ public class Preferences
     /// <summary>Streaming quality (#28): converted by Navidrome for anything but Original.</summary>
     public StreamQuality StreamQuality { get; set; } = StreamQuality.Original;
 
+    /// <summary>Quality of offline downloads (#28), separate from streaming.</summary>
+    public StreamQuality DownloadQuality { get; set; } = StreamQuality.High;
+
     /// <summary>Volume change per mouse-wheel notch over the volume slider, in percent (#27).</summary>
     public int VolumeScrollStep { get; set; } = 5;
 

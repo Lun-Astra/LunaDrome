@@ -551,6 +551,47 @@
       </Grid>
     </DataTemplate>
 
+    <!-- Downloaded page row (#28): like the Discover row, with a ✕ that removes the download. -->
+    <DataTemplate x:Key="OfflineRowTemplate">
+      <Grid Background="Transparent" controls:SwipeToQueue.Enabled="True" controls:Motion.RowHover="True">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*"/>
+          <ColumnDefinition Width="Auto"/>
+          <ColumnDefinition Width="52"/>
+        </Grid.ColumnDefinitions>
+        <Grid Padding="6,0,6,0">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="50"/>
+            <ColumnDefinition Width="*"/>
+          </Grid.ColumnDefinitions>
+          <Grid Width="40" Height="40" HorizontalAlignment="Left">
+            <Border CornerRadius="4" Background="{StaticResource RaisedBrush}">
+              <Image Source="{Binding CoverArtUrl}" Stretch="UniformToFill" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <Border CornerRadius="4" Background="#99000000" controls:NowPlaying.SongId="{Binding Id}" controls:Motion.HoverRole="Hide">
+              <controls:EqualizerBars/>
+            </Border>
+            <Border CornerRadius="4" Background="#99000000" Tag="{Binding}" controls:Motion.HoverRole="Show"
+                    Tapped="RowPlay_Tapped" ToolTipService.ToolTip="Play">
+              <Polygon Points="0,0 11,6.5 0,13" Fill="White" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="2,0,0,0"/>
+            </Border>
+          </Grid>
+          <StackPanel Grid.Column="1" VerticalAlignment="Center">
+            <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis"/>
+            <TextBlock Text="{Binding ArtistName}" FontSize="11" Margin="0,2,0,0" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis"/>
+          </StackPanel>
+        </Grid>
+        <Grid Grid.Column="1" Background="Transparent" Tag="{Binding}" Tapped="OfflineRemove_Tapped" Width="40"
+              ToolTipService.ToolTip="Remove the download">
+          <Path Width="11" Height="11" Stretch="Uniform" Stroke="{StaticResource TextSecondaryBrush}" StrokeThickness="1.6"
+                StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                HorizontalAlignment="Center" VerticalAlignment="Center" Data="M1,1 L11,11 M11,1 L1,11"/>
+        </Grid>
+        <TextBlock Grid.Column="2" Text="{Binding DurationDisplay}" VerticalAlignment="Center" Margin="0,0,8,0"
+                   HorizontalAlignment="Right"/>
+      </Grid>
+    </DataTemplate>
+
     <!-- Side queue panel row (Feishin's right sidebar): # (or a playing marker), art, title /
          artist, duration. Bound to a QueueEntry. -->
     <DataTemplate x:Key="SideQueueRowTemplate">
@@ -625,6 +666,9 @@
         <Button x:Name="LoginButton" Content="Sign in" Click="LoginButton_Click" Height="36"
                 HorizontalAlignment="Stretch" Margin="0,10,0,0" Style="{StaticResource PrimaryButtonStyle}"/>
         <TextBlock x:Name="StatusText" Foreground="#FFFF6B6B" TextWrapping="Wrap" Margin="2,6,0,0"/>
+        <!-- #28: no connection to the server, but songs downloaded: play those. -->
+        <Button x:Name="OfflineModeButton" Content="Play downloaded songs" Visibility="Collapsed" Height="36"
+                HorizontalAlignment="Stretch" Margin="0,4,0,0" Click="OfflineMode_Click"/>
       </StackPanel>
     </Grid>
 
@@ -703,6 +747,9 @@
                            Style="{StaticResource NavItemStyle}" Checked="Nav_Checked"/>
               <RadioButton x:Name="NavStats" Content="Stats" Tag="Stats" GroupName="MainNav"
                            Style="{StaticResource NavItemStyle}" Checked="Nav_Checked"/>
+              <!-- #28: songs, albums and playlists kept on this device (MainPage.Offline.cs). -->
+              <RadioButton x:Name="NavDownloaded" Content="Downloaded" Tag="Downloaded" GroupName="MainNav"
+                           Style="{StaticResource NavItemStyle}" Checked="Nav_Checked"/>
               <!-- JamiDrome (shown once connected in Settings); the dot = this PC is playing the jam. -->
               <RadioButton x:Name="NavJam" Tag="Jam" GroupName="MainNav" Visibility="Collapsed"
                            Style="{StaticResource NavItemStyle}" Checked="Nav_Checked" AutomationProperties.Name="Jam">
@@ -712,7 +759,7 @@
                            Visibility="Collapsed"/>
                 </StackPanel>
               </RadioButton>
-              <Grid Margin="8,24,0,8">
+              <Grid x:Name="PlaylistsHeader" Margin="8,24,0,8">
                 <Grid.ColumnDefinitions>
                   <ColumnDefinition Width="*"/>
                   <ColumnDefinition Width="Auto"/>
@@ -1132,6 +1179,22 @@
                       <Button Grid.Column="1" x:Name="JamiDromeSaveButton" Style="{StaticResource TextButtonStyle}" Content="Connect" Click="JamiDromeSave_Click"/>
                     </Grid>
                     <TextBlock x:Name="JamiDromeTestText" Style="{StaticResource SettingsHintStyle}" Margin="0"/>
+                  </StackPanel>
+                </Border>
+
+                <!-- #28: offline downloads. Quality chips built in code (BuildDownloadQualityChoices). -->
+                <Border Style="{StaticResource SettingsCardStyle}">
+                  <StackPanel Spacing="10">
+                    <TextBlock Text="DOWNLOADS" Style="{StaticResource SectionHeaderStyle}" Margin="0"/>
+                    <TextBlock Text="Download quality" FontWeight="SemiBold"/>
+                    <StackPanel x:Name="DownloadQualityOptions" Spacing="8"/>
+                    <TextBlock Style="{StaticResource SettingsHintStyle}" TextWrapping="Wrap" Margin="0"
+                               Text="For songs, albums and playlists you download to listen offline (right-click or hold one: Download). Separate from streaming quality, so downloads can stay small. Songs already downloaded keep their quality."/>
+                    <Grid>
+                      <TextBlock x:Name="OfflineSizeText" VerticalAlignment="Center"/>
+                      <Button x:Name="OfflineRemoveAllButton" Content="Remove all" Style="{StaticResource TextButtonStyle}"
+                              HorizontalAlignment="Right" Click="OfflineRemoveAll_Click"/>
+                    </Grid>
                   </StackPanel>
                 </Border>
 
@@ -1767,6 +1830,37 @@
                          Foreground="{StaticResource TextSecondaryBrush}"/>
               <ListView Grid.Row="2" x:Name="DiscoverSongsList" Tag="DiscoverTracks" SelectionMode="Single"
                         ItemTemplate="{StaticResource DiscoverRowTemplate}" ItemContainerStyle="{StaticResource SongItemStyle}"
+                        DoubleTapped="TrackList_DoubleTapped" RightTapped="TrackList_RightTapped"/>
+            </Grid>
+
+            <!-- #28: Downloaded - what's kept on this device, playable without the server. -->
+            <Grid x:Name="OfflinePage" Visibility="Collapsed">
+              <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+              </Grid.RowDefinitions>
+              <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="10" Margin="0,0,0,8">
+                <TextBlock Text="Downloaded" FontSize="28" FontWeight="Bold" VerticalAlignment="Center"/>
+                <Button x:Name="OfflinePlayButton" Width="34" Height="34" VerticalAlignment="Center"
+                        Style="{StaticResource PrimaryButtonStyle}" Click="OfflinePlay_Click"
+                        AutomationProperties.Name="Play" ToolTipService.ToolTip="Play">
+                  <Polygon Points="0,0 9,5.5 0,11" Fill="{StaticResource OnAccentBrush}" Margin="2,0,0,0"/>
+                </Button>
+                <Button x:Name="OfflineShuffleButton" Content="Shuffle" Padding="14,6" VerticalAlignment="Center" Click="OfflineShuffle_Click"/>
+                <Button x:Name="OfflineReconnectButton" Content="Reconnect" Padding="14,6" VerticalAlignment="Center"
+                        Visibility="Collapsed" Click="OfflineReconnect_Click"/>
+              </StackPanel>
+              <TextBlock Grid.Row="1" x:Name="OfflineStatusText" TextWrapping="Wrap" FontSize="12" Margin="2,0,0,10"
+                         Foreground="{StaticResource TextSecondaryBrush}"/>
+              <!-- Downloaded albums and playlists: a row of cards, built in code. -->
+              <ScrollViewer Grid.Row="2" x:Name="OfflineCollectionsScroller" HorizontalScrollMode="Auto" HorizontalScrollBarVisibility="Auto"
+                            VerticalScrollMode="Disabled" VerticalScrollBarVisibility="Disabled" Margin="0,0,0,10">
+                <StackPanel x:Name="OfflineCollectionsPanel" Orientation="Horizontal" Spacing="12" Padding="0,0,0,8"/>
+              </ScrollViewer>
+              <ListView Grid.Row="3" x:Name="OfflineSongsList" Tag="OfflineTracks" SelectionMode="Single"
+                        ItemTemplate="{StaticResource OfflineRowTemplate}" ItemContainerStyle="{StaticResource SongItemStyle}"
                         DoubleTapped="TrackList_DoubleTapped" RightTapped="TrackList_RightTapped"/>
             </Grid>
 

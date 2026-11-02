@@ -621,7 +621,8 @@ public class NavidromeClient
     /// there's no Content-Length and no byte ranges, so the player can't seek. Downloads must not
     /// use it: on a song's first conversion the estimate is too big, and an HTTP client then fails
     /// with "response ended prematurely" when the real (shorter) stream ends.</param>
-    public string GetStreamUrl(string songId, bool forPlayback = true) => StreamQuality switch
+    /// <param name="quality">Another quality than playback's (offline downloads have their own).</param>
+    public string GetStreamUrl(string songId, bool forPlayback = true, StreamQuality? quality = null) => (quality ?? StreamQuality) switch
     {
         StreamQuality.VeryHigh => Converted(songId, "mp3", 320, forPlayback),
         StreamQuality.High => Converted(songId, "opus", 160, forPlayback),
@@ -663,9 +664,10 @@ public class NavidromeClient
     /// Copies a track's stream (the same URL playback uses, so the same transcoding) into
     /// <paramref name="destination"/> - used to pre-buffer the next queue entry.
     /// </summary>
-    public async Task DownloadStreamAsync(string songId, Stream destination, CancellationToken cancellationToken)
+    public async Task DownloadStreamAsync(string songId, Stream destination, CancellationToken cancellationToken,
+        StreamQuality? quality = null, IProgress<long>? progress = null)
     {
-        using var response = await _http.GetAsync(GetStreamUrl(songId, forPlayback: false), HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        using var response = await _http.GetAsync(GetStreamUrl(songId, forPlayback: false, quality), HttpCompletionOption.ResponseHeadersRead, cancellationToken);
         response.EnsureSuccessStatusCode();
 
         // Subsonic reports errors (e.g. missing file) as a 200 with a JSON/XML body, not audio.
@@ -674,8 +676,25 @@ public class NavidromeClient
             throw new HttpRequestException($"Server returned {mediaType} instead of audio.");
 
         await using var source = await response.Content.ReadAsStreamAsync(cancellationToken);
-        await source.CopyToAsync(destination, cancellationToken);
+        if (progress == null)
+        {
+            await source.CopyToAsync(destination, cancellationToken);
+            return;
+        }
+        var buffer = new byte[81920];
+        long total = 0;
+        int read;
+        while ((read = await source.ReadAsync(buffer, cancellationToken)) > 0)
+        {
+            await destination.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
+            total += read;
+            progress.Report(total);
+        }
     }
+
+    /// <summary>The cover at <paramref name="size"/> px as bytes (offline downloads keep a copy).</summary>
+    public Task<byte[]> GetCoverArtBytesAsync(string id, int size, CancellationToken cancellationToken) =>
+        _http.GetByteArrayAsync(GetCoverArtUrl(id, size), cancellationToken);
 
     // Navidrome resolves cover art for an album, artist, or track ID directly.
     public string GetCoverArtUrl(string id, int size = 300) =>

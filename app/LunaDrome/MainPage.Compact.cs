@@ -482,6 +482,11 @@ public sealed partial class MainPage
                 if (_compactSidebarOpen)
                     Motion.SlideIn(SidebarPane, 0, 40);
                 break;
+            case not "More" when _offlineMode:
+                // Offline (#28) only the Downloaded page works.
+                CloseCompactSidebar();
+                NavDownloaded.IsChecked = true;
+                break;
             case "Search":
                 // Its own page (it used to open the More menu, i.e. the same page as More).
                 CloseCompactSidebar();
