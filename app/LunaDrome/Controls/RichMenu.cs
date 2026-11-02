@@ -497,6 +497,7 @@ public static class RichMenu
         if (t.Contains("radio")) return MenuIcons.Radio;
         if (t.Contains("favorite")) return MenuIcons.Heart;
         if (t.StartsWith("remove") || t.StartsWith("delete") || t.Contains("turn off")) return MenuIcons.Trash;
+        if (t.StartsWith("download")) return MenuIcons.Download;
         if (t.Contains("shuffle")) return MenuIcons.Shuffle;
         if (t.Contains("next")) return MenuIcons.Next;
         if (t.Contains("queue") || t.Contains("last")) return MenuIcons.Queue;
@@ -592,6 +593,7 @@ public static class MenuIcons
     public const string ListPlus = "M1,3 L10,3 M1,7 L10,7 M1,11 L6,11 M12,8 L12,15 M8.5,11.5 L15.5,11.5";
     public const string Radio = "M8,6.5 A1.5,1.5 0 1,1 7.99,6.5 M4.5,4 A5,5 0 0,0 4.5,12 M11.5,4 A5,5 0 0,1 11.5,12 M2,2 A8,8 0 0,0 2,14 M14,2 A8,8 0 0,1 14,14";
     public const string Heart = "M8,14.5 C8,14.5 1,10 1,5.5 C1,3 3,1.3 5.2,1.3 C6.7,1.3 7.6,2.1 8,2.7 C8.4,2.1 9.3,1.3 10.8,1.3 C13,1.3 15,3 15,5.5 C15,10 8,14.5 8,14.5 Z";
+    public const string Download = "M8,1.5 L8,10.5 M4,7 L8,11 L12,7 M2,12 L2,14.5 L14,14.5 L14,12";
     public const string Trash = "M2,4 L14,4 M6,4 L6,2 L10,2 L10,4 M3.5,4 L4.5,15 L11.5,15 L12.5,4 M6.5,7 L6.5,12 M9.5,7 L9.5,12";
     public const string Move = "M5,1 L5,15 M2,4 L5,1 L8,4 M11,15 L11,1 M8,12 L11,15 L14,12";
     public const string Album = "M8,1 A7,7 0 1,1 7.99,1 Z M8,6 A2,2 0 1,1 7.99,6 Z";

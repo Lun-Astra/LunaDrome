@@ -184,6 +184,7 @@ public sealed partial class MainPage : Page
         _progressTimer.Tick += ProgressTimer_Tick;
         _progressTimer.Start();
 
+        InitOffline();
         ApplyAppearance();
         InitSearch();
         InitJam();
@@ -268,8 +269,11 @@ public sealed partial class MainPage : Page
         {
             StatusText.Text = error ?? "Login failed.";
             LoginButton.IsEnabled = true;
+            OfferOfflineMode();
             return;
         }
+        OfflineModeButton.Visibility = Visibility.Collapsed;
+        LoginButton.IsEnabled = true;
 
         SettingsService.Save(RememberMeBox.IsChecked == true
             ? new AppSettings { ServerUrl = serverUrl, Username = username, ProtectedPassword = CredentialProtector.Protect(password) }
@@ -284,8 +288,10 @@ public sealed partial class MainPage : Page
 #if ANDROID
         ConnectAndroidAuto();
 #endif
-        RestoreQueueState();
+        if (!_signedIn)
+            RestoreQueueState();   // not again when coming back from offline mode
         _signedIn = true;
+        OnlineForOffline();
         if (_prefs.CheckForUpdates)
             _ = CheckForUpdateAsync();
 
@@ -349,6 +355,7 @@ public sealed partial class MainPage : Page
     // neutral swatch, which follows the theme) stay right.
     private void BuildSettingsChoices()
     {
+        BuildDownloadQualityChoices();
         ThemeOptions.Children.Clear();
         // Dark themes first, then light; at most 3 per row on a phone and 6 on a window so they wrap.
         var perRow = IsCompact ? 3 : 6;
@@ -839,6 +846,7 @@ public sealed partial class MainPage : Page
         DownloadsPage.Visibility = Visibility.Collapsed;
         JamPage.Visibility = Visibility.Collapsed;
         DiscoverPage.Visibility = Visibility.Collapsed;
+        OfflinePage.Visibility = Visibility.Collapsed;
         _jam?.SetWatching(false);
     }
 
@@ -864,6 +872,7 @@ public sealed partial class MainPage : Page
         NavStats.IsChecked = false;
         NavJam.IsChecked = false;
         NavDiscover.IsChecked = false;
+        NavDownloaded.IsChecked = false;
         if (!keepPlaylist)
             PlaylistsList.SelectedItem = null;
         _suppressNavEvents = false;
@@ -928,6 +937,9 @@ public sealed partial class MainPage : Page
             case "Discover":
                 ShowPage(DiscoverPage, () => Reselect(NavDiscover));
                 _ = LoadDiscoverAsync();
+                break;
+            case "Downloaded":
+                ShowOfflinePage();
                 break;
         }
     }
@@ -1249,6 +1261,8 @@ public sealed partial class MainPage : Page
         flyout.Items.Add(new MenuFlyoutSeparator());
         flyout.Items.Add(BuildAddToPlaylistSubmenu(() => GetAlbumSongsAsync(album)));
         AddJamMenuItem(flyout, () => GetAlbumSongsAsync(album));
+        AddCollectionDownloadMenuItem(flyout, album.Id, "album", album.Name, album.ArtistName,
+            async () => await GetAlbumSongsAsync(album));
         flyout.Items.Add(new MenuFlyoutSeparator());
         AddMenuItem(flyout, "Go to album", async () => await OpenAlbumAsync(album));
         AddMenuItem(flyout, "Go to artist", async () => await NavigateToArtistAsync(album.ArtistId, album.ArtistName));
@@ -1941,6 +1955,7 @@ public sealed partial class MainPage : Page
         flyout.Items.Add(BuildAddToPlaylistSubmenu(new List<Song> { song }));
         AddJamMenuItem(flyout, () => Task.FromResult(new List<Song> { song }));
         AddFavoriteToggle(flyout, song);
+        AddDownloadMenuItem(flyout, new List<Song> { song });
         RichMenu.SetHeader(flyout, song.CoverArtUrl, song.Title,
             song.Artists.Count > 1 ? string.Join(", ", song.Artists.Select(a => a.Name)) : song.ArtistName);
         return flyout;
@@ -2161,6 +2176,8 @@ public sealed partial class MainPage : Page
                 ShowToast($"Added {songs.Count} songs from \"{playlist.Name}\" to the queue");
             }
         });
+        AddCollectionDownloadMenuItem(flyout, playlist.Id, "playlist", playlist.Name, "",
+            () => LoadPlaylistSongsAsync(playlist));
         return flyout;
     }
 
@@ -2912,9 +2929,11 @@ public sealed partial class MainPage : Page
         SetCurrent(entry);
         var song = entry.Song;
 
-        // Already pre-buffered by TrackPrefetcher? Then play it from disk: starts instantly (#4).
-        var file = _prefetcher.TryGetFile(song.Id);
-        Log($"play '{song.Title}' ({song.Id}){(file != null ? " from prefetch" : "")}");
+        // Downloaded (#28), or pre-buffered by TrackPrefetcher? Then play it from disk: starts
+        // instantly (#4), and works without the server.
+        var offlineFile = OfflineFile(song.Id);
+        var file = offlineFile ?? _prefetcher.TryGetFile(song.Id);
+        Log($"play '{song.Title}' ({song.Id}){(offlineFile != null ? " downloaded" : file != null ? " from prefetch" : "")}");
         try
         {
             _loadedEntry = entry;
@@ -3013,8 +3032,9 @@ public sealed partial class MainPage : Page
         ShowBackdropFor(song);
         FullScreenTitleText.Text = song.Title;
         ArtistLinks.Fill(FullScreenArtistText, song);
-        // The full-screen art is 360x360 - fetch a bigger rendition than the 240px list thumbnails.
-        SetImage(FullScreenArt, _client.GetCoverArtUrl(song.AlbumId, 720));
+        // The full-screen art is 360x360 - fetch a bigger rendition than the 240px list thumbnails
+        // (offline: the downloaded cover).
+        SetImage(FullScreenArt, _offlineMode ? OfflineCover(song) : _client.GetCoverArtUrl(song.AlbumId, 720));
         ScrollQueuesTo(entry);
         ShowSideLyrics(); // hides the previous song's lyrics until the new ones load
         SyncCompactPlayer();
@@ -3467,7 +3487,7 @@ public sealed partial class MainPage : Page
         if (JamOwnsPlayback || _loadedEntry == null || !_isPlaying || !_prefs.PrefetchNextTrack || _fadingOut != null)
             return;
 
-        if (GetNextEntry() is { } next && next.Song.Id != _loadedEntry.Song.Id)
+        if (GetNextEntry() is { } next && next.Song.Id != _loadedEntry.Song.Id && OfflineFile(next.Song.Id) == null)
             _prefetcher.Prefetch(next.Song.Id, keepSongId: _loadedEntry.Song.Id);
     }
 
