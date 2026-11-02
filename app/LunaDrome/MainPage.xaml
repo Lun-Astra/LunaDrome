@@ -604,6 +604,13 @@
 
 
   <Grid x:Name="PageRoot">
+    <!-- Settings > Background: behind every page (they're transparent; the page's own background
+         is the theme color under this). Opacity = the strength setting. MainPage.Backdrop.cs. -->
+    <Grid x:Name="AppBackdrop" IsHitTestVisible="False" Visibility="Collapsed">
+      <Image x:Name="AppBackdropImage" Stretch="UniformToFill" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+      <Rectangle x:Name="AppBackdropGlow"/>
+    </Grid>
+
     <!-- ================= Login ================= -->
     <Grid x:Name="LoginPanel">
       <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Width="320" Spacing="6">
@@ -1001,13 +1008,39 @@
                     <TextBlock Text="APPEARANCE" Style="{StaticResource SectionHeaderStyle}" Margin="0"/>
                     <TextBlock Text="Theme" FontWeight="SemiBold" Margin="0,4,0,0"/>
                     <StackPanel x:Name="ThemeOptions" Spacing="8"/>
+                    <!-- Custom theme: color wheel for the base (background) color, after "Custom". -->
+                    <muxc:ColorPicker x:Name="ThemeColorPicker" Visibility="Collapsed" HorizontalAlignment="Left" Margin="0,6,0,0"
+                                      ColorSpectrumShape="Ring" IsAlphaEnabled="False" IsMoreButtonVisible="False"
+                                      IsColorChannelTextInputVisible="False" IsHexInputVisible="True" IsColorPreviewVisible="True"
+                                      ColorChanged="ThemeColorPicker_ColorChanged"/>
                     <TextBlock Text="Accent color" FontWeight="SemiBold" Margin="0,8,0,0"/>
-                    <StackPanel x:Name="AccentOptions" Orientation="Horizontal" Spacing="8"/>
+                    <StackPanel x:Name="AccentOptions" Spacing="8"/>
                     <!-- Custom accent: color wheel, shown after picking the last ("Custom") swatch. -->
                     <muxc:ColorPicker x:Name="AccentColorPicker" Visibility="Collapsed" HorizontalAlignment="Left" Margin="0,6,0,0"
                                       ColorSpectrumShape="Ring" IsAlphaEnabled="False" IsMoreButtonVisible="False"
                                       IsColorChannelTextInputVisible="False" IsHexInputVisible="True" IsColorPreviewVisible="True"
                                       ColorChanged="AccentColorPicker_ColorChanged"/>
+                    <TextBlock Text="Background" FontWeight="SemiBold" Margin="0,8,0,0"/>
+                    <StackPanel x:Name="BackgroundOptions" Spacing="8"/>
+                    <StackPanel x:Name="BackgroundPicturePanel" Orientation="Horizontal" Spacing="10" Visibility="Collapsed">
+                      <Button x:Name="BackgroundPictureButton" Content="Choose picture…" Padding="14,6" Click="BackgroundPictureButton_Click"/>
+                      <CheckBox x:Name="BackgroundBlurCheck" Content="Soften" Click="BackgroundBlurCheck_Click"/>
+                    </StackPanel>
+                    <StackPanel x:Name="BackgroundStrengthPanel" Visibility="Collapsed">
+                      <TextBlock x:Name="BackgroundStrengthText" Text="Strength" FontSize="12"
+                                 Foreground="{StaticResource TextSecondaryBrush}"/>
+                      <!-- At most 360 wide but narrower on a phone, starting at the left edge. -->
+                      <Grid>
+                        <Grid.ColumnDefinitions>
+                          <ColumnDefinition Width="*" MaxWidth="360"/>
+                          <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <Slider x:Name="BackgroundStrengthSlider" Minimum="5" Maximum="60" StepFrequency="1"
+                                ValueChanged="BackgroundStrengthSlider_ValueChanged"/>
+                      </Grid>
+                    </StackPanel>
+                    <TextBlock x:Name="BackgroundHintText" FontSize="12" TextWrapping="Wrap"
+                               Foreground="{StaticResource TextSecondaryBrush}"/>
                   </StackPanel>
                 </Border>
 

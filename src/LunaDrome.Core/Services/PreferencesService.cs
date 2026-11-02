@@ -10,6 +10,17 @@ public class Preferences
     public string Accent { get; set; } = "White";
     /// <summary>The color-wheel pick ("#RRGGBB"), kept while a preset accent is in use.</summary>
     public string CustomAccent { get; set; } = "";
+    /// <summary>The "Custom" theme's base color ("#RRGGBB"), kept while a named theme is in use.
+    /// Theme itself is "#RRGGBB" while the custom one is picked.</summary>
+    public string CustomTheme { get; set; } = "";
+
+    /// <summary>What's behind the pages: Plain, Glow (accent color), NowPlaying (the playing
+    /// song's blurred cover) or Picture (BackgroundPicturePath).</summary>
+    public string BackgroundStyle { get; set; } = "Plain";
+    /// <summary>How strongly the background shows through, in percent (5-60).</summary>
+    public int BackgroundStrength { get; set; } = 25;
+    /// <summary>Soften the own picture (the cover is always blurred).</summary>
+    public bool BackgroundBlur { get; set; }
 
     public bool PrefetchNextTrack { get; set; } = true;
     public bool ResumeQueueOnStartup { get; set; } = true;
@@ -71,6 +82,10 @@ public static class PreferencesService
 {
     private static readonly string PreferencesPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "LunaDrome-Uno", "preferences.json");
+
+    /// <summary>The picture for the "Picture" background (a copy of the one picked in Settings).</summary>
+    public static readonly string BackgroundPicturePath = Path.Combine(
+        Path.GetDirectoryName(PreferencesPath)!, "background.jpg");
 
     public static Preferences Load()
     {

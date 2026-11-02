@@ -46,6 +46,86 @@ public static class BlurredArt
     }
 
     /// <summary>
+    /// The whole-app background (Settings > Background): the playing song's cover from a URL,
+    /// always blurred - a cover is too small to show sharp across a window.
+    /// </summary>
+    public static async Task<BitmapImage?> LoadBackdropAsync(string? url)
+    {
+        if (string.IsNullOrEmpty(url))
+            return null;
+        try
+        {
+            return await BackdropAsync(await Http.GetByteArrayAsync(url), blur: true);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>The own picture as the app background, sharp or softened.</summary>
+    public static async Task<BitmapImage?> LoadBackdropFileAsync(string path, bool blur)
+    {
+        try
+        {
+            return File.Exists(path) ? await BackdropAsync(await File.ReadAllBytesAsync(path), blur) : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// A picked picture as a JPEG of at most 2560 px wide/high, for the settings folder (a phone
+    /// photo can be 4000+ px and 10 MB; decoding that on every start is wasted). Null = not an image.
+    /// </summary>
+    public static byte[]? ShrinkPicture(byte[] imageBytes)
+    {
+        using var source = SKImage.FromEncodedData(imageBytes);
+        if (source == null)
+            return null;
+        var scale = Math.Min(1f, 2560f / Math.Max(source.Width, source.Height));
+        var width = Math.Max(1, (int)(source.Width * scale));
+        var height = Math.Max(1, (int)(source.Height * scale));
+        using var surface = SKSurface.Create(new SKImageInfo(width, height));
+        surface.Canvas.DrawImage(source, SKRect.Create(0, 0, width, height), new SKSamplingOptions(SKFilterMode.Linear, SKMipmapMode.Linear));
+        using var image = surface.Snapshot();
+        using var data = image.Encode(SKEncodedImageFormat.Jpeg, 90);
+        return data.ToArray();
+    }
+
+    private static async Task<BitmapImage?> BackdropAsync(byte[] bytes, bool blur)
+    {
+        var encoded = blur ? await Task.Run(() => RenderSoft(bytes)) : bytes;
+        if (encoded == null)
+            return null;
+        var bitmap = new BitmapImage();
+        using var stream = new MemoryStream(encoded);
+        await bitmap.SetSourceAsync(stream.AsRandomAccessStream());
+        return bitmap;
+    }
+
+    // Small (the blur hides the lost detail) and blurred with Clamp tiling, so the edges keep the
+    // picture's colors instead of fading out - it fills the window edge to edge.
+    private static byte[]? RenderSoft(byte[] imageBytes)
+    {
+        using var source = SKImage.FromEncodedData(imageBytes);
+        if (source == null)
+            return null;
+        var scale = Math.Min(1f, 320f / Math.Max(source.Width, source.Height));
+        var width = Math.Max(1, (int)(source.Width * scale));
+        var height = Math.Max(1, (int)(source.Height * scale));
+        var sampling = new SKSamplingOptions(SKFilterMode.Linear, SKMipmapMode.Linear);
+        using var surface = SKSurface.Create(new SKImageInfo(width, height));
+        using var paint = new SKPaint { ImageFilter = SKImageFilter.CreateBlur(9f, 9f, SKShaderTileMode.Clamp) };
+        surface.Canvas.DrawImage(source, SKRect.Create(0, 0, width, height), sampling, paint);
+        using var image = surface.Snapshot();
+        using var data = image.Encode(SKEncodedImageFormat.Jpeg, 92);
+        return data.ToArray();
+    }
+
+    /// <summary>
     /// Average color of the cover art, for the album page's tinted header (Feishin derives that
     /// header color from the cover the same way - an average, via fast-average-color).
     /// </summary>
