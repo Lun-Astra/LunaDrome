@@ -37,13 +37,6 @@ public static class SwipeToQueue
     private const double StartSlop = 10;       // px before deciding sideways vs. scrolling
     private const double MaxSlide = 120;       // how far the row follows the finger
 
-    // #37: removing was too quick to trigger by accident ("really hard to keep the queue where it
-    // is") and the row just vanished. A remove swipe has to go further, the row follows the finger
-    // all the way, turns clearly red once letting go would remove it, and only removes when the
-    // finger lifts there (dragging back cancels); then it slides out before it goes.
-    private const double RemoveDistance = 120;
-    private const double RemoveMaxSlide = 220;
-
     public static readonly DependencyProperty EnabledProperty =
         DependencyProperty.RegisterAttached("Enabled", typeof(bool), typeof(SwipeToQueue),
             new PropertyMetadata(false, (d, e) => Attach(d, e, right: true)));
@@ -90,10 +83,6 @@ public static class SwipeToQueue
         private bool _tracking;
         private bool _swiping;
         private bool _done;
-        private bool _armed;   // remove swipe past RemoveDistance: lifting the finger removes
-
-        private bool Removing => _direction < 0;
-        private double Distance => Removing ? RemoveDistance : SwipeDistance;
 
         public Tracker(FrameworkElement row, bool right)
         {
@@ -182,22 +171,11 @@ public static class SwipeToQueue
             }
             // The row follows the finger (with some resistance past the threshold) and tints
             // more the closer it gets; crossing the threshold ticks, the action bumps.
-            var slide = along <= Distance ? along : Distance + (along - Distance) * 0.4;
-            Motion.EnsureTransform(_row).TranslateX = _direction * Math.Clamp(slide, 0, Removing ? RemoveMaxSlide : MaxSlide);
+            var slide = along <= SwipeDistance ? along : SwipeDistance + (along - SwipeDistance) * 0.4;
+            Motion.EnsureTransform(_row).TranslateX = _direction * Math.Clamp(slide, 0, MaxSlide);
+            Tint(Math.Clamp(along / SwipeDistance, 0, 1));
             _snapBack.Stop();
             _snapBack.Start();   // restarted by every move; fires once the moves stop
-            if (Removing)
-            {
-                var armed = along >= RemoveDistance;
-                if (armed != _armed)
-                {
-                    _armed = armed;
-                    LunaDrome.Services.Haptics.Tick();   // a tick both ways: armed / disarmed
-                }
-                Tint(armed ? 2.2 : Math.Clamp(along / RemoveDistance, 0, 1));
-                return;   // removed on release (Released)
-            }
-            Tint(Math.Clamp(along / SwipeDistance, 0, 1));
             if (along >= SwipeDistance * 0.8 && !_ticked)
             {
                 _ticked = true;
@@ -212,53 +190,9 @@ public static class SwipeToQueue
         private void Released(object sender, PointerRoutedEventArgs e)
         {
             if (_tracking && _swiping && e.Pointer.PointerId == _pointerId
-                && (e.GetCurrentPoint(null).Position.X - _start.X) * _direction >= Distance)
-            {
-                if (Removing)
-                {
-                    SlideOutAndRemove();
-                    return;
-                }
+                && (e.GetCurrentPoint(null).Position.X - _start.X) * _direction >= SwipeDistance)
                 Act();
-            }
             Reset();
-        }
-
-        // The row leaves to the left and fades, then the entry is removed; the row's look is put
-        // back afterwards because the list reuses it for another song.
-        private void SlideOutAndRemove()
-        {
-            _tracking = false;
-            _snapBack.Stop();
-            LunaDrome.Services.Haptics.Confirm();
-            var transform = Motion.EnsureTransform(_row);
-            var width = Math.Max(_row.ActualWidth, RemoveMaxSlide);
-            var storyboard = new Microsoft.UI.Xaml.Media.Animation.Storyboard();
-            var slide = new Microsoft.UI.Xaml.Media.Animation.DoubleAnimation
-            {
-                To = -width, Duration = TimeSpan.FromMilliseconds(180),
-                EasingFunction = new Microsoft.UI.Xaml.Media.Animation.CubicEase { EasingMode = Microsoft.UI.Xaml.Media.Animation.EasingMode.EaseIn },
-            };
-            Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTarget(slide, transform);
-            Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTargetProperty(slide, nameof(CompositeTransform.TranslateX));
-            var fade = new Microsoft.UI.Xaml.Media.Animation.DoubleAnimation { To = 0, Duration = TimeSpan.FromMilliseconds(180) };
-            Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTarget(fade, _row);
-            Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTargetProperty(fade, nameof(UIElement.Opacity));
-            storyboard.Children.Add(slide);
-            storyboard.Children.Add(fade);
-            var entry = _row.DataContext;
-            storyboard.Completed += (_, _) =>
-            {
-                storyboard.Stop();
-                transform.TranslateX = 0;
-                _row.Opacity = 1;
-                _swiping = _armed = _done = _ticked = false;
-                if (_row is Panel panel) panel.Background = _restBackground;
-                else if (_row is Border border) border.Background = _restBackground;
-                if (entry != null)
-                    SwipedToRemove?.Invoke(entry);
-            };
-            storyboard.Begin();
         }
 
         private Windows.Foundation.Point RowPosition()
@@ -290,7 +224,6 @@ public static class SwipeToQueue
             _swiping = false;
             _done = false;
             _ticked = false;
-            _armed = false;
             if (!wasSwiping)
                 return;
             SpringBack();
