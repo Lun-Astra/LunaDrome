@@ -398,6 +398,8 @@ public sealed partial class MainPage
         _compactPlayerTabs = true;
         tab.IsChecked = true;
         UpdateCompactPlayerMode();
+        if (tab == QueueTabButton)
+            ScrollQueuesToCurrent();   // Checked doesn't fire when it already was the tab
     }
 
     /// <summary>Copies the playback bar's state into the phone player (cheap; called on state

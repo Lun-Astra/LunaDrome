@@ -164,8 +164,20 @@ public sealed partial class MainPage : Page
         {
             if (item is QueueEntry entry && _queue.Contains(entry))
             {
+                var index = _queue.IndexOf(entry);
+                var wasCurrent = entry == _current;
                 RemoveFromQueue(new List<QueueEntry> { entry });
-                ShowToast($"Removed from queue: {entry.Song.Title}");
+                // #37: a swipe can still be a slip; Undo puts it back where it was (the playing
+                // song isn't restarted - it was skipped, putting it back just lists it again).
+                ShowToast($"Removed from queue: {entry.Song.Title}", "Undo", () =>
+                {
+                    if (_queue.Contains(entry))
+                        return;
+                    InsertIntoQueue(Math.Min(index, _queue.Count), new List<QueueEntry> { entry });
+                    _unshuffledOrder?.Add(entry);
+                    if (wasCurrent)
+                        entry.IsCurrent = false;
+                });
             }
         };
         _progressTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(400) };
@@ -1967,7 +1979,10 @@ public sealed partial class MainPage : Page
             {
                 try
                 {
-                    foreach (var song in await getSongs())
+                    var songs = await SkipOrKeepDuplicatesAsync(playlist, await getSongs());
+                    if (songs.Count == 0)
+                        return;
+                    foreach (var song in songs)
                         await _client.AddSongToPlaylistAsync(playlist.Id, song.Id);
                     await LoadPlaylistsAsync();
                 }
@@ -1995,6 +2010,55 @@ public sealed partial class MainPage : Page
         });
         sub.Items.Add(create);
         return sub;
+    }
+
+    /// <summary>
+    /// #39: songs that are already in the playlist are only added again after asking. Returns
+    /// what to add: all of them, only the new ones, or nothing (cancelled).
+    /// </summary>
+    private async Task<List<Song>> SkipOrKeepDuplicatesAsync(Playlist playlist, List<Song> songs)
+    {
+        HashSet<string> inPlaylist;
+        try
+        {
+            inPlaylist = (await _client.GetPlaylistSongsAsync(playlist.Id)).Select(s => s.Id).ToHashSet();
+        }
+        catch
+        {
+            return songs;   // can't check: add as before
+        }
+        var already = songs.Where(s => inPlaylist.Contains(s.Id)).ToList();
+        if (already.Count == 0)
+            return songs;
+
+        var fresh = songs.Where(s => !inPlaylist.Contains(s.Id)).ToList();
+        var dialog = new ContentDialog
+        {
+            Title = already.Count == 1 && songs.Count == 1 ? "Already in this playlist" : "Some songs are already in it",
+            Content = songs.Count == 1
+                ? $"“{already[0].Title}” is already in {playlist.Name}. Add it again?"
+                : already.Count == songs.Count
+                    ? $"All {songs.Count} songs are already in {playlist.Name}. Add them again?"
+                    : $"{already.Count} of the {songs.Count} songs are already in {playlist.Name}.",
+            PrimaryButtonText = songs.Count == 1 ? "Add again" : "Add all",
+            SecondaryButtonText = fresh.Count > 0 ? $"Add the {fresh.Count} new" : "",
+            CloseButtonText = "Cancel",
+            DefaultButton = fresh.Count > 0 ? ContentDialogButton.Secondary : ContentDialogButton.Close,
+            XamlRoot = XamlRoot,
+        };
+        try
+        {
+            return await dialog.ShowAsync() switch
+            {
+                ContentDialogResult.Primary => songs,
+                ContentDialogResult.Secondary => fresh,
+                _ => new List<Song>(),
+            };
+        }
+        catch
+        {
+            return new List<Song>();   // another dialog is open
+        }
     }
 
     // ================= Playlists =================
@@ -2201,6 +2265,7 @@ public sealed partial class MainPage : Page
         {
             Motion.FadeIn(FullScreenPlayerOverlay);
             ScrollLyricsToActive(animate: false);
+            ScrollQueuesToCurrent();
         }
         UpdateVisualizerCaptureState();
     }
@@ -2219,12 +2284,7 @@ public sealed partial class MainPage : Page
             return;
 
         Motion.FadeIn(QueueSidePanel);
-        // After the just-shown list has been laid out, or the scroll is ignored.
-        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
-        {
-            if (_current != null)
-                SideQueueList.ScrollIntoView(_current, ScrollIntoViewAlignment.Leading);
-        });
+        ScrollQueuesToCurrent();
         await LoadLyricsForCurrentSongAsync();
     }
 
@@ -2264,11 +2324,30 @@ public sealed partial class MainPage : Page
             _queue[i].Number = i + 1;
     }
 
+    // #38: the playing song goes to the top of the queue lists, with the song before it above it
+    // for context. After layout: right after a song change (or a list that was just shown) the
+    // rows aren't measured yet and ScrollIntoView landed short or did nothing; and the default
+    // alignment only scrolled as far as needed, leaving the song at the bottom edge. A list
+    // that's hidden now scrolls when it's shown (ScrollQueuesToCurrent).
     private void ScrollQueuesTo(QueueEntry entry)
     {
-        QueueList.ScrollIntoView(entry);
-        if (QueueSidePanel.Visibility == Visibility.Visible)
-            SideQueueList.ScrollIntoView(entry);
+        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        {
+            var index = _queue.IndexOf(entry);
+            if (index < 0)
+                return;
+            var target = _queue[Math.Max(0, index - 1)];
+            if (FullScreenPlayerOverlay.Visibility == Visibility.Visible && QueueList.Visibility == Visibility.Visible)
+                QueueList.ScrollIntoView(target, ScrollIntoViewAlignment.Leading);
+            if (QueueSidePanel.Visibility == Visibility.Visible)
+                SideQueueList.ScrollIntoView(target, ScrollIntoViewAlignment.Leading);
+        });
+    }
+
+    private void ScrollQueuesToCurrent()
+    {
+        if (_current != null)
+            ScrollQueuesTo(_current);
     }
 
     private void CloseFullScreenPlayer_Click(object sender, RoutedEventArgs e)
@@ -2309,6 +2388,8 @@ public sealed partial class MainPage : Page
             return;
 
         QueueList.Visibility = panel == "Queue" ? Visibility.Visible : Visibility.Collapsed;
+        if (panel == "Queue")
+            ScrollQueuesToCurrent();
         LyricsPanelView.Visibility = panel == "Lyrics" ? Visibility.Visible : Visibility.Collapsed;
         VisualizerPanelView.Visibility = panel == "Visualizer" ? Visibility.Visible : Visibility.Collapsed;
         UpdateVisualizerCaptureState();
