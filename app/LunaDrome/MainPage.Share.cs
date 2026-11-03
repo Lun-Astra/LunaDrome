@@ -16,6 +16,7 @@ public sealed partial class MainPage
         e.Handled = true;
 
         const string RadioIcon = "M8,5 A1.5,1.5 0 1,1 7.99,5 M4.5,2.5 A5,5 0 0,0 4.5,10.5 M11.5,2.5 A5,5 0 0,1 11.5,10.5 M2,0.5 A8,8 0 0,0 2,12.5 M14,0.5 A8,8 0 0,1 14,12.5";
+        const string MicIcon = "M8,1 C9.4,1 10.5,2.1 10.5,3.5 L10.5,7.5 C10.5,8.9 9.4,10 8,10 C6.6,10 5.5,8.9 5.5,7.5 L5.5,3.5 C5.5,2.1 6.6,1 8,1 Z M3,7 C3,10 5.2,12.5 8,12.5 C10.8,12.5 13,10 13,7 M8,12.5 L8,15 M5.5,15 L10.5,15";
         const string ShareIcon = "M8,10 L8,1 M4.5,4.5 L8,1 L11.5,4.5 M2,8 L2,14 L14,14 L14,8";
         const string AlbumIcon = "M8,1 A7,7 0 1,1 7.99,1 Z M8,6 A2,2 0 1,1 7.99,6 Z";
         const string ArtistIcon = "M8,1.5 A3.5,3.5 0 1,1 7.99,1.5 Z M1.5,15 C1.5,9.5 14.5,9.5 14.5,15";
@@ -25,6 +26,7 @@ public sealed partial class MainPage
         {
             new("Start radio", RadioIcon, () => _ = StartSongRadioAsync(song), "songs like this"),
             new("Share song…", ShareIcon, () => ShowShareDialog(song), "public link"),
+            new("Karaoke", MicIcon, OpenKaraoke, "sing along"),
             null,
             new("Go to album", AlbumIcon, () => _ = OpenAlbumAsync(new Album
             {
