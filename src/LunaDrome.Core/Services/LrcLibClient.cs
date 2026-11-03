@@ -24,7 +24,8 @@ public static partial class LrcLibClient
     }
 
     private const double SyncedToleranceSec = 2;
-    private const double PlainToleranceSec = 5;
+    // Plain text isn't timed, so a remaster or "Reload" version a few seconds off still fits.
+    private const double PlainToleranceSec = 15;
 
     public static async Task<(List<LyricLine> Lines, bool Synced)> GetLyricsAsync(string artist, string title, string album, int durationSeconds)
     {
@@ -62,42 +63,106 @@ public static partial class LrcLibClient
             // or shorter (a music video's intro, a radio edit) puts every line off by that much.
             // So synced lyrics are only taken within SyncedToleranceSec of this file, the closest
             // one wins; anything else (up to PlainToleranceSec) is still fine as plain text.
+            // A slowed / sped-up / nightcore edit is the same recording at another speed: any
+            // length goes, and synced lines are stretched to this file's length.
+            var speedEdit = SpeedEditRegex().IsMatch(title) || SpeedEditRegex().IsMatch(album);
             (List<LyricLine> Lines, bool Synced)? plainFallback = null;
             (List<LyricLine> Lines, bool Synced)? bestSynced = null;
             var bestDiff = double.MaxValue;
+
+            void Consider(JsonElement record, Func<JsonElement, bool>? sameSong = null)
+            {
+                if (sameSong != null && !sameSong(record))
+                    return;
+                var recordSeconds = Seconds(record);
+                var diff = durationSeconds > 0 && recordSeconds > 0 ? Math.Abs(recordSeconds - durationSeconds) : 0;
+                // Skip versions whose length is way off (live cuts, extended mixes). Matched on
+                // the title alone it has to be the same length, plain text too. A speed edit is
+                // at most ~30% faster or slower.
+                var tolerance = sameSong != null ? SyncedToleranceSec : PlainToleranceSec;
+                var fits = speedEdit
+                    ? recordSeconds <= 0 || durationSeconds <= 0 || durationSeconds / recordSeconds is > 0.7 and < 1.4
+                    : diff <= tolerance;
+                if (!fits || FromRecord(record) is not { Lines.Count: > 0 } candidate)
+                    return;
+
+                if (candidate.Synced && speedEdit && recordSeconds > 0 && durationSeconds > 0)
+                {
+                    var stretch = durationSeconds / recordSeconds;
+                    foreach (var line in candidate.Lines)
+                        line.Start = TimeSpan.FromSeconds(line.Start.TotalSeconds * stretch);
+                    diff = 0;
+                }
+                if (candidate.Synced && diff <= SyncedToleranceSec)
+                {
+                    if (diff < bestDiff)
+                        (bestSynced, bestDiff) = (candidate, diff);
+                }
+                else
+                {
+                    plainFallback ??= (candidate.Lines, false);
+                }
+            }
+
+            async Task<bool> SearchAsync(string search, Func<JsonElement, bool>? sameSong = null)
+            {
+                using var response = await Http.GetAsync(search);
+                if (response.StatusCode == HttpStatusCode.TooManyRequests)
+                    return false;
+                if (response.IsSuccessStatusCode)
+                {
+                    using var results = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+                    var records = results.RootElement.EnumerateArray().ToList();
+                    // A speed edit can't be matched on length: take the song's usual length (the
+                    // one most uploads share), not a live cut or a remix that happens to come first.
+                    if (speedEdit)
+                    {
+                        var usual = records.GroupBy(r => Math.Round(Seconds(r))).ToDictionary(g => g.Key, g => g.Count());
+                        records = records.OrderByDescending(r => usual[Math.Round(Seconds(r))]).ToList();
+                    }
+                    foreach (var record in records)
+                        Consider(record, sameSong);
+                }
+                return true;
+            }
+
             var searches = titles.Select(t => $"api/search?artist_name={Uri.EscapeDataString(artists[^1])}&track_name={Uri.EscapeDataString(t)}")
                 .Append($"api/search?q={Uri.EscapeDataString(artists[^1] + " " + titles[^1])}");
             foreach (var search in searches)
             {
-                using var response = await Http.GetAsync(search);
-                if (response.StatusCode == HttpStatusCode.TooManyRequests)
-                    break;
-                if (!response.IsSuccessStatusCode)
-                    continue;
-                using var results = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-                foreach (var record in results.RootElement.EnumerateArray())
-                {
-                    var diff = durationSeconds > 0 && record.TryGetProperty("duration", out var d) && d.ValueKind == JsonValueKind.Number
-                        ? Math.Abs(d.GetDouble() - durationSeconds)
-                        : 0;
-                    // Skip versions whose length is way off (live cuts, extended mixes).
-                    if (diff > PlainToleranceSec || FromRecord(record) is not { Lines.Count: > 0 } candidate)
-                        continue;
-
-                    if (candidate.Synced && diff <= SyncedToleranceSec)
-                    {
-                        if (diff < bestDiff)
-                            (bestSynced, bestDiff) = (candidate, diff);
-                    }
-                    else
-                    {
-                        plainFallback ??= (candidate.Lines, false);
-                    }
-                }
+                if (!await SearchAsync(search))
+                    return plainFallback ?? (new(), false);
                 if (bestSynced != null)
                     return bestSynced.Value;
                 if (plainFallback != null)
                     break;
+            }
+
+            // Soundtracks are often tagged with the studio or the game ("Supergiant Games",
+            // "Hades II - Time Belongs to Us") while LRCLIB has the singer. Last try: the title
+            // alone. Plenty of different songs share a title (and a length), so it has to be
+            // exactly that title on the same album or by one of the artists - or a speed edit,
+            // whose uploader is never the artist.
+            if (plainFallback == null)
+            {
+                var albumKey = Normalize(album);
+                var artistKeys = artists.Concat(Regex.Split(artist, @",|&| x | feat\.? | ft\.? ", RegexOptions.IgnoreCase))
+                    .Select(Normalize).Where(k => k.Length > 0).Distinct().ToList();
+                foreach (var bare in BareTitles(titles[^1]))
+                {
+                    var key = Normalize(bare);
+                    bool SameSong(JsonElement record) =>
+                        Normalize(Text(record, "trackName")) == key
+                        && (speedEdit
+                            || (albumKey.Length > 0 && Normalize(Text(record, "albumName")) == albumKey)
+                            || artistKeys.Any(Normalize(Text(record, "artistName")).Contains));
+                    if (!await SearchAsync($"api/search?track_name={Uri.EscapeDataString(bare)}", SameSong))
+                        break;
+                    if (bestSynced != null)
+                        return bestSynced.Value;
+                    if (plainFallback != null)
+                        break;
+                }
             }
             return plainFallback ?? (new(), false);
         }
@@ -106,6 +171,32 @@ public static partial class LrcLibClient
             return (new(), false);
         }
     }
+
+    private static double Seconds(JsonElement record) =>
+        record.TryGetProperty("duration", out var d) && d.ValueKind == JsonValueKind.Number ? d.GetDouble() : 0;
+
+    private static string Text(JsonElement record, string property) =>
+        record.TryGetProperty(property, out var p) && p.ValueKind == JsonValueKind.String ? p.GetString() ?? "" : "";
+
+    [GeneratedRegex(@"slowed|reverb|sped[\s-]*up|speed[\s-]*up|nightcore|daycore", RegexOptions.IgnoreCase)]
+    private static partial Regex SpeedEditRegex();
+
+    /// <summary>The title without "Something - " in front ("Hades II - Time Belongs to Us"),
+    /// and without " - something" after it ("Lil Crush - Live from Phoenix").</summary>
+    private static IEnumerable<string> BareTitles(string title)
+    {
+        var dash = title.IndexOf(" - ", StringComparison.Ordinal);
+        if (dash < 0)
+        {
+            yield return title;
+            yield break;
+        }
+        yield return title[(dash + 3)..].Trim();
+        yield return title[..dash].Trim();
+    }
+
+    private static string Normalize(string text) =>
+        Regex.Replace(text.ToLowerInvariant(), @"[^\p{L}\p{N}]+", "");
 
     /// <summary>The artist as tagged, then just the first of several ("A, B" / "A & B" / "A x B").</summary>
     private static List<string> ArtistVariants(string artist)
@@ -123,9 +214,11 @@ public static partial class LrcLibClient
     {
         var list = new List<string> { title.Trim() };
         var cleaned = Regex.Replace(title,
-            @"\s*[\(\[][^\)\]]*(feat\.?|ft\.?|with |official|video|audio|lyric|visuali[sz]er|remaster|hd|4k|mv)[^\)\]]*[\)\]]",
+            @"\s*[\(\[][^\)\]]*(feat\.?|ft\.?|with |official|video|audio|lyric|visuali[sz]er|remaster|hd|4k|mv|slowed|reverb|sped|speed|nightcore|daycore)[^\)\]]*[\)\]]",
             "", RegexOptions.IgnoreCase);
         cleaned = Regex.Replace(cleaned, @"\s+-\s+(\d{4}\s+)?remaster(ed)?.*$", "", RegexOptions.IgnoreCase).Trim();
+        cleaned = Regex.Replace(cleaned, @"\s+-\s+[^-]*(slowed|reverb|sped|speed up|nightcore|daycore)[^-]*$", "", RegexOptions.IgnoreCase).Trim();
+        cleaned = Regex.Replace(cleaned, @"\s+-\s+[^-]*(slowed|reverb|sped|speed up|nightcore|daycore)[^-]*$", "", RegexOptions.IgnoreCase).Trim();
         foreach (var candidate in new[] { cleaned }
                      .Concat(artists.Select(a => cleaned.StartsWith(a + " - ", StringComparison.OrdinalIgnoreCase) ? cleaned[(a.Length + 3)..].Trim() : "")))
             if (candidate.Length > 0 && !list.Contains(candidate, StringComparer.OrdinalIgnoreCase))
