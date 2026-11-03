@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Net;
 using System.Net.Http;
 using System.Text.Json;
+using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using LunaDrome.Core.Models;
 
@@ -29,6 +30,20 @@ public static partial class LrcLibClient
 
     public static async Task<(List<LyricLine> Lines, bool Synced)> GetLyricsAsync(string artist, string title, string album, int durationSeconds)
     {
+        // LRCLIB has bad moments (a search answering 503, a timeout). Without this the song played
+        // without lyrics (or with only the server's plain ones) until it was played again.
+        var failed = new StrongBox<bool>();
+        var found = await LookupAsync(artist, title, album, durationSeconds, failed);
+        if (found.Synced || !failed.Value)
+            return found;
+        await Task.Delay(TimeSpan.FromSeconds(2.5));
+        var again = await LookupAsync(artist, title, album, durationSeconds, new StrongBox<bool>());
+        return again.Synced || again.Lines.Count > found.Lines.Count ? again : found;
+    }
+
+    private static async Task<(List<LyricLine> Lines, bool Synced)> LookupAsync(string artist, string title, string album, int durationSeconds,
+        StrongBox<bool> failed)
+    {
         try
         {
             // #20: library tags often don't match LRCLIB's spelling - several artists joined
@@ -37,6 +52,9 @@ public static partial class LrcLibClient
             // variants; exact lookups (album + duration) before searches.
             var artists = ArtistVariants(artist);
             var titles = TitleVariants(title, artists);
+            // An exact match with only plain lyrics is kept, but the searches below still run:
+            // another upload of the same song often has them timed (Eriatarka does).
+            (List<LyricLine> Lines, bool Synced)? plainFallback = null;
             foreach (var t in titles)
                 foreach (var a in artists)
                 {
@@ -47,7 +65,11 @@ public static partial class LrcLibClient
                     {
                         using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
                         if (FromRecord(doc.RootElement) is { Lines.Count: > 0 } found)
-                            return found;
+                        {
+                            if (found.Synced)
+                                return found;
+                            plainFallback ??= (found.Lines, false);
+                        }
                     }
                     else if (response.StatusCode == HttpStatusCode.TooManyRequests)
                     {
@@ -66,7 +88,6 @@ public static partial class LrcLibClient
             // A slowed / sped-up / nightcore edit is the same recording at another speed: any
             // length goes, and synced lines are stretched to this file's length.
             var speedEdit = SpeedEditRegex().IsMatch(title) || SpeedEditRegex().IsMatch(album);
-            (List<LyricLine> Lines, bool Synced)? plainFallback = null;
             (List<LyricLine> Lines, bool Synced)? bestSynced = null;
             var bestDiff = double.MaxValue;
 
@@ -112,7 +133,9 @@ public static partial class LrcLibClient
                 using var response = await Http.GetAsync(search);
                 if (response.StatusCode == HttpStatusCode.TooManyRequests)
                     return false;
-                if (response.IsSuccessStatusCode)
+                if (!response.IsSuccessStatusCode)
+                    failed.Value = true;
+                else
                 {
                     using var results = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
                     var records = results.RootElement.EnumerateArray().ToList();
@@ -171,6 +194,7 @@ public static partial class LrcLibClient
         }
         catch
         {
+            failed.Value = true;
             return (new(), false);
         }
     }
