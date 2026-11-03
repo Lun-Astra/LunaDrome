@@ -798,3 +798,4 @@ Luna is hopping off for the night. Current state of the app, for picking this ba
 
 - **v4.6.1 (2026-10-25):** the Discover page shows album covers (it never called PopulateSongArt).
 - **v4.6.2 (2026-10-26):** Discover page fits phones: rows stretch to the full width (title `*`, fixed 52px duration column - an Auto column with right-aligned text drew ~30px off under Uno Skia), shorter tab/button labels in compact mode (Weekly / Daily / New mix).
+- **v4.7.0 (2026-11-03):** Stats: listening time per album. Appearance: more themes and accents, a custom theme color, app backgrounds (glow, now-playing cover, own picture). Duplicate check when adding to a playlist (#39), queue scrolls to the playing song (#38), longer phone swipe-to-remove with Undo (#37), offline downloads (#28). Known open: Discord presence has no album art for Discover Weekly/Daily songs.
