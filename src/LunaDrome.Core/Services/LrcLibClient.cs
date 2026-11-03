@@ -48,10 +48,14 @@ public static partial class LrcLibClient
                         if (FromRecord(doc.RootElement) is { Lines.Count: > 0 } found)
                             return found;
                     }
-                    else if (response.StatusCode != HttpStatusCode.NotFound)
+                    else if (response.StatusCode == HttpStatusCode.TooManyRequests)
                     {
-                        return (new(), false);   // rate limited / down: don't hammer it
+                        return (new(), false);   // rate limited: don't hammer it
                     }
+                    // Anything else means "not found" here: for a song it doesn't have, api/get
+                    // answers 503 (its own outside lookup came up empty), and now and then even
+                    // for one it does have. Giving up on that skipped every other spelling and the
+                    // search below - about half the songs ended up without lyrics.
                 }
 
             // Synced lyrics are timed to one specific recording: a version a few seconds longer
@@ -65,7 +69,12 @@ public static partial class LrcLibClient
                 .Append($"api/search?q={Uri.EscapeDataString(artists[^1] + " " + titles[^1])}");
             foreach (var search in searches)
             {
-                using var results = JsonDocument.Parse(await Http.GetStringAsync(search));
+                using var response = await Http.GetAsync(search);
+                if (response.StatusCode == HttpStatusCode.TooManyRequests)
+                    break;
+                if (!response.IsSuccessStatusCode)
+                    continue;
+                using var results = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
                 foreach (var record in results.RootElement.EnumerateArray())
                 {
                     var diff = durationSeconds > 0 && record.TryGetProperty("duration", out var d) && d.ValueKind == JsonValueKind.Number
