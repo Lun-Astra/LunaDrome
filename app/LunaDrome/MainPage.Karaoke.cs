@@ -20,8 +20,9 @@ public sealed partial class MainPage
     private string? _karaokeArtUrl;
     private int _karaokeArtToken;
 
-    // A line timed only as a whole is sung at roughly this pace; never slower than the gap allows.
-    private const double SecondsPerCharacter = 0.075;
+    // A line timed only as a whole: about this long per syllable when the gap to the next line
+    // is clearly longer than the singing (a pause after it); otherwise the line fills the gap.
+    private const double SecondsPerSyllable = 0.3;
     // A gap this long after a line has been sung (or before the first one) shows the countdown.
     private static readonly TimeSpan BreakAfter = TimeSpan.FromSeconds(1.5);
     private static readonly TimeSpan MinBreak = TimeSpan.FromSeconds(4);
@@ -167,9 +168,9 @@ public sealed partial class MainPage
         // A break: before the first line, on an empty line, or a long gap after a line was sung.
         var nextIndex = NextSungLine(lines, index + 1);
         var nextStart = nextIndex >= 0 ? lines[nextIndex].Start : duration;
+        // Before the first line it's always the countdown (there's no line to show yet).
         var inBreak = index < 0
-            ? nextStart - position > TimeSpan.FromSeconds(1)
-            : string.IsNullOrWhiteSpace(lines[index].Text)
+            || string.IsNullOrWhiteSpace(lines[index].Text)
               || (position > lines[index].Start + SungFor(lines, index) + BreakAfter && nextStart - position > MinBreak);
 
         if (index != _karaokeLine || inBreak != _karaokeBreak)
@@ -194,7 +195,7 @@ public sealed partial class MainPage
 
         var sung = AccentRunBrush();
         foreach (var (run, at) in _karaokeWords)
-            Paint(run, position >= at ? sung : UnsungBrush);
+            Paint(run, position >= at ? sung : UnsungBrush);   // per letter: a smooth sweep, not word jumps
     }
 
     // Only on a change: a new brush every tick would redraw the text 25 times a second.
@@ -212,17 +213,41 @@ public sealed partial class MainPage
         return -1;
     }
 
-    /// <summary>How long the line is sung: to its last word when it's timed per word, else at
-    /// SecondsPerCharacter, at most up to (just before) the next line.</summary>
+    /// <summary>How long the line is sung. Timed per word: to the end of its last word. Else
+    /// singers mostly stretch a line to the next one, so it fills the gap (minus a breath) -
+    /// unless the gap is far longer than the syllables need, then there's a pause after it.</summary>
     private static TimeSpan SungFor(List<LyricLine> lines, int index)
     {
         var line = lines[index];
-        var gap = index + 1 < lines.Count ? lines[index + 1].Start - line.Start : TimeSpan.FromSeconds(10);
+        var gap = (index + 1 < lines.Count ? lines[index + 1].Start - line.Start : TimeSpan.FromSeconds(10)).TotalSeconds;
         if (line.Words is { Count: > 0 } words)
-            return words[^1].Offset + TimeSpan.FromSeconds(0.4);
-        var paced = TimeSpan.FromSeconds(Math.Max(1, line.Text.Length * SecondsPerCharacter));
-        var room = gap * 0.92;
-        return paced < room ? paced : room;
+            return words[^1].Offset + TimeSpan.FromSeconds(Math.Clamp(gap - words[^1].Offset.TotalSeconds, 0.2, 0.8));
+        var natural = Math.Max(0.6, Syllables(line.Text) * SecondsPerSyllable);
+        var room = gap * 0.9;
+        return TimeSpan.FromSeconds(room <= natural * 1.6 ? room : natural * 1.3);
+    }
+
+    // Vowel groups ≈ syllables (a silent final e doesn't count); for scripts without Latin vowels
+    // (Japanese, Korean, Chinese) every letter is about one syllable.
+    private static int Syllables(string text)
+    {
+        var count = 0;
+        foreach (System.Text.RegularExpressions.Match word in System.Text.RegularExpressions.Regex.Matches(text, @"\S+"))
+            count += WordSyllables(word.Value);
+        return Math.Max(1, count);
+    }
+
+    private static int WordSyllables(string word)
+    {
+        var letters = new string(word.Where(char.IsLetterOrDigit).ToArray()).ToLowerInvariant();
+        if (letters.Length == 0)
+            return 0;
+        var vowels = System.Text.RegularExpressions.Regex.Matches(letters, "[aeiouyàáâãäåæèéêëìíîïòóôõöøùúûüý]+").Count;
+        if (vowels == 0)
+            return letters.Any(c => c > 0x2E80) ? letters.Length : 1;
+        if (vowels > 1 && letters.EndsWith('e') && !letters.EndsWith("le"))
+            vowels--;
+        return vowels;
     }
 
     private void ShowKaraokeLines(List<LyricLine> lines, int index, int nextIndex, bool inBreak)
@@ -247,11 +272,20 @@ public sealed partial class MainPage
         else
         {
             var line = lines[index];
-            foreach (var (text, at) in KaraokeWords(lines, index))
+            var words = KaraokeWords(lines, index);
+            for (var w = 0; w < words.Count; w++)
             {
-                var run = new Run { Text = text, Foreground = UnsungBrush };
-                KaraokeCurrent.Inlines.Add(run);
-                _karaokeWords.Add((run, line.Start + at));
+                // One run per letter, lit across the word's time: the light sweeps through it.
+                var (text, at) = words[w];
+                var until = w + 1 < words.Count ? words[w + 1].At : SungFor(lines, index);
+                var length = TimeSpan.FromSeconds(Math.Min((until - at).TotalSeconds, 1.2));   // a long held note: the word is lit, then held
+                var letters = text.TrimEnd().Length;
+                for (var c = 0; c < text.Length; c++)
+                {
+                    var run = new Run { Text = text[c].ToString(), Foreground = UnsungBrush };
+                    KaraokeCurrent.Inlines.Add(run);
+                    _karaokeWords.Add((run, line.Start + at + length * ((double)Math.Min(c, letters) / Math.Max(1, letters))));
+                }
             }
             next = nextIndex >= 0 ? lines[nextIndex] : null;
         }
@@ -278,16 +312,17 @@ public sealed partial class MainPage
         if (line.Words is { Count: > 0 } timed)
             return timed.Select(w => (w.Text, w.Offset)).ToList();
 
-        // Spread over the time it's sung, by length: a long word takes longer than "a".
+        // Spread over the time it's sung by syllables: "strength" is one beat, "ivory" three.
         var words = System.Text.RegularExpressions.Regex.Matches(line.Text, @"\S+\s*").Select(m => m.Value).ToList();
-        var total = Math.Max(1, words.Sum(w => w.TrimEnd().Length));
+        var weights = words.Select(w => Math.Max(1, WordSyllables(w))).ToList();
+        var total = (double)weights.Sum();
         var span = SungFor(lines, index);
         var result = new List<(string, TimeSpan)>();
         var before = 0;
-        foreach (var word in words)
+        for (var i = 0; i < words.Count; i++)
         {
-            result.Add((word, span * ((double)before / total)));
-            before += word.TrimEnd().Length;
+            result.Add((words[i], span * (before / total)));
+            before += weights[i];
         }
         return result;
     }
