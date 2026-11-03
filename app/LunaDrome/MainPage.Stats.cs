@@ -101,7 +101,7 @@ public sealed partial class MainPage
         var topAlbums = played
             .Where(s => !string.IsNullOrEmpty(s.AlbumId))
             .GroupBy(s => s.AlbumId)
-            .Select(g => (Song: g.First(), Plays: g.Sum(s => s.PlayCount)))
+            .Select(g => (Song: g.First(), Plays: g.Sum(s => s.PlayCount), Seconds: g.Sum(s => (long)s.PlayCount * s.DurationSeconds)))
             .OrderByDescending(a => a.Plays)
             .Take(IsCompact ? 6 : 8)
             .ToList();
@@ -112,14 +112,14 @@ public sealed partial class MainPage
             cards.ColumnDefinitions.Add(new ColumnDefinition());
         for (var r = 0; r < (topAlbums.Count + perRow - 1) / perRow; r++)
             cards.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        foreach (var ((song, albumPlays), i) in topAlbums.Select((a, i) => (a, i)))
+        foreach (var ((song, albumPlays, albumSeconds), i) in topAlbums.Select((a, i) => (a, i)))
         {
             var album = new Album
             {
                 Id = song.AlbumId, Name = song.AlbumName, ArtistId = song.ArtistId, ArtistName = song.AlbumArtistName,
                 CoverArtUrl = song.CoverArtUrl
             };
-            var card = AlbumStatCard(album, albumPlays);
+            var card = AlbumStatCard(album, albumPlays, albumSeconds);
             Grid.SetColumn(card, i % perRow);
             Grid.SetRow(card, i / perRow);
             cards.Children.Add(card);
@@ -281,7 +281,7 @@ public sealed partial class MainPage
         return row;
     }
 
-    private Border AlbumStatCard(Album album, int plays)
+    private Border AlbumStatCard(Album album, int plays, long seconds)
     {
         var art = new Border { CornerRadius = new CornerRadius(6) };
         SetImage(art, album.CoverArtUrl);
@@ -293,7 +293,9 @@ public sealed partial class MainPage
         var panel = new StackPanel { Spacing = 3 };
         panel.Children.Add(artBox);
         panel.Children.Add(new TextBlock { Text = album.Name, FontSize = 13, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(0, 6, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis, Foreground = Res("TextPrimaryBrush") });
-        panel.Children.Add(new TextBlock { Text = $"{album.ArtistName} · {plays:N0} plays", FontSize = 11, TextTrimming = TextTrimming.CharacterEllipsis, Foreground = Res("TextSecondaryBrush") });
+        panel.Children.Add(new TextBlock { Text = album.ArtistName, FontSize = 11, TextTrimming = TextTrimming.CharacterEllipsis, Foreground = Res("TextSecondaryBrush") });
+        // Listening time = each song's plays × its length, added up over the album.
+        panel.Children.Add(new TextBlock { Text = $"{plays:N0} plays · {FormatListeningTime(seconds)}", FontSize = 11, TextTrimming = TextTrimming.CharacterEllipsis, Foreground = Res("TextSecondaryBrush") });
 
         var card = new Border { Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent), Child = panel };
         Motion.SetHoverScale(card, 1.03);

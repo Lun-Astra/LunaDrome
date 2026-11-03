@@ -164,15 +164,28 @@ public sealed partial class MainPage : Page
         {
             if (item is QueueEntry entry && _queue.Contains(entry))
             {
+                var index = _queue.IndexOf(entry);
+                var wasCurrent = entry == _current;
                 RemoveFromQueue(new List<QueueEntry> { entry });
-                ShowToast($"Removed from queue: {entry.Song.Title}");
+                // #37: a swipe can still be a slip; Undo puts it back where it was (the playing
+                // song isn't restarted - it was skipped, putting it back just lists it again).
+                ShowToast($"Removed from queue: {entry.Song.Title}", "Undo", () =>
+                {
+                    if (_queue.Contains(entry))
+                        return;
+                    InsertIntoQueue(Math.Min(index, _queue.Count), new List<QueueEntry> { entry });
+                    _unshuffledOrder?.Add(entry);
+                    if (wasCurrent)
+                        entry.IsCurrent = false;
+                });
             }
         };
         _progressTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(400) };
         _progressTimer.Tick += ProgressTimer_Tick;
         _progressTimer.Start();
 
-        Themes.Apply(_prefs.Theme, _prefs.Accent);
+        InitOffline();
+        ApplyAppearance();
         InitSearch();
         InitJam();
         _client.StreamQuality = _prefs.StreamQuality;
@@ -256,8 +269,11 @@ public sealed partial class MainPage : Page
         {
             StatusText.Text = error ?? "Login failed.";
             LoginButton.IsEnabled = true;
+            OfferOfflineMode();
             return;
         }
+        OfflineModeButton.Visibility = Visibility.Collapsed;
+        LoginButton.IsEnabled = true;
 
         SettingsService.Save(RememberMeBox.IsChecked == true
             ? new AppSettings { ServerUrl = serverUrl, Username = username, ProtectedPassword = CredentialProtector.Protect(password) }
@@ -272,8 +288,10 @@ public sealed partial class MainPage : Page
 #if ANDROID
         ConnectAndroidAuto();
 #endif
-        RestoreQueueState();
+        if (!_signedIn)
+            RestoreQueueState();   // not again when coming back from offline mode
         _signedIn = true;
+        OnlineForOffline();
         if (_prefs.CheckForUpdates)
             _ = CheckForUpdateAsync();
 
@@ -308,6 +326,10 @@ public sealed partial class MainPage : Page
             ShowAccentColorPicker();
         else
             AccentColorPicker.Visibility = Visibility.Collapsed;
+        if (_prefs.Theme.StartsWith('#'))
+            ShowThemeColorPicker();
+        else
+            ThemeColorPicker.Visibility = Visibility.Collapsed;
         PrefetchCheck.IsChecked = _prefs.PrefetchNextTrack;
         VolumeStepBox.Value = Math.Clamp(_prefs.VolumeScrollStep, 1, 25);
         CrossfadeBox.Value = Math.Clamp(_prefs.CrossfadeSeconds, 0, 12);
@@ -333,9 +355,10 @@ public sealed partial class MainPage : Page
     // neutral swatch, which follows the theme) stay right.
     private void BuildSettingsChoices()
     {
+        BuildDownloadQualityChoices();
         ThemeOptions.Children.Clear();
-        // Dark themes on one row, light on the next; on a phone at most 3 per row so they wrap.
-        var perRow = IsCompact ? 3 : int.MaxValue;
+        // Dark themes first, then light; at most 3 per row on a phone and 6 on a window so they wrap.
+        var perRow = IsCompact ? 3 : 6;
         var rows = new Dictionary<bool, StackPanel>();
         StackPanel RowFor(bool light)
         {
@@ -348,18 +371,25 @@ public sealed partial class MainPage : Page
             return row;
         }
         foreach (var theme in Themes.ThemeNames.OrderBy(Themes.IsLight))
-        {
-            var chip = new Border
+            RowFor(Themes.IsLight(theme)).Children.Add(ChoiceButton(ThemeChip(theme, _prefs.Theme == theme, Themes.ThemeBackground(theme)),
+                theme, () =>
+                {
+                    _prefs.Theme = theme;
+                    ThemeColorPicker.Visibility = Visibility.Collapsed;
+                }));
+
+        // "Custom": a theme worked out from one background color, picked on the wheel.
+        var customTheme = _prefs.Theme.StartsWith('#');
+        var customRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        customRow.Children.Add(ChoiceButton(ThemeChip("Custom…", customTheme,
+            Themes.TryAccentColor(_prefs.CustomTheme, out var customBase) ? customBase : null), "Custom theme", () =>
             {
-                Padding = new Thickness(16, 7, 16, 7),
-                CornerRadius = new CornerRadius(6),
-                BorderThickness = new Thickness(_prefs.Theme == theme ? 2 : 1),
-                BorderBrush = (Brush)Application.Current.Resources[_prefs.Theme == theme ? "AccentBrush" : "BorderBrush2"],
-                Background = (Brush)Application.Current.Resources["RaisedBrush"],
-                Child = new TextBlock { Text = theme },
-            };
-            RowFor(Themes.IsLight(theme)).Children.Add(ChoiceButton(chip, theme, () => _prefs.Theme = theme));
-        }
+                if (!Themes.TryAccentColor(_prefs.CustomTheme, out _))
+                    _prefs.CustomTheme = Themes.ToHex(Themes.ThemeBackground(_prefs.Theme));
+                _prefs.Theme = _prefs.CustomTheme;
+                ShowThemeColorPicker();
+            }));
+        ThemeOptions.Children.Add(customRow);
 
         // Streaming quality chips (#28), same look as the theme chips.
         QualityOptions.Children.Clear();
@@ -392,6 +422,17 @@ public sealed partial class MainPage : Page
         }
 
         AccentOptions.Children.Clear();
+        // Wrapped rows: 7 swatches a row on a phone, all on one row on a wide window.
+        StackPanel? accentRow = null;
+        StackPanel AccentRow()
+        {
+            if (accentRow == null || accentRow.Children.Count >= (IsCompact ? 7 : int.MaxValue))
+            {
+                accentRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+                AccentOptions.Children.Add(accentRow);
+            }
+            return accentRow;
+        }
         foreach (var accent in Themes.AccentNames)
         {
             var ring = new Border
@@ -412,7 +453,7 @@ public sealed partial class MainPage : Page
                     StrokeThickness = 1,
                 },
             };
-            AccentOptions.Children.Add(ChoiceButton(ring, accent, () =>
+            AccentRow().Children.Add(ChoiceButton(ring, accent, () =>
             {
                 _prefs.Accent = accent;
                 AccentColorPicker.Visibility = Visibility.Collapsed;
@@ -440,13 +481,40 @@ public sealed partial class MainPage : Page
                 : new SolidColorBrush(Microsoft.UI.Colors.Transparent),
             Child = _customAccentSwatch,
         };
-        AccentOptions.Children.Add(ChoiceButton(customRing, "Custom", () =>
+        AccentRow().Children.Add(ChoiceButton(customRing, "Custom", () =>
         {
             if (!Themes.TryAccentColor(_prefs.CustomAccent, out _))
                 _prefs.CustomAccent = Themes.ToHex(Themes.AccentSwatch(_prefs.Accent, _prefs.Theme));
             _prefs.Accent = _prefs.CustomAccent;
             ShowAccentColorPicker();
         }));
+
+        BuildBackgroundChoices();
+    }
+
+    // A theme chip: a dot in the theme's background color, then its name.
+    private static Border ThemeChip(string name, bool selected, Windows.UI.Color? swatch)
+    {
+        var content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        content.Children.Add(new Microsoft.UI.Xaml.Shapes.Ellipse
+        {
+            Width = 12,
+            Height = 12,
+            VerticalAlignment = VerticalAlignment.Center,
+            Stroke = (Brush)Application.Current.Resources["BorderBrush2"],
+            StrokeThickness = 1,
+            Fill = swatch is { } color ? new SolidColorBrush(color) : RainbowBrush(),
+        });
+        content.Children.Add(new TextBlock { Text = name, VerticalAlignment = VerticalAlignment.Center });
+        return new Border
+        {
+            Padding = new Thickness(12, 7, 14, 7),
+            CornerRadius = new CornerRadius(6),
+            BorderThickness = new Thickness(selected ? 2 : 1),
+            BorderBrush = (Brush)Application.Current.Resources[selected ? "AccentBrush" : "BorderBrush2"],
+            Background = (Brush)Application.Current.Resources["RaisedBrush"],
+            Child = content,
+        };
     }
 
     private Microsoft.UI.Xaml.Shapes.Ellipse? _customAccentSwatch;
@@ -492,7 +560,7 @@ public sealed partial class MainPage : Page
         var hex = Themes.ToHex(args.NewColor);
         _prefs.CustomAccent = hex;
         _prefs.Accent = hex;
-        Themes.Apply(_prefs.Theme, _prefs.Accent);
+        ApplyAppearance();
         if (_customAccentSwatch != null)
             _customAccentSwatch.Fill = new SolidColorBrush(args.NewColor);
 
@@ -524,7 +592,7 @@ public sealed partial class MainPage : Page
         button.Click += (_, _) =>
         {
             choose();
-            Themes.Apply(_prefs.Theme, _prefs.Accent);
+            ApplyAppearance();
             PreferencesService.Save(_prefs);
             BuildSettingsChoices();
         };
@@ -778,6 +846,7 @@ public sealed partial class MainPage : Page
         DownloadsPage.Visibility = Visibility.Collapsed;
         JamPage.Visibility = Visibility.Collapsed;
         DiscoverPage.Visibility = Visibility.Collapsed;
+        OfflinePage.Visibility = Visibility.Collapsed;
         _jam?.SetWatching(false);
     }
 
@@ -803,6 +872,7 @@ public sealed partial class MainPage : Page
         NavStats.IsChecked = false;
         NavJam.IsChecked = false;
         NavDiscover.IsChecked = false;
+        NavDownloaded.IsChecked = false;
         if (!keepPlaylist)
             PlaylistsList.SelectedItem = null;
         _suppressNavEvents = false;
@@ -867,6 +937,9 @@ public sealed partial class MainPage : Page
             case "Discover":
                 ShowPage(DiscoverPage, () => Reselect(NavDiscover));
                 _ = LoadDiscoverAsync();
+                break;
+            case "Downloaded":
+                ShowOfflinePage();
                 break;
         }
     }
@@ -1188,6 +1261,8 @@ public sealed partial class MainPage : Page
         flyout.Items.Add(new MenuFlyoutSeparator());
         flyout.Items.Add(BuildAddToPlaylistSubmenu(() => GetAlbumSongsAsync(album)));
         AddJamMenuItem(flyout, () => GetAlbumSongsAsync(album));
+        AddCollectionDownloadMenuItem(flyout, album.Id, "album", album.Name, album.ArtistName,
+            async () => await GetAlbumSongsAsync(album));
         flyout.Items.Add(new MenuFlyoutSeparator());
         AddMenuItem(flyout, "Go to album", async () => await OpenAlbumAsync(album));
         AddMenuItem(flyout, "Go to artist", async () => await NavigateToArtistAsync(album.ArtistId, album.ArtistName));
@@ -1880,6 +1955,7 @@ public sealed partial class MainPage : Page
         flyout.Items.Add(BuildAddToPlaylistSubmenu(new List<Song> { song }));
         AddJamMenuItem(flyout, () => Task.FromResult(new List<Song> { song }));
         AddFavoriteToggle(flyout, song);
+        AddDownloadMenuItem(flyout, new List<Song> { song });
         RichMenu.SetHeader(flyout, song.CoverArtUrl, song.Title,
             song.Artists.Count > 1 ? string.Join(", ", song.Artists.Select(a => a.Name)) : song.ArtistName);
         return flyout;
@@ -1918,7 +1994,10 @@ public sealed partial class MainPage : Page
             {
                 try
                 {
-                    foreach (var song in await getSongs())
+                    var songs = await SkipOrKeepDuplicatesAsync(playlist, await getSongs());
+                    if (songs.Count == 0)
+                        return;
+                    foreach (var song in songs)
                         await _client.AddSongToPlaylistAsync(playlist.Id, song.Id);
                     await LoadPlaylistsAsync();
                 }
@@ -1946,6 +2025,55 @@ public sealed partial class MainPage : Page
         });
         sub.Items.Add(create);
         return sub;
+    }
+
+    /// <summary>
+    /// #39: songs that are already in the playlist are only added again after asking. Returns
+    /// what to add: all of them, only the new ones, or nothing (cancelled).
+    /// </summary>
+    private async Task<List<Song>> SkipOrKeepDuplicatesAsync(Playlist playlist, List<Song> songs)
+    {
+        HashSet<string> inPlaylist;
+        try
+        {
+            inPlaylist = (await _client.GetPlaylistSongsAsync(playlist.Id)).Select(s => s.Id).ToHashSet();
+        }
+        catch
+        {
+            return songs;   // can't check: add as before
+        }
+        var already = songs.Where(s => inPlaylist.Contains(s.Id)).ToList();
+        if (already.Count == 0)
+            return songs;
+
+        var fresh = songs.Where(s => !inPlaylist.Contains(s.Id)).ToList();
+        var dialog = new ContentDialog
+        {
+            Title = already.Count == 1 && songs.Count == 1 ? "Already in this playlist" : "Some songs are already in it",
+            Content = songs.Count == 1
+                ? $"“{already[0].Title}” is already in {playlist.Name}. Add it again?"
+                : already.Count == songs.Count
+                    ? $"All {songs.Count} songs are already in {playlist.Name}. Add them again?"
+                    : $"{already.Count} of the {songs.Count} songs are already in {playlist.Name}.",
+            PrimaryButtonText = songs.Count == 1 ? "Add again" : "Add all",
+            SecondaryButtonText = fresh.Count > 0 ? $"Add the {fresh.Count} new" : "",
+            CloseButtonText = "Cancel",
+            DefaultButton = fresh.Count > 0 ? ContentDialogButton.Secondary : ContentDialogButton.Close,
+            XamlRoot = XamlRoot,
+        };
+        try
+        {
+            return await dialog.ShowAsync() switch
+            {
+                ContentDialogResult.Primary => songs,
+                ContentDialogResult.Secondary => fresh,
+                _ => new List<Song>(),
+            };
+        }
+        catch
+        {
+            return new List<Song>();   // another dialog is open
+        }
     }
 
     // ================= Playlists =================
@@ -2048,6 +2176,8 @@ public sealed partial class MainPage : Page
                 ShowToast($"Added {songs.Count} songs from \"{playlist.Name}\" to the queue");
             }
         });
+        AddCollectionDownloadMenuItem(flyout, playlist.Id, "playlist", playlist.Name, "",
+            () => LoadPlaylistSongsAsync(playlist));
         return flyout;
     }
 
@@ -2152,6 +2282,7 @@ public sealed partial class MainPage : Page
         {
             Motion.FadeIn(FullScreenPlayerOverlay);
             ScrollLyricsToActive(animate: false);
+            ScrollQueuesToCurrent();
         }
         UpdateVisualizerCaptureState();
     }
@@ -2170,12 +2301,7 @@ public sealed partial class MainPage : Page
             return;
 
         Motion.FadeIn(QueueSidePanel);
-        // After the just-shown list has been laid out, or the scroll is ignored.
-        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
-        {
-            if (_current != null)
-                SideQueueList.ScrollIntoView(_current, ScrollIntoViewAlignment.Leading);
-        });
+        ScrollQueuesToCurrent();
         await LoadLyricsForCurrentSongAsync();
     }
 
@@ -2215,11 +2341,30 @@ public sealed partial class MainPage : Page
             _queue[i].Number = i + 1;
     }
 
+    // #38: the playing song goes to the top of the queue lists, with the song before it above it
+    // for context. After layout: right after a song change (or a list that was just shown) the
+    // rows aren't measured yet and ScrollIntoView landed short or did nothing; and the default
+    // alignment only scrolled as far as needed, leaving the song at the bottom edge. A list
+    // that's hidden now scrolls when it's shown (ScrollQueuesToCurrent).
     private void ScrollQueuesTo(QueueEntry entry)
     {
-        QueueList.ScrollIntoView(entry);
-        if (QueueSidePanel.Visibility == Visibility.Visible)
-            SideQueueList.ScrollIntoView(entry);
+        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        {
+            var index = _queue.IndexOf(entry);
+            if (index < 0)
+                return;
+            var target = _queue[Math.Max(0, index - 1)];
+            if (FullScreenPlayerOverlay.Visibility == Visibility.Visible && QueueList.Visibility == Visibility.Visible)
+                QueueList.ScrollIntoView(target, ScrollIntoViewAlignment.Leading);
+            if (QueueSidePanel.Visibility == Visibility.Visible)
+                SideQueueList.ScrollIntoView(target, ScrollIntoViewAlignment.Leading);
+        });
+    }
+
+    private void ScrollQueuesToCurrent()
+    {
+        if (_current != null)
+            ScrollQueuesTo(_current);
     }
 
     private void CloseFullScreenPlayer_Click(object sender, RoutedEventArgs e)
@@ -2260,6 +2405,8 @@ public sealed partial class MainPage : Page
             return;
 
         QueueList.Visibility = panel == "Queue" ? Visibility.Visible : Visibility.Collapsed;
+        if (panel == "Queue")
+            ScrollQueuesToCurrent();
         LyricsPanelView.Visibility = panel == "Lyrics" ? Visibility.Visible : Visibility.Collapsed;
         VisualizerPanelView.Visibility = panel == "Visualizer" ? Visibility.Visible : Visibility.Collapsed;
         UpdateVisualizerCaptureState();
@@ -2782,9 +2929,11 @@ public sealed partial class MainPage : Page
         SetCurrent(entry);
         var song = entry.Song;
 
-        // Already pre-buffered by TrackPrefetcher? Then play it from disk: starts instantly (#4).
-        var file = _prefetcher.TryGetFile(song.Id);
-        Log($"play '{song.Title}' ({song.Id}){(file != null ? " from prefetch" : "")}");
+        // Downloaded (#28), or pre-buffered by TrackPrefetcher? Then play it from disk: starts
+        // instantly (#4), and works without the server.
+        var offlineFile = OfflineFile(song.Id);
+        var file = offlineFile ?? _prefetcher.TryGetFile(song.Id);
+        Log($"play '{song.Title}' ({song.Id}){(offlineFile != null ? " downloaded" : file != null ? " from prefetch" : "")}");
         try
         {
             _loadedEntry = entry;
@@ -2848,6 +2997,7 @@ public sealed partial class MainPage : Page
             NowPlayingSubText.Text = "";
             NowPlayingFavorite.Visibility = Visibility.Collapsed;
             NowPlayingArt.Background = null;
+            ShowBackdropFor(null);
             FullScreenTitleText.Text = "";
             FullScreenArtistText.Text = "";
             FullScreenArt.Background = null;
@@ -2879,10 +3029,12 @@ public sealed partial class MainPage : Page
         NowPlayingFavorite.Visibility = Visibility.Visible;
         UpdateNowPlayingFavorite(song);
         SetImage(NowPlayingArt, song.CoverArtUrl ?? _client.GetCoverArtUrl(song.AlbumId, 240));
+        ShowBackdropFor(song);
         FullScreenTitleText.Text = song.Title;
         ArtistLinks.Fill(FullScreenArtistText, song);
-        // The full-screen art is 360x360 - fetch a bigger rendition than the 240px list thumbnails.
-        SetImage(FullScreenArt, _client.GetCoverArtUrl(song.AlbumId, 720));
+        // The full-screen art is 360x360 - fetch a bigger rendition than the 240px list thumbnails
+        // (offline: the downloaded cover).
+        SetImage(FullScreenArt, _offlineMode ? OfflineCover(song) : _client.GetCoverArtUrl(song.AlbumId, 720));
         ScrollQueuesTo(entry);
         ShowSideLyrics(); // hides the previous song's lyrics until the new ones load
         SyncCompactPlayer();
@@ -3335,7 +3487,7 @@ public sealed partial class MainPage : Page
         if (JamOwnsPlayback || _loadedEntry == null || !_isPlaying || !_prefs.PrefetchNextTrack || _fadingOut != null)
             return;
 
-        if (GetNextEntry() is { } next && next.Song.Id != _loadedEntry.Song.Id)
+        if (GetNextEntry() is { } next && next.Song.Id != _loadedEntry.Song.Id && OfflineFile(next.Song.Id) == null)
             _prefetcher.Prefetch(next.Song.Id, keepSongId: _loadedEntry.Song.Id);
     }
 

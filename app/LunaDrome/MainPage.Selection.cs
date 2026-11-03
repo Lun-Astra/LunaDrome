@@ -208,6 +208,7 @@ public sealed partial class MainPage
             AddJamMenuItem(flyout, () => Task.FromResult(songs));
             if (songs.Count == 1)
                 AddFavoriteToggle(flyout, songs[0]);
+            AddDownloadMenuItem(flyout, songs);
             if (list?.Tag as string == "PlaylistTracks")
             {
                 flyout.Items.Add(new MenuFlyoutSeparator());
