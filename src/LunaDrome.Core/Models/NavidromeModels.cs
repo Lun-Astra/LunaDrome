@@ -89,6 +89,10 @@ public class LyricLine : System.ComponentModel.INotifyPropertyChanged
     public TimeSpan Start { get; set; }
     public string Text { get; set; } = "";
 
+    /// <summary>Word timings when the lyrics have them ("enhanced" LRC, &lt;mm:ss.xx&gt; before each
+    /// word), relative to <see cref="Start"/>; null = only the line is timed (karaoke guesses).</summary>
+    public List<LyricWord>? Words { get; set; }
+
     private bool _isActive, _isDimmed;
 
     /// <summary>The line being sung right now (synced lyrics only) - shown highlighted.</summary>
@@ -111,6 +115,8 @@ public class LyricLine : System.ComponentModel.INotifyPropertyChanged
     public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
     private void Changed(string name) => PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(name));
 }
+
+public sealed record LyricWord(TimeSpan Offset, string Text);
 
 public class Playlist
 {

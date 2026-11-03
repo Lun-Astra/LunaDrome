@@ -90,7 +90,10 @@ public static partial class LrcLibClient
                 {
                     var stretch = durationSeconds / recordSeconds;
                     foreach (var line in candidate.Lines)
+                    {
                         line.Start = TimeSpan.FromSeconds(line.Start.TotalSeconds * stretch);
+                        line.Words = line.Words?.Select(w => w with { Offset = TimeSpan.FromSeconds(w.Offset.TotalSeconds * stretch) }).ToList();
+                    }
                     diff = 0;
                 }
                 if (candidate.Synced && diff <= SyncedToleranceSec)
@@ -244,7 +247,16 @@ public static partial class LrcLibClient
     [GeneratedRegex(@"\[(\d+):(\d+(?:[.:]\d+)?)\]")]
     private static partial Regex TimestampRegex();
 
-    // "[01:23.45] text" lines; a line may carry several timestamps (repeated chorus).
+    [GeneratedRegex(@"<(\d+):(\d+(?:[.:]\d+)?)>")]
+    private static partial Regex WordStampRegex();
+
+    private static double StampSeconds(Match m) =>
+        int.Parse(m.Groups[1].Value, CultureInfo.InvariantCulture) * 60
+        + double.Parse(m.Groups[2].Value.Replace(':', '.'), CultureInfo.InvariantCulture);
+
+    // "[01:23.45] text" lines; a line may carry several timestamps (repeated chorus). Enhanced LRC
+    // also times each word ("[01:23.45]<01:23.45>Hello <01:23.90>world"): kept as Words, relative
+    // to the line so a repeated line reuses them.
     public static List<LyricLine> ParseLrc(string lrc)
     {
         var lines = new List<LyricLine>();
@@ -255,12 +267,26 @@ public static partial class LrcLibClient
                 continue;
 
             var text = raw[(matches[^1].Index + matches[^1].Length)..].Trim();
-            foreach (Match m in matches)
+            List<LyricWord>? words = null;
+            var stamps = WordStampRegex().Matches(text);
+            if (stamps.Count > 0)
             {
-                var minutes = int.Parse(m.Groups[1].Value, CultureInfo.InvariantCulture);
-                var seconds = double.Parse(m.Groups[2].Value.Replace(':', '.'), CultureInfo.InvariantCulture);
-                lines.Add(new LyricLine { Start = TimeSpan.FromSeconds(minutes * 60 + seconds), Text = text });
+                var lineStart = StampSeconds(matches[0]);
+                words = new();
+                for (var i = 0; i < stamps.Count; i++)
+                {
+                    var from = stamps[i].Index + stamps[i].Length;
+                    var to = i + 1 < stamps.Count ? stamps[i + 1].Index : text.Length;
+                    var word = text[from..to];
+                    if (word.Trim().Length > 0)
+                        words.Add(new LyricWord(TimeSpan.FromSeconds(Math.Max(0, StampSeconds(stamps[i]) - lineStart)), word));
+                }
+                text = WordStampRegex().Replace(text, "").Trim();
+                if (words.Count == 0)
+                    words = null;
             }
+            foreach (Match m in matches)
+                lines.Add(new LyricLine { Start = TimeSpan.FromSeconds(StampSeconds(m)), Text = text, Words = words });
         }
         return lines.OrderBy(l => l.Start).ToList();
     }

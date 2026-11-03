@@ -2618,6 +2618,7 @@ public sealed partial class MainPage : Page
         LyricsPlaceholder.Visibility = _lyricsLines.Count > 0 ? Visibility.Collapsed : Visibility.Visible;
         ShowSideLyrics();
         SyncCompactPlayer();   // #29: show / fill the phone player's lyrics card
+        ShowKaraokeLyrics();
     }
 
     private int _sideLyricIndex = int.MinValue;
@@ -2721,6 +2722,7 @@ public sealed partial class MainPage : Page
         LyricsOffsetBar.Visibility = _lyricsAreSynced && _lyricsLines.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         LyricsOffsetText.Text = _lyricsOffset == 0 ? "In sync" : $"{_lyricsOffset:+0.0;-0.0} s";
         LyricsOffsetReset.Visibility = _lyricsOffset == 0 ? Visibility.Collapsed : Visibility.Visible;
+        KaraokeOffsetText.Text = LyricsOffsetText.Text;
     }
 
     // Scrolling or touching the list yourself pauses the follow-along for a few seconds.
@@ -3040,8 +3042,9 @@ public sealed partial class MainPage : Page
         SyncCompactPlayer();
         _mediaControls?.SetTrack(song, _client.GetCoverArtUrl(song.AlbumId, 480));
 
+        KaraokeSongChanged();
         if (LyricsPanelView.Visibility == Visibility.Visible || QueueSidePanel.Visibility == Visibility.Visible
-            || CompactPlayerView.Visibility == Visibility.Visible)
+            || CompactPlayerView.Visibility == Visibility.Visible || KaraokeOverlay.Visibility == Visibility.Visible)
             await LoadLyricsForCurrentSongAsync();
     }
 
@@ -3055,6 +3058,8 @@ public sealed partial class MainPage : Page
         NowPlaying.SetPlaying(playing);
         PlayIcon.Visibility = playing ? Visibility.Collapsed : Visibility.Visible;
         PauseIcon.Visibility = playing ? Visibility.Visible : Visibility.Collapsed;
+        KaraokePlayIcon.Visibility = PlayIcon.Visibility;
+        KaraokePauseIcon.Visibility = PauseIcon.Visibility;
         _mediaControls?.SetPlaybackState(_current == null && !JamOwnsPlayback ? null : playing);
         SyncCompactPlayer();
     }

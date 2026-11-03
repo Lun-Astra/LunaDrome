@@ -49,6 +49,11 @@ public sealed partial class MainPage
                 return true;
             }
         }
+        if (KaraokeOverlay.Visibility == Visibility.Visible)
+        {
+            CloseKaraoke();
+            return true;
+        }
         if (InSelectionMode)
         {
             ExitSelection();

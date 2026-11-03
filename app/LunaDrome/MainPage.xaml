@@ -2058,6 +2058,8 @@
                   <!-- Nudge synced lyrics that run early/late for this song (remembered per song). -->
                   <StackPanel x:Name="LyricsOffsetBar" Grid.Row="0" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8"
                               HorizontalAlignment="Right" Visibility="Collapsed">
+                    <Button Content="Karaoke" Padding="12,4" FontSize="12" Margin="0,0,8,0" Click="KaraokeOpen_Click"
+                            Style="{StaticResource PrimaryButtonStyle}" ToolTipService.ToolTip="Sing along: the lyrics full screen, word by word"/>
                     <Button Content="Earlier" Padding="10,4" FontSize="12" Click="LyricsEarlier_Click"
                             ToolTipService.ToolTip="Lyrics are behind the song: show them 0.5s earlier"/>
                     <TextBlock x:Name="LyricsOffsetText" Text="In sync" FontSize="12" MinWidth="56" TextAlignment="Center"
@@ -2467,6 +2469,95 @@
     </Border>
 
     <!-- Jam guests' emoji reactions float up here (#34); never in the way of clicks. -->
+    <!-- ===== Karaoke (MainPage.Karaoke.cs): synced lyrics full screen, the line being sung
+         lit up word by word over the blurred cover; the next lines come up below it. ===== -->
+    <Grid x:Name="KaraokeOverlay" Visibility="Collapsed" Background="#FF0B0B0E" Grid.RowSpan="10" Grid.ColumnSpan="10"
+          KeyDown="KaraokeOverlay_KeyDown">
+      <Image x:Name="KaraokeBackdrop" Stretch="UniformToFill" HorizontalAlignment="Center" VerticalAlignment="Center" Opacity="0.6"/>
+      <Rectangle IsHitTestVisible="False">
+        <Rectangle.Fill>
+          <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+            <GradientStop Color="#B0000000" Offset="0"/>
+            <GradientStop Color="#70000000" Offset="0.5"/>
+            <GradientStop Color="#C8000000" Offset="1"/>
+          </LinearGradientBrush>
+        </Rectangle.Fill>
+      </Rectangle>
+      <Grid x:Name="KaraokeContent" Margin="48,32,48,28">
+        <Grid.RowDefinitions>
+          <RowDefinition Height="Auto"/>
+          <RowDefinition Height="*"/>
+          <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <Grid Grid.Row="0" ColumnSpacing="14">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="Auto"/>
+          </Grid.ColumnDefinitions>
+          <Border x:Name="KaraokeArt" Width="52" Height="52" CornerRadius="8" Background="{StaticResource RaisedBrush}"/>
+          <StackPanel Grid.Column="1" VerticalAlignment="Center">
+            <TextBlock Text="KARAOKE" FontSize="11" FontWeight="Bold" CharacterSpacing="120" Foreground="#B3FFFFFF"/>
+            <TextBlock x:Name="KaraokeTitleText" FontSize="17" FontWeight="SemiBold" Foreground="White" TextTrimming="CharacterEllipsis"/>
+            <TextBlock x:Name="KaraokeArtistText" FontSize="13" Foreground="#B3FFFFFF" TextTrimming="CharacterEllipsis"/>
+          </StackPanel>
+          <Button x:Name="KaraokeCloseButton" Grid.Column="2" Content="✕" Width="38" Height="38" FontSize="14" VerticalAlignment="Top"
+                  Click="KaraokeClose_Click" ToolTipService.ToolTip="Close karaoke (Esc)"/>
+        </Grid>
+
+        <!-- The singing lines; tap the next line to jump to it. -->
+        <StackPanel x:Name="KaraokeLines" Grid.Row="1" VerticalAlignment="Center" Spacing="22" MaxWidth="1100">
+          <TextBlock x:Name="KaraokePrev" FontSize="24" FontWeight="SemiBold" Foreground="White" Opacity="0.3"
+                     TextAlignment="Center" TextWrapping="Wrap" MaxLines="2"/>
+          <TextBlock x:Name="KaraokeCurrent" FontSize="46" FontWeight="Bold" TextAlignment="Center" TextWrapping="Wrap" LineHeight="58"/>
+          <TextBlock x:Name="KaraokeCountdown" FontSize="30" TextAlignment="Center" Visibility="Collapsed" CharacterSpacing="300"/>
+          <TextBlock x:Name="KaraokeNext" FontSize="28" FontWeight="SemiBold" Foreground="White" Opacity="0.55"
+                     TextAlignment="Center" TextWrapping="Wrap" MaxLines="3" Tapped="KaraokeNext_Tapped"/>
+          <TextBlock x:Name="KaraokeNext2" FontSize="24" FontWeight="SemiBold" Foreground="White" Opacity="0.28"
+                     TextAlignment="Center" TextWrapping="Wrap" MaxLines="2"/>
+        </StackPanel>
+        <TextBlock x:Name="KaraokeMessage" Grid.Row="1" Visibility="Collapsed" FontSize="20" Foreground="#CCFFFFFF"
+                   TextAlignment="Center" TextWrapping="Wrap" VerticalAlignment="Center" HorizontalAlignment="Center" MaxWidth="520"/>
+
+        <Grid Grid.Row="2" ColumnSpacing="12" RowSpacing="10">
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+          </Grid.RowDefinitions>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="Auto"/>
+          </Grid.ColumnDefinitions>
+          <TextBlock x:Name="KaraokeElapsedText" FontSize="12" Foreground="#B3FFFFFF" VerticalAlignment="Center"/>
+          <ProgressBar x:Name="KaraokeProgress" Grid.Column="1" Maximum="1" VerticalAlignment="Center" MinHeight="4"
+                       Foreground="{StaticResource AccentBrush}" Background="#33FFFFFF"/>
+          <TextBlock x:Name="KaraokeDurationText" Grid.Column="2" FontSize="12" Foreground="#B3FFFFFF" VerticalAlignment="Center"/>
+          <StackPanel Grid.Row="1" Grid.ColumnSpan="3" Orientation="Horizontal" HorizontalAlignment="Center" Spacing="10">
+            <Button Content="Earlier" Padding="12,5" FontSize="12" Click="LyricsEarlier_Click"
+                    ToolTipService.ToolTip="Lyrics are behind the song: show them 0.5s earlier"/>
+            <TextBlock x:Name="KaraokeOffsetText" Text="In sync" FontSize="12" MinWidth="56" TextAlignment="Center"
+                       VerticalAlignment="Center" Foreground="#B3FFFFFF"/>
+            <Button Content="Later" Padding="12,5" FontSize="12" Click="LyricsLater_Click"
+                    ToolTipService.ToolTip="Lyrics are ahead of the song: show them 0.5s later"/>
+            <Button x:Name="KaraokePlayPauseButton" Width="44" Height="44" CornerRadius="22" Margin="14,0"
+                    Style="{StaticResource PrimaryButtonStyle}" Padding="0" Click="PlayPauseButton_Click">
+              <Grid Width="16" Height="16">
+                <Polygon x:Name="KaraokePlayIcon" Points="1,0 15,8 1,16" Fill="{StaticResource OnAccentBrush}"/>
+                <Grid x:Name="KaraokePauseIcon" Visibility="Collapsed">
+                  <Rectangle Width="4" Height="16" HorizontalAlignment="Left" Fill="{StaticResource OnAccentBrush}"/>
+                  <Rectangle Width="4" Height="16" HorizontalAlignment="Right" Fill="{StaticResource OnAccentBrush}"/>
+                </Grid>
+              </Grid>
+            </Button>
+            <Button x:Name="KaraokeTimingButton" Content="Word timing: guessed" Padding="12,5" FontSize="12" IsHitTestVisible="False"
+                    Opacity="0.7" ToolTipService.ToolTip="These lyrics only time each line, so the words light up at an estimated pace"/>
+          </StackPanel>
+        </Grid>
+      </Grid>
+    </Grid>
+
     <Canvas x:Name="ReactionLayer" IsHitTestVisible="False" Grid.RowSpan="10" Grid.ColumnSpan="10"/>
   </Grid>
 </Page>
