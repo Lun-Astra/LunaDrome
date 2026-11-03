@@ -20,9 +20,11 @@ public sealed partial class MainPage
     private string? _karaokeArtUrl;
     private int _karaokeArtToken;
 
-    // A line timed only as a whole: about this long per syllable when the gap to the next line
-    // is clearly longer than the singing (a pause after it); otherwise the line fills the gap.
-    private const double SecondsPerSyllable = 0.3;
+    // A line timed only as a whole is sung at the song's own pace (see SongPace); this is the
+    // fallback when there are too few lines to tell.
+    private const double DefaultSecondsPerSyllable = 0.45;
+    private List<LyricLine>? _paceFor;
+    private double _pace = DefaultSecondsPerSyllable;
     // A gap this long after a line has been sung (or before the first one) shows the countdown.
     private static readonly TimeSpan BreakAfter = TimeSpan.FromSeconds(1.5);
     private static readonly TimeSpan MinBreak = TimeSpan.FromSeconds(4);
@@ -216,15 +218,36 @@ public sealed partial class MainPage
     /// <summary>How long the line is sung. Timed per word: to the end of its last word. Else
     /// singers mostly stretch a line to the next one, so it fills the gap (minus a breath) -
     /// unless the gap is far longer than the syllables need, then there's a pause after it.</summary>
-    private static TimeSpan SungFor(List<LyricLine> lines, int index)
+    private TimeSpan SungFor(List<LyricLine> lines, int index)
     {
         var line = lines[index];
         var gap = (index + 1 < lines.Count ? lines[index + 1].Start - line.Start : TimeSpan.FromSeconds(10)).TotalSeconds;
         if (line.Words is { Count: > 0 } words)
             return words[^1].Offset + TimeSpan.FromSeconds(Math.Clamp(gap - words[^1].Offset.TotalSeconds, 0.2, 0.8));
-        var natural = Math.Max(0.6, Syllables(line.Text) * SecondsPerSyllable);
-        var room = gap * 0.9;
-        return TimeSpan.FromSeconds(room <= natural * 1.6 ? room : natural * 1.3);
+        var natural = Math.Max(0.6, Syllables(line.Text) * SongPace(lines));
+        var room = gap * 0.92;
+        return TimeSpan.FromSeconds(room <= natural * 1.8 ? room : natural * 1.2);
+    }
+
+    /// <summary>Seconds per syllable this song is sung at: the median over its lines of the time to
+    /// the next line per syllable (lines followed by a long pause left out). A ballad like "I Burn"
+    /// is ~0.58, a fast rap ~0.2; one fixed pace made slow songs light up far ahead of the singer.</summary>
+    private double SongPace(List<LyricLine> lines)
+    {
+        if (ReferenceEquals(lines, _paceFor))
+            return _pace;
+        var rates = new List<double>();
+        for (var i = 0; i + 1 < lines.Count; i++)
+        {
+            var gap = (lines[i + 1].Start - lines[i].Start).TotalSeconds;
+            var syllables = string.IsNullOrWhiteSpace(lines[i].Text) ? 0 : Syllables(lines[i].Text);
+            if (syllables >= 3 && gap is > 0.5 and < 8)
+                rates.Add(gap / syllables);
+        }
+        rates.Sort();
+        _pace = rates.Count >= 4 ? Math.Clamp(rates[rates.Count / 2], 0.18, 0.9) : DefaultSecondsPerSyllable;
+        _paceFor = lines;
+        return _pace;
     }
 
     // Vowel groups ≈ syllables (a silent final e doesn't count); for scripts without Latin vowels
@@ -306,7 +329,7 @@ public sealed partial class MainPage
 
     /// <summary>The line's words (each with its trailing space) and when each one is sung,
     /// relative to the line's start.</summary>
-    private static List<(string Text, TimeSpan At)> KaraokeWords(List<LyricLine> lines, int index)
+    private List<(string Text, TimeSpan At)> KaraokeWords(List<LyricLine> lines, int index)
     {
         var line = lines[index];
         if (line.Words is { Count: > 0 } timed)
