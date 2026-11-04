@@ -38,25 +38,25 @@ public sealed partial class MainPage
         var strength = Math.Clamp(_prefs.BackgroundStrength, 5, 60) / 100.0;
         if (style is not ("Glow" or "NowPlaying" or "Picture"))
         {
-            AppBackdrop.Visibility = Visibility.Collapsed;
-            AppBackdropImage.Source = null;
+            AppBackdrop.Visibility = FullScreenBackdrop.Visibility = Visibility.Collapsed;
+            AppBackdropImage.Source = FullScreenBackdropImage.Source = null;
             _backdropKey = null;
             return;
         }
-        AppBackdrop.Visibility = Visibility.Visible;
+        AppBackdrop.Visibility = FullScreenBackdrop.Visibility = Visibility.Visible;
 
         if (style == "Glow")
         {
-            AppBackdrop.Opacity = 1;   // the strength is in the gradient's alpha
-            AppBackdropGlow.Fill = GlowBrush(Themes.CurrentAccent, strength);
-            AppBackdropImage.Source = null;
+            AppBackdrop.Opacity = FullScreenBackdrop.Opacity = 1;   // the strength is in the gradient's alpha
+            AppBackdropGlow.Fill = FullScreenBackdropGlow.Fill = GlowBrush(Themes.CurrentAccent, strength);
+            AppBackdropImage.Source = FullScreenBackdropImage.Source = null;
             _backdropKey = null;
             return;
         }
 
-        AppBackdropGlow.Fill = null;
+        AppBackdropGlow.Fill = FullScreenBackdropGlow.Fill = null;
         // On the layer, not the image: the image's own opacity is the fade-in when it changes.
-        AppBackdrop.Opacity = strength;
+        AppBackdrop.Opacity = FullScreenBackdrop.Opacity = strength;
         var path = PreferencesService.BackgroundPicturePath;
         var key = style == "Picture"
             ? $"picture|{_prefs.BackgroundBlur}|{(File.Exists(path) ? File.GetLastWriteTimeUtc(path).Ticks : 0)}"
@@ -72,9 +72,12 @@ public sealed partial class MainPage
             : await BlurredArt.LoadBackdropAsync(_backdropCoverUrl);
         if (token != _backdropToken)
             return;
-        AppBackdropImage.Source = image;
+        AppBackdropImage.Source = FullScreenBackdropImage.Source = image;
         if (image != null)
+        {
             Motion.FadeIn(AppBackdropImage);
+            Motion.FadeIn(FullScreenBackdropImage);
+        }
     }
 
     // The accent from the top-left corner, fading out by about two thirds down the window.

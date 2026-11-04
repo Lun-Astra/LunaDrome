@@ -1995,6 +1995,11 @@
 
         <!-- ===== Full-screen player (click the now-playing title) ===== -->
         <Grid x:Name="FullScreenPlayerOverlay" Background="{StaticResource BackgroundBrush}" Visibility="Collapsed">
+          <!-- The overlay's own background hides AppBackdrop, so it carries a copy (ApplyBackdrop). -->
+          <Grid x:Name="FullScreenBackdrop" IsHitTestVisible="False" Visibility="Collapsed">
+            <Image x:Name="FullScreenBackdropImage" Stretch="UniformToFill" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            <Rectangle x:Name="FullScreenBackdropGlow"/>
+          </Grid>
           <!-- Desktop: cover + title on the left, the tabs on the right. Phone (MainPage.Compact.cs):
                a small cover + title row on top, the tabs filling the rest below it. -->
           <Grid x:Name="FullScreenLayoutGrid" Margin="80,40,80,60">
