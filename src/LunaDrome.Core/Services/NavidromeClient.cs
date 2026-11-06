@@ -246,6 +246,43 @@ public class NavidromeClient
         return (artists, MapAlbums(result.Album), result.Song.Select(MapSong).ToList());
     }
 
+    private List<string>? _searchNames;
+    private DateTime _searchNamesAt;
+
+    /// <summary>The search bar's fallback for a query with a typo ("iron maden"): search3 only
+    /// matches exact text, so the closest artist, album or song names are searched instead.
+    /// Returns those names (empty when nothing is close) with their merged results.</summary>
+    public async Task<(List<string> Matches, List<Artist> Artists, List<Album> Albums, List<Song> Songs)> SearchFuzzyAsync(
+        string query, int artistCount = 8, int albumCount = 18, int songCount = 30)
+    {
+        // Every artist, album and title in the library, from one paged song listing; kept for a
+        // few minutes so typing a few searches in a row doesn't refetch it each time.
+        if (_searchNames is not { Count: > 0 } || DateTime.UtcNow - _searchNamesAt > TimeSpan.FromMinutes(10))
+        {
+            var songs = await GetAllSongsAsync();
+            _searchNames = songs
+                .SelectMany(s => new[] { s.ArtistName, s.AlbumArtistName, s.AlbumName, s.Title }
+                    .Concat(s.Artists.Select(a => a.Name)))
+                .Where(n => !string.IsNullOrWhiteSpace(n))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            _searchNamesAt = DateTime.UtcNow;
+        }
+
+        var matches = FuzzySearch.BestMatches(query, _searchNames);
+        var artists = new List<Artist>();
+        var albums = new List<Album>();
+        var found = new List<Song>();
+        foreach (var match in matches)
+        {
+            var (a, al, so) = await SearchAsync(match, artistCount, albumCount, songCount);
+            artists.AddRange(a.Where(x => artists.All(y => y.Id != x.Id)));
+            albums.AddRange(al.Where(x => albums.All(y => y.Id != x.Id)));
+            found.AddRange(so.Where(x => found.All(y => y.Id != x.Id)));
+        }
+        return (matches, artists.Take(artistCount).ToList(), albums.Take(albumCount).ToList(), found.Take(songCount).ToList());
+    }
+
     /// <summary>
     /// Albums an artist appears on without being their album artist (a featured singer on
     /// someone else's album). Navidrome's getArtist lists those only with

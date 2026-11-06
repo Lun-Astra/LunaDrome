@@ -101,7 +101,7 @@ public static class SwipeToQueue
             _direction = right ? 1 : -1;
             // The touch is often taken away without a release reaching the row (emulator test),
             // which left it slid sideways. So: no move or release for a moment = slide back.
-            _snapBack.Tick += (_, _) => { _snapBack.Stop(); Reset(); };
+            _snapBack.Tick += (_, _) => { _snapBack.Stop(); Lost(); };
             _hold.Tick += (_, _) =>
             {
                 _hold.Stop();
@@ -132,8 +132,8 @@ public static class SwipeToQueue
             row.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler(Pressed), true);
             row.AddHandler(UIElement.PointerMovedEvent, new PointerEventHandler(Moved), true);
             row.AddHandler(UIElement.PointerReleasedEvent, new PointerEventHandler(Released), true);
-            row.AddHandler(UIElement.PointerCanceledEvent, new PointerEventHandler((_, _) => Reset()), true);
-            row.AddHandler(UIElement.PointerCaptureLostEvent, new PointerEventHandler((_, _) => Reset()), true);
+            row.AddHandler(UIElement.PointerCanceledEvent, new PointerEventHandler((_, _) => Lost()), true);
+            row.AddHandler(UIElement.PointerCaptureLostEvent, new PointerEventHandler((_, _) => Lost()), true);
         }
 
         private void Pressed(object sender, PointerRoutedEventArgs e)
@@ -220,6 +220,19 @@ public static class SwipeToQueue
                     return;
                 }
                 Act();
+            }
+            Reset();
+        }
+
+        // Android takes the touch away (capture lost, cancel, or the moves just stop) long before
+        // a 120px swipe ends, so the release usually never comes: a remove swipe that is past the
+        // threshold (red) when that happens still removes. Dragging back below it disarms first.
+        private void Lost()
+        {
+            if (_tracking && _swiping && Removing && _armed)
+            {
+                SlideOutAndRemove();
+                return;
             }
             Reset();
         }
