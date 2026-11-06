@@ -128,6 +128,20 @@ public sealed partial class MainPage
             if (token != _searchToken)
                 return 0;
 
+            // Nothing for it as typed: probably a typo ("iron maden"), so show what the closest
+            // names in the library find, and say which names those were.
+            if (artists.Count + albums.Count + songs.Count == 0)
+            {
+                var (matches, a, al, so) = await _client.SearchFuzzyAsync(query);
+                if (token != _searchToken)
+                    return 0;
+                if (matches.Count > 0)
+                {
+                    (artists, albums, songs) = (a, al, so);
+                    SearchHeaderText.Text = $"Results for “{matches[0]}”";
+                }
+            }
+
             foreach (var album in albums)
                 album.CoverArtUrl = _client.GetCoverArtUrl(album.Id, 240);
             PopulateSongArt(songs);
