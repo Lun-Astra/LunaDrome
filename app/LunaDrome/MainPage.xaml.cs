@@ -3206,12 +3206,17 @@ public sealed partial class MainPage : Page
         catch { /* best-effort */ }
     }
 
+    private DispatcherTimer? _mediaControlsRetry;
+    private int _mediaControlsTries;
+
     // Needs the window to exist (Windows ties the flyout to its handle), so it's tried on Loaded
-    // and again after login.
+    // and again after login, and then every second for a while: with "remember me" both can
+    // come before the window is visible, and the media keys then never worked that session.
     private void EnsureMediaControls()
     {
         if (_osMediaControls != null)
             return;
+        _mediaControlsTries++;
 
 #if !ANDROID && !__IOS__
         // Discord status (desktop), fed by the same updates; on/off from Settings.
@@ -3222,7 +3227,19 @@ public sealed partial class MainPage : Page
         };
 #endif
         _osMediaControls = MediaControls.Create();
-        Log($"media controls: {_osMediaControls?.GetType().Name ?? "not available yet"}");
+        if (_osMediaControls != null || _mediaControlsTries == 1)
+            Log($"media controls: {_osMediaControls?.GetType().Name ?? "not available yet"} (try {_mediaControlsTries})");
+        if (_osMediaControls == null && _mediaControlsRetry == null)
+        {
+            _mediaControlsRetry = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+            _mediaControlsRetry.Tick += (_, _) =>
+            {
+                EnsureMediaControls();
+                if (_osMediaControls != null || _mediaControlsTries >= 60)
+                    _mediaControlsRetry?.Stop();
+            };
+            _mediaControlsRetry.Start();
+        }
         // Sendspin speakers get the same now-playing updates (and send their buttons) while
         // LunaDrome streams to them; MainPage.Sendspin.cs hooks up their commands.
         _mediaControls = new MediaControlsGroup(_osMediaControls, _discord, _sendspinControls);
@@ -3242,6 +3259,7 @@ public sealed partial class MainPage : Page
 
     private void HandleMediaCommand(MediaCommand command)
     {
+        Log($"media command: {command} (playing: {_isPlaying}, jam: {JamOwnsPlayback})");
         switch (command)
         {
             case MediaCommand.Play: Play(); break;

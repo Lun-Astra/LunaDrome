@@ -21,6 +21,8 @@ public sealed partial class MainPage
 
     private string _searchQuery = "";
     private int _searchToken;
+    // #40: results follow the typing (like Spotify), once it pauses for a moment.
+    private readonly DispatcherTimer _liveSearchTimer = new() { Interval = TimeSpan.FromMilliseconds(350) };
     private string? _ytSearchedFor;
     private SpotiDromeAlbum? _ytAlbum;
 
@@ -31,6 +33,23 @@ public sealed partial class MainPage
         DownloadsList.ItemsSource = _downloads;
         _downloadPollTimer.Tick += async (_, _) => await PollDownloadsAsync();
         _toastTimer.Tick += (_, _) => HideToast();
+        _liveSearchTimer.Tick += async (_, _) =>
+        {
+            _liveSearchTimer.Stop();
+            var query = ActiveSearchBox.Text.Trim();
+            if (query.Length >= 2 && query != _searchQuery)
+                await RunSearchAsync(query, live: true);
+        };
+    }
+
+    // Also fires when RunSearchAsync fills the boxes; that text is already _searchQuery, so the
+    // timer then does nothing.
+    private void GlobalSearchBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (sender != ActiveSearchBox)
+            return;
+        _liveSearchTimer.Stop();
+        _liveSearchTimer.Start();
     }
 
     // ================= Search =================
@@ -50,6 +69,7 @@ public sealed partial class MainPage
 
     private async Task SubmitSearchAsync()
     {
+        _liveSearchTimer.Stop();
         var query = ActiveSearchBox.Text.Trim();
         if (query.Length > 0)
             await RunSearchAsync(query);
@@ -81,18 +101,29 @@ public sealed partial class MainPage
             () => PageSearchBox.Focus(FocusState.Programmatic));
     }
 
-    private async Task RunSearchAsync(string query)
+    /// <param name="live">While typing (#40): stays on the search page without adding a Back
+    /// step per search, leaves the box being typed in alone, and doesn't go to YouTube Music by
+    /// itself when the library has nothing (Enter still does).</param>
+    private async Task RunSearchAsync(string query, bool live = false)
     {
-        FullScreenPlayerOverlay.Visibility = Visibility.Collapsed;
-        UpdateVisualizerCaptureState();
-        ClearSidebarSelection();
-        HideAllPages();
-        ShowPage(SearchPage, OpenSearchPage);
-        OnCompactNavigated("Search");
+        if (!live || SearchPage.Visibility != Visibility.Visible)
+        {
+            FullScreenPlayerOverlay.Visibility = Visibility.Collapsed;
+            UpdateVisualizerCaptureState();
+            ClearSidebarSelection();
+            HideAllPages();
+            ShowPage(SearchPage, OpenSearchPage);
+            OnCompactNavigated("Search");
+        }
         SearchPage.ChangeView(null, 0, null, true);
 
         _searchQuery = query;
-        GlobalSearchBox.Text = PageSearchBox.Text = query;   // both boxes show what was searched
+        // Both boxes show what was searched; not the one being typed in (it would drop a
+        // trailing space and move the cursor).
+        if (!live || ActiveSearchBox != GlobalSearchBox)
+            GlobalSearchBox.Text = query;
+        if (!live || ActiveSearchBox != PageSearchBox)
+            PageSearchBox.Text = query;
         var token = ++_searchToken;
         SearchHeaderText.Text = $"Results for “{query}”";
 
@@ -110,7 +141,7 @@ public sealed partial class MainPage
             return;
 
         // Nothing in the library: go straight to the downloader.
-        if (found == 0 && _spotiDrome.IsConfigured)
+        if (found == 0 && _spotiDrome.IsConfigured && !live)
         {
             SetSpotiDromeExpanded(true);
             await RunYtSearchAsync(query, token);
