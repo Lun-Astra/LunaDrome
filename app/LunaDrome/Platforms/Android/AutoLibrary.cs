@@ -226,11 +226,11 @@ internal static class AutoLibrary
             var mixClient = await GetClientAsync();
             if (mixClient == null)
                 return null;
-            var songs = mediaId == FavoritesMixId
+            var mixed = mediaId == FavoritesMixId
                 ? new List<Song>(await LoadListAsync(mixClient, "favorites"))
                 : await ArtistSongsAsync(mixClient, mediaId["artistmix:".Length..]);
-            Random.Shared.Shuffle(System.Runtime.InteropServices.CollectionsMarshal.AsSpan(songs));
-            return songs.Count > 0 ? (songs, 0) : null;
+            Random.Shared.Shuffle(System.Runtime.InteropServices.CollectionsMarshal.AsSpan(mixed));
+            return mixed.Count > 0 ? (mixed, 0) : null;
         }
         var listId = mediaId;
         var index = 0;
