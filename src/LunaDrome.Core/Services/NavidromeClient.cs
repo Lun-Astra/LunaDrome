@@ -46,7 +46,7 @@ public class NavidromeClient
     public const string DiscoverLibraryName = "Discover";
 
     private static readonly HashSet<string> LibraryScopedEndpoints =
-        ["getArtists.view", "getAlbumList2.view", "search3.view", "getRandomSongs.view"];
+        ["getArtists.view", "getAlbumList2.view", "search3.view", "getRandomSongs.view", "getStarred2.view"];
 
     public void Configure(string serverUrl, string username, string password)
     {
@@ -222,6 +222,14 @@ public class NavidromeClient
             .OrderByDescending(g => g.AlbumCount)
             .Select(g => new Genre { Name = g.Value, AlbumCount = g.AlbumCount, SongCount = g.SongCount })
             .ToList();
+    }
+
+    /// <summary>The favorited (starred) songs, most recently favorited first.</summary>
+    public async Task<List<Song>> GetFavoriteSongsAsync()
+    {
+        var json = await _http.GetStringAsync(BuildUrl("getStarred2.view"));
+        var songs = JsonSerializer.Deserialize<SubsonicEnvelope<Starred2Response>>(json, JsonOptions)?.Response?.Starred2?.Song;
+        return songs == null ? new() : songs.OrderByDescending(s => s.Starred).Select(MapSong).ToList();
     }
 
     /// <summary>The search bar: artists, albums and songs in the library matching the query.</summary>

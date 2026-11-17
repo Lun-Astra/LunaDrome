@@ -112,6 +112,11 @@ internal class Search3Payload
     public List<ArtistDto> Artist { get; set; } = new();
 }
 
+internal class Starred2Response : SubsonicResponseBase
+{
+    public Search3Payload? Starred2 { get; set; }
+}
+
 internal class AlbumDetailResponse : SubsonicResponseBase
 {
     public AlbumDetailDto? Album { get; set; }

@@ -327,7 +327,10 @@ public sealed class AndroidMediaControls : IMediaControls
 }
 
 /// <summary>A row in Android Auto's browse tree.</summary>
-public sealed record BrowseItem(string MediaId, string Title, string? Subtitle, string? ArtUrl, bool Browsable, bool Playable);
+/// <param name="Group">Rows in a row with the same group get a heading over them (a shelf).</param>
+/// <param name="Style">1 = list row, 2 = grid tile (null: the car's default for the kind).</param>
+public sealed record BrowseItem(string MediaId, string Title, string? Subtitle, string? ArtUrl, bool Browsable, bool Playable,
+    string? Group = null, int? Style = null);
 
 /// <summary>
 /// What the Android side needs from the page: ways to start playback. MainPage fills these in
