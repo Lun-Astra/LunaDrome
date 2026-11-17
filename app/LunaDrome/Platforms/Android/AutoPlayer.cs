@@ -18,6 +18,8 @@ internal sealed class AutoPlayer : Java.Lang.Object, AndroidPlayer.IOnPreparedLi
 {
     private static readonly Handler s_main = new(Looper.MainLooper!);
     private static AutoPlayer? s_current;
+    // After a take-over: still playing until the page's player is (#42), see FinishTakeOver.
+    private static AutoPlayer? s_handingOver;
 
     private readonly Context _context = Android.App.Application.Context;
     private readonly AudioManager? _audio;
@@ -75,6 +77,27 @@ internal sealed class AutoPlayer : Java.Lang.Object, AndroidPlayer.IOnPreparedLi
     public static void Previous() => s_current?.Skip(-1);
     public static void SeekTo(TimeSpan position) => s_current?.Seek(position);
 
+    /// <summary>The heart on Android Auto's player (#42).</summary>
+    public static async void ToggleFavorite()
+    {
+        if (s_current is not { _index: >= 0 } player || player._client is not { } client)
+            return;
+        var song = player._songs[player._index];
+        try
+        {
+            if (song.IsFavorited)
+                await client.UnstarSongAsync(song.Id);
+            else
+                await client.StarSongAsync(song.Id);
+            song.IsFavorited = !song.IsFavorited;
+            Post(() => Controls.RefreshFavorite());
+        }
+        catch (Exception ex)
+        {
+            AndroidLog.Write($"auto player favorite: {ex.Message}");
+        }
+    }
+
     public static async void PlayFromMediaId(string mediaId)
     {
         var target = await AutoLibrary.ResolveAsync(mediaId);
@@ -94,9 +117,12 @@ internal sealed class AutoPlayer : Java.Lang.Object, AndroidPlayer.IOnPreparedLi
             Post(() => Current.Start(songs, 0, TimeSpan.Zero, play: true));
     }
 
-    /// <summary>Stops this player and hands its queue to the page (null when nothing's loaded).
+    /// <summary>Hands this player's queue to the page (null when nothing's loaded).
     /// <paramref name="claimFocus"/> takes the audio focus for the page first, so there's no moment
-    /// without it - Android Auto may switch the car away from LunaDrome in that gap.</summary>
+    /// without it - Android Auto may switch the car away from LunaDrome in that gap. A playing
+    /// player keeps playing until the page's player has started (<see cref="FinishTakeOver"/>):
+    /// stopping it right away left the car silent for the seconds the page needed to load the
+    /// song (#42).</summary>
     public static (List<Song> Songs, int Index, TimeSpan Position, bool Playing)? TakeOver(Action? claimFocus = null)
     {
         var player = s_current;
@@ -107,11 +133,38 @@ internal sealed class AutoPlayer : Java.Lang.Object, AndroidPlayer.IOnPreparedLi
         player._handedOver = true;   // the focus loss that follows is the page, not a pause
         claimFocus?.Invoke();
         player.SaveQueue();
-        player.Release();
-        player.AbandonFocus();
-        player._index = -1;
-        s_current = null;
+        s_current = null;            // the page owns the session now; this one only plays on
+        if (state._playWhenReady && player._prepared && player._player?.IsPlaying == true)
+        {
+            s_handingOver = player;
+            // Never two players for long, also when the page's never starts.
+            s_main.PostDelayed(() => FinishTakeOver(), 15_000);
+        }
+        else
+            player.Stop();
         return state;
+    }
+
+    /// <summary>Where the player that's handing over is now, so the page's player can start
+    /// at the same spot (null when none is playing).</summary>
+    public static TimeSpan? HandOverPosition => s_handingOver?.Position;
+
+    /// <summary>The page's player plays: stop the one that kept the music going.</summary>
+    public static void FinishTakeOver()
+    {
+        var player = s_handingOver;
+        if (player == null)
+            return;
+        s_handingOver = null;
+        AndroidLog.Write($"background player: handed over at {player.Position:m\\:ss}");
+        player.Stop();
+    }
+
+    private void Stop()
+    {
+        Release();
+        AbandonFocus();
+        _index = -1;
     }
 
     // --- Playback ---
@@ -217,6 +270,11 @@ internal sealed class AutoPlayer : Java.Lang.Object, AndroidPlayer.IOnPreparedLi
     {
         if (mp != _player)
             return;
+        if (_handedOver)
+        {
+            FinishTakeOver();
+            return;
+        }
         if (_index < _songs.Count - 1)
             Load(_index + 1, TimeSpan.Zero, play: true);
         else
@@ -231,7 +289,9 @@ internal sealed class AutoPlayer : Java.Lang.Object, AndroidPlayer.IOnPreparedLi
 
     public bool OnError(AndroidPlayer? mp, MediaError what, int extra)
     {
-        if (mp == _player)
+        if (mp == _player && _handedOver)
+            FinishTakeOver();
+        else if (mp == _player)
         {
             AndroidLog.Write($"auto player error {what} {extra}");
             Failed();

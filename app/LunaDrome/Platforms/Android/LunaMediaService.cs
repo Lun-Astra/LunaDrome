@@ -150,6 +150,7 @@ public class LunaMediaService : MediaBrowserServiceCompat
         extras.PutBoolean("android.media.browse.CONTENT_STYLE_SUPPORTED", true);
         extras.PutInt("android.media.browse.CONTENT_STYLE_BROWSABLE_HINT", 2); // grid
         extras.PutInt("android.media.browse.CONTENT_STYLE_PLAYABLE_HINT", 1);  // list
+        extras.PutBoolean("android.media.browse.SEARCH_SUPPORTED", true);      // the car's search screen
         return new BrowserRoot(RootId, extras);
     }
 
@@ -157,6 +158,27 @@ public class LunaMediaService : MediaBrowserServiceCompat
     {
         result.Detach();
         _ = LoadChildrenAsync(parentId, result);
+    }
+
+    public override void OnSearch(string query, Bundle? extras, Result result)
+    {
+        result.Detach();
+        _ = SearchAsync(query, result);
+    }
+
+    private static async Task SearchAsync(string query, Result result)
+    {
+        var items = new List<MediaBrowserCompat.MediaItem>();
+        try
+        {
+            foreach (var item in await AutoLibrary.SearchItemsAsync(query))
+                items.Add(Item(item));
+        }
+        catch (Exception ex)
+        {
+            AndroidLog.Write($"auto search '{query}': {ex.Message}");
+        }
+        result.SendResult(new JavaList<MediaBrowserCompat.MediaItem>(items));
     }
 
     private static async Task LoadChildrenAsync(string parentId, Result result)
@@ -182,6 +204,15 @@ public class LunaMediaService : MediaBrowserServiceCompat
             .SetSubtitle(item.Subtitle)!;
         if (!string.IsNullOrEmpty(item.ArtUrl))
             description.SetIconUri(Android.Net.Uri.Parse(item.ArtUrl));
+        if (item.Group != null || item.Style != null)
+        {
+            var extras = new Bundle();
+            if (item.Group != null)
+                extras.PutString("android.media.browse.CONTENT_STYLE_GROUP_TITLE_HINT", item.Group);
+            if (item.Style is { } style)
+                extras.PutInt("android.media.browse.CONTENT_STYLE_SINGLE_ITEM_HINT", style);
+            description.SetExtras(extras);
+        }
         int flags = (item.Browsable ? MediaBrowserCompat.MediaItem.FlagBrowsable : 0)
             | (item.Playable ? MediaBrowserCompat.MediaItem.FlagPlayable : 0);
         return new MediaBrowserCompat.MediaItem(description.Build()!, flags);
