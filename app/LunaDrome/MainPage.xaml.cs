@@ -1656,6 +1656,9 @@ public sealed partial class MainPage : Page
         NowPlayingFavoriteHeart.Fill = (Brush)new FavoriteFillConverter().Convert(song.IsFavorited, typeof(Brush), null!, "");
         ToolTipService.SetToolTip(NowPlayingFavorite, song.IsFavorited ? "Remove from favorites" : "Add to favorites");
         SyncCompactPlayer();
+#if ANDROID
+        AndroidMediaControls.Current?.RefreshFavorite();   // the car's heart follows
+#endif
     }
 
     private async Task ToggleNowPlayingFavoriteAsync(Song song)
@@ -3268,6 +3271,10 @@ public sealed partial class MainPage : Page
             case MediaCommand.Stop: Stop(); break;
             case MediaCommand.Next: PlayNext(); break;
             case MediaCommand.Previous: PlayPrevious(); break;
+            case MediaCommand.ToggleFavorite:   // the heart on Android Auto's player (#42)
+                if (_current?.Song is { } song)
+                    _ = ToggleNowPlayingFavoriteAsync(song);
+                break;
         }
     }
 

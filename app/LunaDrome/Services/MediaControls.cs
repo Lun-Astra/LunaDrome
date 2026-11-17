@@ -2,7 +2,7 @@ using LunaDrome.Core.Models;
 
 namespace LunaDrome.Services;
 
-public enum MediaCommand { Play, Pause, PlayPause, Stop, Next, Previous }
+public enum MediaCommand { Play, Pause, PlayPause, Stop, Next, Previous, ToggleFavorite }
 
 /// <summary>
 /// The OS media integration: Windows' media flyout (SystemMediaTransportControls, which also

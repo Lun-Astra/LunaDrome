@@ -70,6 +70,8 @@ public sealed partial class MainPage
         var entry = entries[Math.Clamp(handover.Index, 0, entries.Count - 1)];
         if (handover.Playing)
         {
+            // The background player keeps playing while this one loads (#42).
+            _autoHandoverSongId = entry.Song.Id;
             PlayEntry(entry, handover.Position);
             return;
         }
@@ -80,6 +82,19 @@ public sealed partial class MainPage
         ProgressSlider.Value = Math.Min(_pendingSeek.TotalSeconds, ProgressSlider.Maximum);
         ElapsedText.Text = FormatTime(_pendingSeek);
         DurationText.Text = FormatTime(TimeSpan.FromSeconds(entry.Song.DurationSeconds));
+    }
+
+    private string? _autoHandoverSongId;
+
+    // The handed-over song is loaded: start where the background player is by now (it kept
+    // playing during the load), a moment ahead for the seek itself.
+    private void CatchUpWithAutoPlayer()
+    {
+        if (_autoHandoverSongId == null)
+            return;
+        if (_loadedEntry?.Song.Id == _autoHandoverSongId && AutoPlayer.HandOverPosition is { } position)
+            _pendingSeek = position + TimeSpan.FromMilliseconds(150);
+        _autoHandoverSongId = null;
     }
 
     private async Task PlayFromAutoAsync(string mediaId)

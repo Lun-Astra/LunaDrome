@@ -274,6 +274,9 @@ public sealed partial class MainPage
             {
                 if (ReferenceEquals(s, _player))
                 {
+#if ANDROID
+                    CatchUpWithAutoPlayer();
+#endif
                     ApplyPendingSeek();
                     EnforcePlaybackVolume();
                 }
@@ -283,7 +286,13 @@ public sealed partial class MainPage
         {
             Log($"playback state: {s.PlaybackState}{(ReferenceEquals(s, _player.PlaybackSession) ? "" : " (other player)")}");
             if (s.PlaybackState == Windows.Media.Playback.MediaPlaybackState.Playing)
+            {
                 DispatcherQueue.TryEnqueue(() => ApplyAudioDevice(player));   // the chosen sound card (MainPage.AudioDevice.cs)
+#if ANDROID
+                if (ReferenceEquals(s, _player.PlaybackSession))
+                    AutoPlayer.Post(AutoPlayer.FinishTakeOver);   // the car's music went on in the background until now (#42)
+#endif
+            }
         };
     }
 

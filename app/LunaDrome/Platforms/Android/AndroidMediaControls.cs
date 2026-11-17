@@ -20,6 +20,7 @@ public sealed class AndroidMediaControls : IMediaControls
 {
     private const string ChannelId = "playback";
     private const string SongMixAction = "lunadrome.SONG_MIX";
+    private const string FavoriteAction = "lunadrome.FAVORITE";
     internal const int NotificationId = 1;
 
     private static AndroidMediaControls? s_instance;
@@ -76,6 +77,8 @@ public sealed class AndroidMediaControls : IMediaControls
             _art = null;
         _duration = TimeSpan.FromSeconds(song?.DurationSeconds ?? 0);
         PublishMetadata();
+        if (changed)
+            PublishState();   // the heart is the new song's
         UpdateNotification();
         if (song != null && changed && !string.IsNullOrEmpty(artUrl))
             _ = LoadArtAsync(song.Id, artUrl);
@@ -157,7 +160,10 @@ public sealed class AndroidMediaControls : IMediaControls
         _positionReportedAt = DateTime.UtcNow;
         Session.SetPlaybackState(new PlaybackStateCompat.Builder()
             .SetActions(actions)!
-            // A Song mix button on Android Auto's player screen.
+            // A heart (#42) and a Song mix button on Android Auto's player screen.
+            .AddCustomAction(new PlaybackStateCompat.CustomAction.Builder(FavoriteAction,
+                _song?.IsFavorited == true ? "Remove from favorites" : "Add to favorites",
+                _song?.IsFavorited == true ? Resource.Drawable.lunadrome_heart_filled : Resource.Drawable.lunadrome_heart).Build())!
             .AddCustomAction(new PlaybackStateCompat.CustomAction.Builder(SongMixAction, "Song mix", Resource.Drawable.lunadrome_shuffle).Build())!
             .SetState(state, (long)_position.TotalMilliseconds, _playing == true ? 1f : 0f)!
             .Build());
@@ -251,6 +257,9 @@ public sealed class AndroidMediaControls : IMediaControls
 
     private void Raise(MediaCommand command) => CommandReceived?.Invoke(command);
 
+    /// <summary>The playing song was (un)favorited: the heart on the car's screen follows.</summary>
+    internal void RefreshFavorite() => PublishState();
+
     /// <summary>The page takes the audio focus (before the background player gives it up).</summary>
     internal void ClaimFocusForPage() => PageAudioFocus.Update(true, Raise);
 
@@ -303,6 +312,8 @@ public sealed class AndroidMediaControls : IMediaControls
         {
             if (action == SongMixAction)
                 OnPlayFromMediaId(AutoLibrary.SongMixId, extras);
+            else if (action == FavoriteAction)
+                Command(MediaCommand.ToggleFavorite, AutoPlayer.ToggleFavorite);
         }
 
         public override void OnPlayFromSearch(string? query, Bundle? extras)
