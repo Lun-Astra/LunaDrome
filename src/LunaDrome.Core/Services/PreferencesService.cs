@@ -31,6 +31,11 @@ public class Preferences
     /// <summary>With it: the album cover (a public link to it on the user's server) instead of the logo.</summary>
     public bool DiscordAlbumArt { get; set; } = true;
 
+    /// <summary>Phone: the cassette player is available (a button in the now-playing screen switches to it).</summary>
+    public bool CassettePlayer { get; set; }
+    /// <summary>Phone: the now-playing screen shows the cassette player (last choice of that button).</summary>
+    public bool CassetteMode { get; set; } = true;
+
     public double Volume { get; set; } = 0.8;
 
     /// <summary>Streaming quality (#28): converted by Navidrome for anything but Original.</summary>
