@@ -341,6 +341,8 @@ public sealed partial class MainPage : Page
         DiscordAlbumArtCheck.IsChecked = _prefs.DiscordAlbumArt;
         DiscordAlbumArtCheck.IsEnabled = _prefs.DiscordPresence;
         DiscordPresenceSetting.Visibility = OperatingSystem.IsAndroid() ? Visibility.Collapsed : Visibility.Visible;
+        CassettePlayerCheck.IsChecked = _prefs.CassettePlayer;
+        CassettePlayerSetting.Visibility = OperatingSystem.IsAndroid() || OperatingSystem.IsIOS() ? Visibility.Visible : Visibility.Collapsed;
         RefreshSpotiDromeSettings();
         RefreshJamiDromeSettings();
         UpdateCacheSizeText();

@@ -19,6 +19,7 @@ public sealed partial class MainPage
     private void InitCompactLayout()
     {
         InitCompactPlayer();
+        InitCassettePlayer();
         SizeChanged += (_, e) =>
         {
             ApplyCompactLayout(e.NewSize.Width < CompactWidth);
@@ -376,12 +377,16 @@ public sealed partial class MainPage
     private void UpdateCompactPlayerMode()
     {
         var phonePlayer = IsCompact && FullScreenPlayerOverlay.Visibility == Visibility.Visible;
-        CompactPlayerView.Visibility = phonePlayer && !_compactPlayerTabs ? Visibility.Visible : Visibility.Collapsed;
+        // The cassette player also on an unfolded foldable (wider than the phone layout).
+        var cassette = FullScreenPlayerOverlay.Visibility == Visibility.Visible && !_compactPlayerTabs && CassetteShown;
+        CompactPlayerView.Visibility = phonePlayer && !_compactPlayerTabs && !cassette ? Visibility.Visible : Visibility.Collapsed;
         FullScreenLayoutGrid.Visibility = phonePlayer && !_compactPlayerTabs ? Visibility.Collapsed : Visibility.Visible;
+        ShowCassetteDeck(cassette);
         // On the player view its own ▾ closes it; on the tabs ✕ goes back to the player view.
-        FullScreenCloseButton.Visibility = CompactPlayerView.Visibility == Visibility.Visible ? Visibility.Collapsed : Visibility.Visible;
+        FullScreenCloseButton.Visibility = CompactPlayerView.Visibility == Visibility.Visible || cassette ? Visibility.Collapsed : Visibility.Visible;
         // Like Spotify, the open player covers the whole screen: no playback bar or bottom navigation.
-        PlaybackBarBorder.Visibility = phonePlayer ? Visibility.Collapsed : Visibility.Visible;
+        PlaybackBarBorder.Visibility = phonePlayer || cassette ? Visibility.Collapsed : Visibility.Visible;
+        FullScreenCassetteButton.Visibility = CassetteAvailable && !IsCompact && !cassette ? Visibility.Visible : Visibility.Collapsed;
         if (IsCompact)
             CompactNavBar.Visibility = phonePlayer ? Visibility.Collapsed : Visibility.Visible;
         if (CompactPlayerView.Visibility == Visibility.Visible)
@@ -409,6 +414,7 @@ public sealed partial class MainPage
     /// changes and every progress tick) instead of updating both everywhere.</summary>
     private void SyncCompactPlayer()
     {
+        SyncCassetteDeck();
         if (CompactPlayerView.Visibility != Visibility.Visible)
             return;
 

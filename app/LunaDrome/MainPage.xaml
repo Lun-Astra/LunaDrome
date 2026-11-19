@@ -1135,6 +1135,10 @@
                     </StackPanel>
                     <TextBlock x:Name="BackgroundHintText" FontSize="12" TextWrapping="Wrap"
                                Foreground="{StaticResource TextSecondaryBrush}"/>
+                    <StackPanel x:Name="CassettePlayerSetting" Margin="0,8,0,0">
+                      <CheckBox x:Name="CassettePlayerCheck" Content="Cassette player" Click="CassettePlayerCheck_Click"/>
+                      <TextBlock Style="{StaticResource SettingsHintStyle}" Text="Adds a cassette button to the now-playing screen that switches it to a retro tape deck: the song on a cassette, reels that turn, PLAY / FF / REW / STOP keys (hold FF or REW to wind through the song). Unfolded or on its side it shows your playlists as a rack of tapes; a foldable standing half-open gets the keys on the bottom half. Goes well with the Cassette theme."/>
+                    </StackPanel>
                   </StackPanel>
                 </Border>
 
@@ -2198,6 +2202,12 @@
               </Button>
               <TextBlock Text="NOW PLAYING" FontSize="11" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center"
                          Foreground="{StaticResource TextSecondaryBrush}"/>
+              <Button x:Name="CompactCassetteButton" Style="{StaticResource IconButtonStyle}" Width="40" Height="40" HorizontalAlignment="Right"
+                      Margin="0,0,88,0" Click="CompactCassetteButton_Click" Visibility="Collapsed"
+                      AutomationProperties.Name="Cassette player" ToolTipService.ToolTip="Cassette player">
+                <Path Width="20" Height="14" Stretch="Uniform" Stroke="{StaticResource TextPrimaryBrush}" StrokeThickness="1.6"
+                      Data="M2,1 L22,1 Q23,1 23,2 L23,14 Q23,15 22,15 L2,15 Q1,15 1,14 L1,2 Q1,1 2,1 Z M8,8 m-2,0 a2,2 0 1,0 4,0 a2,2 0 1,0 -4,0 M16,8 m-2,0 a2,2 0 1,0 4,0 a2,2 0 1,0 -4,0 M10,8 L14,8 M5,15 L7,11 L17,11 L19,15"/>
+              </Button>
               <Button x:Name="CompactSleepTimerButton" Style="{StaticResource IconButtonStyle}" Width="40" Height="40" HorizontalAlignment="Right"
                       Margin="0,0,44,0" Click="SleepTimerButton_Click" AutomationProperties.Name="Sleep timer">
                 <Path x:Name="CompactSleepTimerIcon" Width="18" Height="18" Stretch="Uniform" StrokeThickness="1.7" StrokeLineJoin="Round"
@@ -2304,6 +2314,13 @@
           <Button x:Name="FullScreenCloseButton" Content="✕" Width="34" Height="34" FontSize="13" Margin="24"
                   HorizontalAlignment="Right" VerticalAlignment="Top"
                   Click="CloseFullScreenPlayer_Click" ToolTipService.ToolTip="Close"/>
+          <!-- An unfolded foldable is wider than a phone: its way into the cassette player. -->
+          <Button x:Name="FullScreenCassetteButton" Width="34" Height="34" Padding="0" Margin="24,24,66,24" Visibility="Collapsed"
+                  HorizontalAlignment="Right" VerticalAlignment="Top"
+                  Click="CompactCassetteButton_Click" ToolTipService.ToolTip="Cassette player" AutomationProperties.Name="Cassette player">
+            <Path Width="18" Height="13" Stretch="Uniform" Stroke="{StaticResource TextPrimaryBrush}" StrokeThickness="1.5"
+                  Data="M2,1 L22,1 Q23,1 23,2 L23,14 Q23,15 22,15 L2,15 Q1,15 1,14 L1,2 Q1,1 2,1 Z M8,8 m-2,0 a2,2 0 1,0 4,0 a2,2 0 1,0 -4,0 M16,8 m-2,0 a2,2 0 1,0 4,0 a2,2 0 1,0 -4,0 M10,8 L14,8 M5,15 L7,11 L17,11 L19,15"/>
+          </Button>
         </Grid>
       </Grid>
 

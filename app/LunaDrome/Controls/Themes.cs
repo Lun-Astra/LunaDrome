@@ -12,7 +12,7 @@ public static class Themes
 {
     public static readonly string[] ThemeNames =
     {
-        "Dark", "Midnight", "Black", "Nord", "Mocha", "Forest", "Wine", "Ocean", "Dracula", "Slate", "Ember",
+        "Dark", "Midnight", "Black", "Nord", "Mocha", "Forest", "Wine", "Ocean", "Dracula", "Slate", "Ember", "Cassette",
         "Light", "Creme", "Sakura", "Mint", "Sky", "Solarized",
     };
 
@@ -58,6 +58,9 @@ public static class Themes
                         C(0x26FFFFFF), C(0xFFE8ECF0), C(0xFF8F9AA6), C(0xFFE8ECF0), C(0xFF181C21)),
         ["Ember"] = new(C(0xFF221813), C(0xFF1B120E), C(0xFF30221A), C(0xFF3A2920), C(0xFF4A3529),
                         C(0x26FFFFFF), C(0xFFF6E8DE), C(0xFFAB9283), C(0xFFF6E8DE), C(0xFF1B120E)),
+        // Charcoal and cream, like the cassette player (Settings > Appearance > Cassette player).
+        ["Cassette"] = new(C(0xFF1F2328), C(0xFF181B1F), C(0xFF2A2F36), C(0xFF323841), C(0xFF3E4550),
+                           C(0x26EFE8DA), C(0xFFEFE8DA), C(0xFF9EA4AE), C(0xFFEFE8DA), C(0xFF181B1F)),
         ["Mint"] = new(C(0xFFEFF7F2), C(0xFFFAFDFB), C(0xFFDDEDE3), C(0xFFD1E6D9), C(0xFFC0DACA),
                        C(0x1A1F4A33), C(0xFF16261D), C(0xFF5D7667), C(0xFF1F4A33), C(0xFFFFFFFF)),
         ["Sky"] = new(C(0xFFEEF4FA), C(0xFFFAFCFE), C(0xFFDCE7F3), C(0xFFD0DFEE), C(0xFFBFD2E6),
