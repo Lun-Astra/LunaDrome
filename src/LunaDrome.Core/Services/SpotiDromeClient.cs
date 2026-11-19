@@ -57,7 +57,11 @@ public class SpotiDromeAlbum : LibraryMatchable
     public string? Type { get; set; }
     public string? Thumbnail { get; set; }
     [JsonPropertyName("track_count")] public int? TrackCount { get; set; }
-    /// <summary>The playlist URL /ytmusic/download takes; only set by GetAlbumAsync.</summary>
+    /// <summary>Set instead of BrowseId for a video on the artist page of an artist without
+    /// releases (Type "Video"): a single track, not an album.</summary>
+    [JsonPropertyName("video_id")] public string? VideoId { get; set; }
+    /// <summary>The URL /ytmusic/download takes: the album's playlist (set by GetAlbumAsync)
+    /// or the video.</summary>
     public string? Url { get; set; }
     public List<SpotiDromeTrack> Tracks { get; set; } = new();
 
@@ -215,7 +219,8 @@ public class SpotiDromeClient
     }
 
     /// <summary>Every album, EP and single YouTube Music has for the artist with this name
-    /// (empty when it doesn't know the artist), newest first.</summary>
+    /// (empty when it doesn't know the artist), newest first. An artist without any releases
+    /// gets the videos on their channel instead (VideoId set).</summary>
     public async Task<List<SpotiDromeAlbum>> GetArtistAlbumsAsync(string name, CancellationToken cancellationToken = default)
     {
         var json = await GetStringCheckedAsync($"{BaseUrl}/search/artist?name={Uri.EscapeDataString(name)}", cancellationToken);
