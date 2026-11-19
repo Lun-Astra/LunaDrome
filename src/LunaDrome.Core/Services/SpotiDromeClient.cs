@@ -62,6 +62,14 @@ public class SpotiDromeAlbum : LibraryMatchable
     public List<SpotiDromeTrack> Tracks { get; set; } = new();
 
     public string Subtitle => string.IsNullOrEmpty(Year) ? Artist : $"{Artist} • {Year}";
+    /// <summary>"Album • 2021" (artist page, where the artist is already known).</summary>
+    public string TypeAndYear => string.Join(" • ", new[] { Type ?? "Album", Year }.Where(p => !string.IsNullOrEmpty(p)));
+}
+
+public class SpotiDromeArtist
+{
+    public string Artist { get; set; } = "";
+    public List<SpotiDromeAlbum> Albums { get; set; } = new();
 }
 
 public class SpotiDromeSearchResult
@@ -204,6 +212,14 @@ public class SpotiDromeClient
     {
         var json = await GetStringCheckedAsync($"{BaseUrl}/search/album/{Uri.EscapeDataString(browseId)}");
         return JsonSerializer.Deserialize<SpotiDromeAlbum>(json, JsonOptions) ?? new();
+    }
+
+    /// <summary>Every album, EP and single YouTube Music has for the artist with this name
+    /// (empty when it doesn't know the artist), newest first.</summary>
+    public async Task<List<SpotiDromeAlbum>> GetArtistAlbumsAsync(string name, CancellationToken cancellationToken = default)
+    {
+        var json = await GetStringCheckedAsync($"{BaseUrl}/search/artist?name={Uri.EscapeDataString(name)}", cancellationToken);
+        return (JsonSerializer.Deserialize<SpotiDromeArtist>(json, JsonOptions) ?? new()).Albums;
     }
 
     /// <summary>Starts a library-only download (no Navidrome playlist, no auto-sync); returns the job id.

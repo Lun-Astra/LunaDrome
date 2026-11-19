@@ -25,6 +25,8 @@ public sealed partial class MainPage
     private readonly DispatcherTimer _liveSearchTimer = new() { Interval = TimeSpan.FromMilliseconds(350) };
     private string? _ytSearchedFor;
     private SpotiDromeAlbum? _ytAlbum;
+    private Task<SpotiDromeSearchResult>? _ytPrefetch;
+    private string? _ytPrefetchQuery;
 
     private void InitSearch()
     {
@@ -136,6 +138,15 @@ public sealed partial class MainPage
         YtSongsList.ItemsSource = YtVideosList.ItemsSource = null;
         YtAlbumsList.ItemsSource = null;
 
+        // Ask SpotiDrome right away, alongside the library search: it keeps the results for a
+        // few minutes, so opening "Download via SpotiDrome" afterwards shows them at once.
+        if (_spotiDrome.IsConfigured && !live)
+        {
+            _ytPrefetchQuery = query;
+            _ytPrefetch = _spotiDrome.SearchAsync(query);
+            _ = _ytPrefetch.ContinueWith(t => _ = t.Exception, TaskScheduler.Default); // a failure shows when it's opened
+        }
+
         var found = await RunLibrarySearchAsync(query, token);
         if (token != _searchToken)
             return;
@@ -231,7 +242,9 @@ public sealed partial class MainPage
 
         try
         {
-            var result = await _spotiDrome.SearchAsync(query);
+            var result = await (_ytPrefetchQuery == query && _ytPrefetch is { IsFaulted: false, IsCanceled: false } prefetch
+                ? prefetch
+                : _spotiDrome.SearchAsync(query));
             if (token != _searchToken)
                 return;
 
