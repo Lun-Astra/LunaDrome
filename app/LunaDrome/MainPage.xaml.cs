@@ -1318,6 +1318,7 @@ public sealed partial class MainPage : Page
         var token = ++_artistLoadToken;
         _artistGuestAlbums = new();
         ArtistAlbumsList.ItemsSource = null;
+        ClearRemoteArtistAlbums();
         ArtistHeaderNameText.Text = fallbackName;
         ArtistHeaderStatsText.Text = "";
         ArtistAlbumCountText.Text = "";
@@ -1353,6 +1354,7 @@ public sealed partial class MainPage : Page
             albums = albums.OrderByDescending(a => a.Year ?? 0).ToList();
             ArtistAlbumsList.ItemsSource = albums;
             ArtistAlbumCountText.Text = albums.Count.ToString();
+            _ = LoadRemoteArtistAlbumsAsync(artist.Name, albums, token);
 
             var totalSongs = albums.Sum(a => a.SongCount);
             ArtistHeaderNameText.Text = artist.Name;

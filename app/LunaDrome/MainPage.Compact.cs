@@ -109,7 +109,7 @@ public sealed partial class MainPage
             compact ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
         StatsPageContent.Margin = DownloadsList.Margin = AllGenresList.Margin =
             compact ? new Thickness(0, 0, 0, 16) : new Thickness(0, 0, 16, 16);
-        foreach (var layout in new[] { SearchArtistsLayout, SearchAlbumsLayout, YtAlbumsLayout, ArtistAlbumsLayout, AllAlbumsLayout, GenreAlbumsLayout })
+        foreach (var layout in new[] { SearchArtistsLayout, SearchAlbumsLayout, YtAlbumsLayout, ArtistAlbumsLayout, ArtistRemoteAlbumsLayout, AllAlbumsLayout, GenreAlbumsLayout })
             layout.ItemsJustification = compact ? UniformGridLayoutItemsJustification.Center : UniformGridLayoutItemsJustification.Start;
         AlbumHeaderGrid.Height = compact ? 190 : 290;
         AlbumHeaderInner.Margin = compact ? new Thickness(14, 0, 14, 14) : new Thickness(32, 0, 28, 32);
@@ -141,6 +141,9 @@ public sealed partial class MainPage
         ArtistAlbumsList.ItemTemplate = (DataTemplate)Resources[compact ? "LargeAlbumCardTemplate" : "FeishinAlbumCardTemplate"];
         ArtistAlbumsLayout.MinItemWidth = compact ? 162 : 184;
         ArtistAlbumsLayout.MinItemHeight = compact ? 224 : 268;
+        ArtistRemoteAlbumsList.ItemTemplate = (DataTemplate)Resources[compact ? "RemoteAlbumCardSmallTemplate" : "RemoteAlbumCardTemplate"];
+        ArtistRemoteAlbumsLayout.MinItemWidth = compact ? 162 : 184;
+        ArtistRemoteAlbumsLayout.MinItemHeight = compact ? 210 : 250;
 
         // Full-screen player: cover + title as a row on top, Queue / Lyrics / Visualizer below it
         // (side by side they need ~900px).
