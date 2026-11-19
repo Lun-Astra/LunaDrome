@@ -9,6 +9,7 @@ namespace LunaDrome;
 // Artist page with SpotiDrome connected: below the library's albums, the artist's other albums,
 // EPs and singles on YouTube Music (faded cover + download badge). Tapping one shows its tracks
 // with a "Download album" button that sends it to SpotiDrome, like the search page does.
+// An artist with no releases at all (a small YouTube channel) gets their videos instead.
 public sealed partial class MainPage
 {
     private async Task LoadRemoteArtistAlbumsAsync(string artistName, IReadOnlyList<Album> libraryAlbums, int token)
@@ -25,7 +26,18 @@ public sealed partial class MainPage
             // Hide what the library already has - also under a slightly different name
             // ("Senjutsu" vs "Senjutsu (2021 Remaster)").
             var owned = libraryAlbums.Select(a => EditionFreeTitle(a.Name)).ToHashSet();
-            var missing = remote.Where(a => !owned.Contains(EditionFreeTitle(a.Title))).ToList();
+            var missing = remote.Where(a => a.VideoId != null || !owned.Contains(EditionFreeTitle(a.Title))).ToList();
+
+            // A video (artist without releases) is one song: hide it when that song is in the library.
+            var videos = missing.Where(a => a.VideoId != null)
+                .ToDictionary(a => a, a => new SpotiDromeTrack { VideoId = a.VideoId!, Title = a.Title, Artist = artistName, Kind = "video" });
+            if (videos.Count > 0)
+            {
+                await MarkLibraryMatchesAsync(videos.Values, Array.Empty<SpotiDromeAlbum>());
+                if (token != _artistLoadToken)
+                    return;
+                missing = missing.Where(a => !(videos.TryGetValue(a, out var t) && t.InLibrary)).ToList();
+            }
             ArtistRemoteAlbumsList.ItemsSource = missing;
             ArtistRemoteCountText.Text = missing.Count.ToString();
             ArtistRemoteSection.Visibility = missing.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
@@ -90,10 +102,11 @@ public sealed partial class MainPage
         content.Children.Add(status);
         content.Children.Add(tracks);
 
+        var isVideo = album.VideoId != null;
         var dialog = new ContentDialog
         {
             Content = new ScrollViewer { Content = content, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, MaxHeight = 460 },
-            PrimaryButtonText = "Download album",
+            PrimaryButtonText = isVideo ? "Download" : "Download album",
             IsPrimaryButtonEnabled = false,
             CloseButtonText = "Close",
             DefaultButton = ContentDialogButton.Primary,
@@ -110,6 +123,13 @@ public sealed partial class MainPage
         _ = LoadAsync();
         async Task LoadAsync()
         {
+            if (isVideo)
+            {
+                status.Text = "1 track";
+                tracks.ItemsSource = new[] { new SpotiDromeTrack { VideoId = album.VideoId!, Title = album.Title, Artist = album.Artist, Kind = "video" } };
+                dialog.IsPrimaryButtonEnabled = !string.IsNullOrEmpty(album.Url);
+                return;
+            }
             try
             {
                 detail = await _spotiDrome.GetAlbumAsync(album.BrowseId);
@@ -129,7 +149,12 @@ public sealed partial class MainPage
         try { result = await dialog.ShowAsync(); }
         catch { return; /* another dialog already open */ }
 
-        if (result == ContentDialogResult.Primary && detail is { Url: { Length: > 0 } url })
+        if (result == ContentDialogResult.Primary && isVideo && album.Url is { Length: > 0 } videoUrl)
+        {
+            var artist = _currentArtist?.Name is { Length: > 0 } name ? name : album.Artist;
+            await StartDownloadAsync(videoUrl, isAlbum: false, $"{album.Title} – {artist}", album.Title, artist, null);
+        }
+        else if (result == ContentDialogResult.Primary && detail is { Url: { Length: > 0 } url })
         {
             // Tagged with the artist as the library knows them, so it lands on this artist page.
             var artist = _currentArtist?.Name is { Length: > 0 } name ? name : detail.Artist;
